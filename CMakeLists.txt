@@ -152,6 +152,16 @@ add_custom_target(catagui_assets ALL
 add_dependencies(catagui catagui_assets)
 
 # ---------------------------------------------------------------------------
+# Install / packaging (cmake --install <build> --prefix <dir>; see tools/package.py)
+# ---------------------------------------------------------------------------
+install(TARGETS catagui RUNTIME DESTINATION .)
+install(DIRECTORY assets/ DESTINATION assets)
+install(FILES LICENSE README.md THIRD_PARTY_NOTICES.md DESTINATION .)
+install(FILES third_party/raylib/LICENSE DESTINATION licenses RENAME raylib-LICENSE.txt)
+install(FILES third_party/clay/LICENSE.md DESTINATION licenses RENAME clay-LICENSE.md)
+install(FILES third_party/yyjson/LICENSE DESTINATION licenses RENAME yyjson-LICENSE.txt)
+
+# ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
 if(CATAGUI_BUILD_TESTS)

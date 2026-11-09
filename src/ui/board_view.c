@@ -139,7 +139,7 @@ static void draw_grid(Ui *ui, const BoardGeometry *g, bool coords) {
     if (!coords) return;
     f32 size = fmaxf(9.0f, g->cell * 0.36f);
     Color label = t->colors.board_label;
-    char text[8];
+    char text[16];
     for (i32 x = 0; x < g->width; ++x) {
         snprintf(text, sizeof(text), "%c", GTP_COLUMNS[x]);
         Vector2 top = point_center(g, (Point){ (i8)x, 0 });
@@ -384,7 +384,7 @@ static void draw_board(void *user, Rectangle bounds) {
             i32 i = board_index(board, n->move.point);
             if (numbers[i] == 0 && board->cells[i] == n->move.color) numbers[i] = n->move_number;
         }
-        char text[8];
+        char text[16];
         for (i32 i = 0; i < board->width * board->height; ++i) {
             if (!numbers[i]) continue;
             snprintf(text, sizeof(text), "%d", numbers[i]);
