@@ -146,6 +146,10 @@ void app_set_region(App *app, BoardRegion region);
 // Adds a setup node that fills the board around the problem (the selected
 // region, or the stones' bounding box) and limits analysis to the problem.
 bool app_tsumego_frame(App *app);
+// Game info dialog: copies the root SGF properties (players, ranks, komi,
+// result, event, date) into the transient game_info.* settings, and back.
+void app_game_info_load(App *app);
+void app_game_info_apply(App *app);
 // Where KataGo lives: <root>/katago (created by the installer).
 String app_katago_dir(const App *app);
 // True when a running engine (main or second) has a human SL network.

@@ -109,6 +109,10 @@ static void open_dialog(Ui *ui, UiDialog dialog) {
 static void cmd_settings(void *c) { open_dialog(UI(c), UI_DIALOG_SETTINGS); }
 static bool settings_shown(const void *c) { return ((const Ui *)c)->dialog == UI_DIALOG_SETTINGS; }
 static void cmd_new_game(void *c) { open_dialog(UI(c), UI_DIALOG_NEW_GAME); }
+static void cmd_game_info(void *c) {
+    if (UI(c)->dialog != UI_DIALOG_GAME_INFO) app_game_info_load(UI(c)->app);   // fresh copy of the SGF root
+    open_dialog(UI(c), UI_DIALOG_GAME_INFO);
+}
 static void cmd_setup(void *c) {
     UI(c)->setup_init = false;   // re-check what is installed
     open_dialog(UI(c), UI_DIALOG_SETUP);
@@ -146,6 +150,7 @@ static void register_ui_commands(Ui *ui) {
         { "view.debug", "Layout debugger", "Debug", cmd_debug, NULL, NULL, ui },
         { "view.settings", "Settings", "Settings", cmd_settings, NULL, settings_shown, ui },
         { "file.new", "New game", "New", cmd_new_game, NULL, NULL, ui },
+        { "game.info", "Game info…", "Info", cmd_game_info, NULL, NULL, ui },
         { "engine.setup", "Download engines…", "Setup", cmd_setup, NULL, NULL, ui },
         { "view.next_tab", "Next tab", "Tab", cmd_next_tab, NULL, NULL, ui },
         { "view.menu", "Menu", "Menu", cmd_menu, NULL, NULL, ui },

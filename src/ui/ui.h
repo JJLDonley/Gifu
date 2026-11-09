@@ -55,6 +55,7 @@ typedef enum UiDialog {
     UI_DIALOG_SETTINGS,
     UI_DIALOG_NEW_GAME,
     UI_DIALOG_SETUP,
+    UI_DIALOG_GAME_INFO,
 } UiDialog;
 
 typedef struct Ui {

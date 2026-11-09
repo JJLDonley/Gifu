@@ -16,6 +16,8 @@
 #define BOOL(key, field, def) { key, CONFIG_BOOL, offsetof(Config, field), 0, 1, NULL, def }
 #define INT(key, field, def, lo, hi) { key, CONFIG_INT, offsetof(Config, field), lo, hi, NULL, def }
 #define FLOAT(key, field, def, lo, hi) { key, CONFIG_FLOAT, offsetof(Config, field), lo, hi, NULL, def }
+#define TSTR(key, field) { key, CONFIG_STRING, offsetof(Config, field), 0, 0, "", 0, true }
+#define TFLOAT(key, field, def, lo, hi) { key, CONFIG_FLOAT, offsetof(Config, field), lo, hi, NULL, def, true }
 
 static const ConfigField FIELDS[] = {
     STR("theme", theme, "cream"),
@@ -44,6 +46,14 @@ static const ConfigField FIELDS[] = {
     INT("new_game.handicap", new_game_handicap, 0, 0, 9),
     STR("new_game.black", new_game_black, ""),
     STR("new_game.white", new_game_white, ""),
+    TSTR("game_info.black", game_info_black),
+    TSTR("game_info.white", game_info_white),
+    TSTR("game_info.black_rank", game_info_black_rank),
+    TSTR("game_info.white_rank", game_info_white_rank),
+    TFLOAT("game_info.komi", game_info_komi, 7.5, -150.0, 150.0),
+    TSTR("game_info.result", game_info_result),
+    TSTR("game_info.event", game_info_event),
+    TSTR("game_info.date", game_info_date),
     INT("window.width", window_width, 1400, 640, 16384),
     INT("window.height", window_height, 900, 480, 16384),
 };
@@ -52,6 +62,8 @@ static const ConfigField FIELDS[] = {
 #undef BOOL
 #undef INT
 #undef FLOAT
+#undef TSTR
+#undef TFLOAT
 
 isize config_field_count(void) { return countof(FIELDS); }
 const ConfigField *config_field_at(isize index) { return index >= 0 && index < countof(FIELDS) ? &FIELDS[index] : NULL; }
@@ -144,7 +156,7 @@ bool config_load(Config *config, String *error) {
     }
     vec_foreach(KvEntry, e, &kv.entries) {
         const ConfigField *f = config_field(e->key);
-        if (!f) {
+        if (!f || f->transient) {
             log_warn("%s:%d: unknown setting '" SV_FMT "'", string_cstr(&config->path), e->line, SV_ARG(e->key));
             continue;
         }
@@ -172,6 +184,7 @@ bool config_save(const Config *config) {
     StringView group = SV_NULL;
     for (isize i = 0; i < countof(FIELDS); ++i) {
         const ConfigField *f = &FIELDS[i];
+        if (f->transient) continue;
         StringView key = sv(f->key);
         isize dot = sv_find_char(key, '.');
         StringView g = dot > 0 ? sv_take(key, dot) : SV("");

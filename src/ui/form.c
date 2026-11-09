@@ -298,11 +298,23 @@ static void new_game_footer(Ui *ui, void *user) {
     }
 }
 
+static void game_info_footer(Ui *ui, void *user) {
+    UNUSED(user);
+    if (ui_button(ui, CLAY_ID("GameInfoCancel"), app_tr(ui->app, "label.cancel", "Cancel"), BUTTON_NORMAL, false, true)) {
+        ui_close_dialog(ui);
+    }
+    if (ui_button(ui, CLAY_ID("GameInfoApply"), app_tr(ui->app, "label.apply", "Apply"), BUTTON_PRIMARY, false, true)) {
+        app_game_info_apply(ui->app);
+        ui_close_dialog(ui);
+    }
+}
+
 void ui_dialogs(Ui *ui) {
     switch (ui->dialog) {
         case UI_DIALOG_NONE: break;
         case UI_DIALOG_SETTINGS: ui_modal(ui, ui_form(ui, "settings"), 600, NULL, NULL); break;
         case UI_DIALOG_NEW_GAME: ui_modal(ui, ui_form(ui, "new_game"), 520, new_game_footer, NULL); break;
         case UI_DIALOG_SETUP: engine_setup_dialog(ui); break;
+        case UI_DIALOG_GAME_INFO: ui_modal(ui, ui_form(ui, "game_info"), 520, game_info_footer, NULL); break;
     }
 }

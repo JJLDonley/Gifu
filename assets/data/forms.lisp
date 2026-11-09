@@ -69,3 +69,17 @@
   (section new_game.players :fallback Players
     (text new_game.black :placeholder Black :label label.black :fallback Black)
     (text new_game.white :placeholder White :label label.white :fallback White)))
+
+;; Game info: edits the SGF root (PB PW BR WR KM RE EV DT); Apply writes it back.
+;; A Fox-style komi (375 = 3.75 zi) typed here is converted like on load.
+(form game_info :title game_info.title :fallback "Game info"
+  (section new_game.players :fallback Players
+    (text game_info.black :placeholder Black :label label.black :fallback Black)
+    (text game_info.black_rank :placeholder "e.g. 5d" :label game_info.black_rank :fallback "Black rank")
+    (text game_info.white :placeholder White :label label.white :fallback White)
+    (text game_info.white_rank :placeholder "e.g. 3k" :label game_info.white_rank :fallback "White rank"))
+  (section game_info.game :fallback Game
+    (number game_info.komi :step 0.5 :format "%.1f" :label label.komi :fallback Komi)
+    (text game_info.result :placeholder "e.g. B+R, W+3.5" :label game_info.result :fallback Result)
+    (text game_info.event :placeholder "" :label game_info.event :fallback Event)
+    (text game_info.date :placeholder "YYYY-MM-DD" :label game_info.date :fallback Date)))

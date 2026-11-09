@@ -53,6 +53,7 @@ typedef struct GameTree {
     GameNode *root;
     GameNode *current;
     BoardRules rules;
+    bool komi_fixed;   // the loader corrected a Fox-style KM[] (see sgf_fix_komi)
 } GameTree;
 
 GameTree *game_tree_new(i32 width, i32 height, f64 komi);

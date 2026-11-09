@@ -4,7 +4,9 @@
 #include "core/tsumego_frame.h"
 #include "base/log.h"
 
+#include <math.h>
 #include <stdarg.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -721,7 +723,11 @@ bool app_open_sgf(App *app, StringView path) {
     app->sgf_path = string_from(path);
     string_free(&app->config.last_directory);
     app->config.last_directory = string_from(path_dirname(path));
-    app_set_status(app, "Opened " SV_FMT, SV_ARG(path_basename(path)));
+    if (tree->komi_fixed) {
+        app_set_status(app, "Opened " SV_FMT " (Fox komi read as %g)", SV_ARG(path_basename(path)), game_tree_komi(tree));
+    } else {
+        app_set_status(app, "Opened " SV_FMT, SV_ARG(path_basename(path)));
+    }
     return true;
 }
 
@@ -750,6 +756,55 @@ MoveError app_play(App *app, Point point) {
 }
 
 void app_goto(App *app, GameNode *node) { game_tree_goto(app->tree, node); }
+
+// ---- Game info (root SGF properties) ------------------------------------------------------
+
+static const struct {
+    const char *ident;   // SGF property
+    usize offset;        // String in Config
+} GAME_INFO_TEXT[] = {
+    { "PB", offsetof(Config, game_info_black) },      { "PW", offsetof(Config, game_info_white) },
+    { "BR", offsetof(Config, game_info_black_rank) }, { "WR", offsetof(Config, game_info_white_rank) },
+    { "RE", offsetof(Config, game_info_result) },     { "EV", offsetof(Config, game_info_event) },
+    { "DT", offsetof(Config, game_info_date) },
+};
+
+void app_game_info_load(App *app) {
+    for (isize i = 0; i < countof(GAME_INFO_TEXT); ++i) {
+        String *field = (String *)((char *)&app->config + GAME_INFO_TEXT[i].offset);
+        string_free(field);
+        *field = string_from(game_tree_info(app->tree, sv(GAME_INFO_TEXT[i].ident)));
+    }
+    app->config.game_info_komi = (f32)game_tree_komi(app->tree);
+}
+
+void app_game_info_apply(App *app) {
+    GameTree *tree = app->tree;
+    bool changed = false;
+    for (isize i = 0; i < countof(GAME_INFO_TEXT); ++i) {
+        const String *field = (const String *)((const char *)&app->config + GAME_INFO_TEXT[i].offset);
+        StringView ident = sv(GAME_INFO_TEXT[i].ident);
+        StringView value = sv_trim(string_sv(field));
+        if (sv_eq(value, game_node_prop(tree->root, ident))) continue;
+        if (value.len) game_node_set_prop(tree, tree->root, ident, value);
+        else game_node_remove_prop(tree->root, ident);
+        changed = true;
+    }
+    f64 komi = sgf_normalize_komi(app->config.game_info_komi);
+    if (fabs(komi - game_tree_komi(tree)) > 1e-6) {
+        char buffer[32];
+        snprintf(buffer, sizeof(buffer), "%g", komi);
+        game_node_set_prop(tree, tree->root, SV("KM"), sv(buffer));
+        // Evaluations were made with the old komi; the engines resync with the new one.
+        app->main.synced_node = app->second.synced_node = NULL;
+        app->analysis_valid = false;
+        changed = true;
+    }
+    if (!changed) return;
+    game_tree_rebuild(tree, tree->root);
+    app->dirty = true;
+    app_set_status(app, "Game info updated");
+}
 
 bool app_tsumego_frame(App *app) {
     GameTree *tree = app->tree;

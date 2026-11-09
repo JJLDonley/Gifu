@@ -1,9 +1,11 @@
 #include "core/sgf.h"
 
+#include "base/log.h"
 #include "base/os.h"
 #include "base/text_encoding.h"
 #include "base/vec.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -153,9 +155,32 @@ GameTree *sgf_parse(StringView text, SgfError *error) {
         game_tree_free(p.tree);
         return NULL;
     }
+    p.tree->komi_fixed = sgf_fix_komi(p.tree);
     game_tree_rebuild(p.tree, p.tree->root);
     p.tree->current = p.tree->root;
     return p.tree;
+}
+
+f64 sgf_normalize_komi(f64 komi) {
+    if (fabs(komi) < 100.0) return komi;
+    f64 v = komi / 100.0;   // Fox writes komi x100: 375, 650
+    // A quarter-point value is the Chinese "zi" komi (per side): 3.75 zi = 7.5 points.
+    f64 quarters = v * 4.0;
+    if (fabs(quarters - round(quarters)) < 1e-6 && ((i64)round(fabs(quarters)) % 2) == 1) v *= 2.0;
+    return v;
+}
+
+bool sgf_fix_komi(GameTree *tree) {
+    StringView km = game_node_prop(tree->root, SV("KM"));
+    f64 komi = 0;
+    if (km.len == 0 || !sv_parse_f64(km, &komi)) return false;
+    f64 fixed = sgf_normalize_komi(komi);
+    if (fixed == komi) return false;
+    char buffer[32];
+    snprintf(buffer, sizeof(buffer), "%g", fixed);
+    log_info("SGF komi " SV_FMT " read as %s (Fox records komi x100, Chinese counting in zi)", SV_ARG(km), buffer);
+    game_node_set_prop(tree, tree->root, SV("KM"), sv(buffer));
+    return true;
 }
 
 // Finds the raw CA[...] value (ASCII) without a full parse.
