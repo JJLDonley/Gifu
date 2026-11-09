@@ -177,6 +177,28 @@ bool board_is_star_point(i32 size, i32 x, i32 y) {
     return xs && ys;
 }
 
+i32 board_handicap_points(i32 width, i32 height, i32 count, Point *out) {
+    if (width != height || width < 7 || count < 2) return 0;
+    i32 n = width;
+    i32 e = n >= 13 ? 3 : 2;
+    i32 far = n - 1 - e, mid = n / 2;
+    bool odd = n % 2 == 1;
+    i32 max = odd && n >= 9 ? 9 : 4;
+    count = MIN(count, max);
+    Point tr = { (i8)far, (i8)e }, bl = { (i8)e, (i8)far }, br = { (i8)far, (i8)far }, tl = { (i8)e, (i8)e };
+    Point left = { (i8)e, (i8)mid }, right = { (i8)far, (i8)mid }, top = { (i8)mid, (i8)e }, bottom = { (i8)mid, (i8)far };
+    Point center = { (i8)mid, (i8)mid };
+    i32 k = 0;
+    out[k++] = tr;
+    out[k++] = bl;
+    if (count >= 3) out[k++] = br;
+    if (count >= 4) out[k++] = tl;
+    if (count == 5 || count == 7 || count == 9) out[k++] = center;
+    if (count >= 6) out[k++] = left, out[k++] = right;
+    if (count >= 8) out[k++] = top, out[k++] = bottom;
+    return k;
+}
+
 const char *move_error_name(MoveError err) {
     switch (err) {
         case MOVE_OK: return "ok";

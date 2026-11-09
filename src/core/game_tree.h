@@ -51,6 +51,18 @@ typedef struct GameTree {
 } GameTree;
 
 GameTree *game_tree_new(i32 width, i32 height, f64 komi);
+
+typedef struct NewGameSpec {
+    i32 size;
+    f64 komi;
+    i32 handicap;
+    StringView black;
+    StringView white;
+    StringView rules;   // SGF RU value, may be empty
+} NewGameSpec;
+
+// New game with handicap stones (AB + HA, White to play) and player names.
+GameTree *game_tree_new_game(const NewGameSpec *spec);
 GameTree *game_tree_new_empty(void);   // root without properties (used by the SGF parser)
 void game_tree_free(GameTree *tree);
 

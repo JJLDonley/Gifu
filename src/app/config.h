@@ -27,6 +27,11 @@ typedef struct Config {
     bool show_candidates;
     bool show_move_numbers;
     f32 ai_seconds_per_move;
+    i32 new_game_size;
+    f32 new_game_komi;
+    i32 new_game_handicap;
+    String new_game_black;
+    String new_game_white;
     i32 window_width, window_height;
     String last_directory;
 

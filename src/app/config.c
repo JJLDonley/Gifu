@@ -32,6 +32,11 @@ static const ConfigField FIELDS[] = {
     BOOL("board.show_coordinates", show_coordinates, 1),
     BOOL("board.show_move_numbers", show_move_numbers, 0),
     FLOAT("ai.seconds_per_move", ai_seconds_per_move, 2.0, 0.1, 120.0),
+    INT("new_game.size", new_game_size, 19, 5, 25),
+    FLOAT("new_game.komi", new_game_komi, 7.5, -150.0, 150.0),
+    INT("new_game.handicap", new_game_handicap, 0, 0, 9),
+    STR("new_game.black", new_game_black, ""),
+    STR("new_game.white", new_game_white, ""),
     INT("window.width", window_width, 1400, 640, 16384),
     INT("window.height", window_height, 900, 480, 16384),
 };

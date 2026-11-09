@@ -33,6 +33,28 @@ GameTree *game_tree_new(i32 width, i32 height, f64 komi) {
     return tree;
 }
 
+GameTree *game_tree_new_game(const NewGameSpec *spec) {
+    GameTree *tree = game_tree_new(spec->size, spec->size, spec->komi);
+    GameNode *root = tree->root;
+    if (spec->black.len) game_node_set_prop(tree, root, SV("PB"), spec->black);
+    if (spec->white.len) game_node_set_prop(tree, root, SV("PW"), spec->white);
+    if (spec->rules.len) game_node_set_prop(tree, root, SV("RU"), spec->rules);
+    Point stones[9];
+    i32 n = board_handicap_points(spec->size, spec->size, spec->handicap, stones);
+    if (n > 0) {
+        char buffer[16];
+        snprintf(buffer, sizeof(buffer), "%d", n);
+        game_node_set_prop(tree, root, SV("HA"), sv(buffer));
+        for (i32 i = 0; i < n; ++i) {
+            char coord[3];
+            point_to_sgf(stones[i], coord);
+            game_node_add_prop_value(tree, root, SV("AB"), sv(coord));
+        }
+    }
+    game_tree_rebuild(tree, root);
+    return tree;
+}
+
 void game_tree_free(GameTree *tree) {
     if (!tree) return;
     arena_free(&tree->arena);

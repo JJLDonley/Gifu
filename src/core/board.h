@@ -48,5 +48,8 @@ i32 board_liberties(const Board *board, Point p);
 i32 board_group(const Board *board, Point p, i32 *out, i32 capacity);
 i32 board_stone_count(const Board *board, Stone stone);
 bool board_is_star_point(i32 size, i32 x, i32 y);
+// Standard fixed handicap points (GTP fixed_handicap order). Returns how many
+// were written (0 when the board or count does not allow it). out needs 9.
+i32 board_handicap_points(i32 width, i32 height, i32 count, Point *out);
 
 const char *move_error_name(MoveError err);
