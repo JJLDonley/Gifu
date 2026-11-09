@@ -63,19 +63,36 @@ bool ui_button(Ui *ui, Clay_ElementId id, StringView label, ButtonStyle style, b
         if (style == BUTTON_PRIMARY || checked) bg = c->surface_alt;
     }
 
+    // "@icon text" labels: a vector icon, then optional text.
+    i32 icon = -1;
+    StringView text = label;
+    if (sv_starts_with(label, SV("@"))) {
+        StringView tail = label;
+        icon = icon_find(sv_chop_char(&tail, ' '));
+        text = sv_trim(tail);
+    }
+    bool icon_only = icon >= 0 && text.len == 0;
+    u16 pad_x = ui_u16(ui, icon_only ? 6 : 10);
     CLAY({ .id = id,
-           .layout = { .padding = { ui_u16(ui, 10), ui_u16(ui, 10), ui_u16(ui, 6), ui_u16(ui, 6) },
+           .layout = { .padding = { pad_x, pad_x, ui_u16(ui, 6), ui_u16(ui, 6) }, .childGap = ui_u16(ui, 5),
                        .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER } },
            .backgroundColor = color_to_clay(bg),
            .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, ui->theme->shape.radius * 0.6f)),
            .border = { .color = color_to_clay(border), .width = CLAY_BORDER_OUTSIDE(border.a ? 1 : 0) } }) {
-        CLAY_TEXT(ui_str(ui, label), CLAY_TEXT_CONFIG({ .fontId = FONT_UI_BOLD, .fontSize = ui_u16(ui, 14),
-                                                        .textColor = color_to_clay(fg), .wrapMode = CLAY_TEXT_WRAP_NONE }));
+        if (icon >= 0) ui_icon(ui, icon, 18, fg);
+        if (text.len) {
+            CLAY_TEXT(ui_str(ui, text), CLAY_TEXT_CONFIG({ .fontId = FONT_UI_BOLD, .fontSize = ui_u16(ui, 14),
+                                                           .textColor = color_to_clay(fg), .wrapMode = CLAY_TEXT_WRAP_NONE }));
+        }
     }
     return clicked(ui, id, enabled);
 }
 
 void ui_command_button(Ui *ui, StringView command_id, StringView icon, ButtonStyle style, u32 index) {
+    ui_command_button_ex(ui, command_id, icon, false, style, index);
+}
+
+void ui_command_button_ex(Ui *ui, StringView command_id, StringView icon, bool with_label, ButtonStyle style, u32 index) {
     App *app = ui->app;
     const CommandDef *cmd = command_find(&app->commands, command_id);
     if (!cmd) {
@@ -85,6 +102,10 @@ void ui_command_button(Ui *ui, StringView command_id, StringView icon, ButtonSty
     char key[128];
     snprintf(key, sizeof(key), "command.%s", cmd->id);
     StringView label = icon.len ? icon : app_tr(app, key, cmd->label);
+    if (icon.len && with_label) {
+        StringView translated = app_tr(app, key, cmd->label);
+        label = arena_format(&ui->frame, SV_FMT " " SV_FMT, SV_ARG(icon), SV_ARG(translated));
+    }
     Clay_ElementId id = Clay_GetElementIdWithIndex(ui_str(ui, command_id), index);
     if (ui_button(ui, id, label, style, command_is_checked(&app->commands, cmd), command_is_enabled(&app->commands, cmd))) {
         command_execute(&app->commands, command_id);

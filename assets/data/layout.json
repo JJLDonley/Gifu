@@ -1,4 +1,8 @@
-// Window layout. Toolbar / navbar items are either {"command": "<id>"} or a
+// Window layout. "icon" replaces the label: plain text, or "@name [text]" for a
+// vector icon; add "label": true to show the icon with the translated label.
+// vector icon (first prev next last prev2 next2 up down close plus stone_black
+// stone_white gear folder save play pause chart menu check).
+// Toolbar / navbar items are either {"command": "<id>"} or a
 // {"type": ...} widget: separator, spacer, engine_status, theme_picker,
 // move_counter. Sidebar panels are drawn in order; available panels:
 // game_info, winrate_summary, winrate_graph, variation_tree, candidates, move_list,
@@ -6,20 +10,20 @@
 // panels as tabs (one visible at a time).
 {
   "toolbar": [
-    { "command": "file.new" },
-    { "command": "file.open" },
-    { "command": "file.save" },
+    { "command": "file.new", "icon": "@plus", "label": true },
+    { "command": "file.open", "icon": "@folder", "label": true },
+    { "command": "file.save", "icon": "@save", "label": true },
     { "type": "separator" },
     { "command": "analysis.toggle", "style": "primary" },
     { "command": "analysis.candidates" },
     { "command": "analysis.ownership" },
     { "command": "view.coordinates" },
     { "type": "separator" },
-    { "command": "game.ai_black", "icon": "AI ●" },
-    { "command": "game.ai_white", "icon": "AI ○" },
+    { "command": "game.ai_black", "icon": "@stone_black AI" },
+    { "command": "game.ai_white", "icon": "@stone_white AI" },
     { "type": "spacer" },
     { "type": "engine_status" },
-    { "command": "view.settings" }
+    { "command": "view.settings", "icon": "@gear" }
   ],
   "sidebar": {
     "side": "right",
@@ -32,16 +36,16 @@
     ]
   },
   "navbar": [
-    { "command": "nav.first",          "icon": "|<" },
-    { "command": "nav.back10",         "icon": "<<" },
-    { "command": "nav.back",           "icon": "<" },
+    { "command": "nav.first",          "icon": "@first" },
+    { "command": "nav.back10",         "icon": "@prev2" },
+    { "command": "nav.back",           "icon": "@prev" },
     { "type": "move_counter" },
-    { "command": "nav.forward",        "icon": ">" },
-    { "command": "nav.forward10",      "icon": ">>" },
-    { "command": "nav.last",           "icon": ">|" },
+    { "command": "nav.forward",        "icon": "@next" },
+    { "command": "nav.forward10",      "icon": "@next2" },
+    { "command": "nav.last",           "icon": "@last" },
     { "type": "separator" },
-    { "command": "nav.prev_variation", "icon": "^" },
-    { "command": "nav.next_variation", "icon": "v" },
+    { "command": "nav.prev_variation", "icon": "@up" },
+    { "command": "nav.next_variation", "icon": "@down" },
     { "type": "spacer" },
     { "command": "game.score" },
     { "command": "move.pass" }

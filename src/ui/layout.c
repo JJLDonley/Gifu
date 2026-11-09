@@ -26,6 +26,7 @@ static void parse_items(JsonValue array, LayoutItemVec *out) {
         item.command = json_string(json_get(v, "command"), SV(""));
         item.icon = json_string(json_get(v, "icon"), SV(""));
         item.primary = sv_eq(json_string(json_get(v, "style"), SV("")), SV("primary"));
+        item.with_label = json_bool(json_get(v, "label"), false);
         if (item.kind == LAYOUT_ITEM_COMMAND && item.command.len == 0) continue;
         vec_push(out, item);
     }
@@ -109,7 +110,7 @@ static void theme_picker(Ui *ui) {
     const ThemeColors *c = &ui->theme->colors;
     Clay_ElementId id = CLAY_ID("ThemePicker");
     CLAY({ .id = CLAY_ID("ThemePickerAnchor"), .layout = { .sizing = { CLAY_SIZING_FIT(0), CLAY_SIZING_FIT(0) } } }) {
-        String label = string_format(SV_FMT "  ▼", SV_ARG(string_sv(&ui->theme->name)));
+        String label = string_format("@chevron_down " SV_FMT, SV_ARG(string_sv(&ui->theme->name)));
         if (ui_button(ui, id, string_sv(&label), BUTTON_NORMAL, false, true)) ui->theme_menu_open = !ui->theme_menu_open;
         string_free(&label);
         if (ui->theme_menu_open) {
@@ -177,7 +178,8 @@ static void items(Ui *ui, const LayoutItemVec *list, bool ghost) {
         const LayoutItem *item = &list->items[i];
         switch (item->kind) {
             case LAYOUT_ITEM_COMMAND:
-                ui_command_button(ui, item->command, item->icon, item->primary ? BUTTON_PRIMARY : ghost ? BUTTON_GHOST : BUTTON_NORMAL, (u32)i);
+                ui_command_button_ex(ui, item->command, item->icon, item->with_label,
+                                     item->primary ? BUTTON_PRIMARY : ghost ? BUTTON_GHOST : BUTTON_NORMAL, (u32)i);
                 break;
             case LAYOUT_ITEM_SEPARATOR: separator(ui); break;
             case LAYOUT_ITEM_SPACER: spacer(); break;

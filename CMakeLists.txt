@@ -120,6 +120,7 @@ add_executable(catagui
     src/ui/ui.c
     src/ui/widgets.c
     src/ui/anim.c
+    src/ui/icons.c
     src/ui/text_input.c
     src/ui/form.c
     src/ui/variation_tree.c

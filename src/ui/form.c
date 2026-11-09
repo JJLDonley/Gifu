@@ -232,7 +232,7 @@ void ui_modal(Ui *ui, JsonValue form, f32 width, ModalSection footer, void *user
                 CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) } } }) {
                     ui_label(ui, title_of(ui, form), FONT_UI_BOLD, 18, c->text);
                 }
-                if (ui_button(ui, CLAY_ID("ModalClose"), SV("×"), BUTTON_GHOST, false, true)) ui_close_dialog(ui);
+                if (ui_button(ui, CLAY_ID("ModalClose"), SV("@close"), BUTTON_GHOST, false, true)) ui_close_dialog(ui);
             }
             // Body (scrolls).
             CLAY({ .id = CLAY_ID("ModalBody"),

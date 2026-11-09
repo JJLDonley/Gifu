@@ -26,6 +26,7 @@ typedef struct LayoutItem {
     StringView command;
     StringView icon;
     bool primary;
+    bool with_label;   // icon + translated command label
 } LayoutItem;
 
 typedef Vec(LayoutItem) LayoutItemVec;
@@ -183,6 +184,11 @@ void ui_label(Ui *ui, StringView text, FontRole role, f32 size, Color color);
 // words and between any two characters of CJK text. Result lives in the frame arena.
 StringView ui_wrap_text(Ui *ui, StringView text, FontRole role, f32 size, f32 max_width);
 
+// Vector icons (icons.c). Buttons accept "@name optional text" labels.
+i32 icon_find(StringView name);   // "@prev" or "prev"; -1 if unknown
+void icon_draw(i32 icon, Rectangle r, Color color, f32 stroke);
+void ui_icon(Ui *ui, i32 icon, f32 size, Color color);
+
 typedef enum ButtonStyle { BUTTON_GHOST, BUTTON_NORMAL, BUTTON_PRIMARY } ButtonStyle;
 // Immediate-mode button; returns true when clicked this frame.
 bool ui_button(Ui *ui, Clay_ElementId id, StringView label, ButtonStyle style, bool checked, bool enabled);
@@ -192,6 +198,7 @@ TextInputResult ui_text_input(Ui *ui, Clay_ElementId id, TextEdit *edit, f32 fon
 bool ui_toggle(Ui *ui, Clay_ElementId id, bool on);
 // Button bound to a registered command (label from i18n "command.<id>").
 void ui_command_button(Ui *ui, StringView command_id, StringView icon, ButtonStyle style, u32 index);
+void ui_command_button_ex(Ui *ui, StringView command_id, StringView icon, bool with_label, ButtonStyle style, u32 index);
 Clay_ElementDeclaration ui_card(Ui *ui, Clay_ElementId id);
 // Vertically scrolling area. Inside a tab group it grows to fill the (fixed
 // size) tab box; elsewhere it is `height` px tall (or fits its content when
