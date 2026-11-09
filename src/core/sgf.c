@@ -1,6 +1,7 @@
 #include "core/sgf.h"
 
 #include "base/os.h"
+#include "base/text_encoding.h"
 #include "base/vec.h"
 
 #include <stdio.h>
@@ -157,16 +158,36 @@ GameTree *sgf_parse(StringView text, SgfError *error) {
     return p.tree;
 }
 
+// Finds the raw CA[...] value (ASCII) without a full parse.
+static StringView find_charset(StringView bytes) {
+    isize at = sv_find(bytes, SV("CA["));
+    if (at < 0) return SV_NULL;
+    StringView rest = sv_drop(bytes, at + 3);
+    isize end = sv_find_char(rest, ']');
+    return end < 0 || end > 40 ? SV_NULL : sv_trim(sv_take(rest, end));
+}
+
+GameTree *sgf_parse_bytes(StringView bytes, SgfError *error) {
+    if (sv_starts_with(bytes, SV("\xEF\xBB\xBF"))) bytes = sv_drop(bytes, 3);   // UTF-8 BOM
+    if (utf8_is_valid(bytes)) return sgf_parse(bytes, error);
+    StringView charset = find_charset(bytes);
+    String converted = { 0 };
+    bool ok = text_to_utf8(charset.len ? charset : SV("GB18030"), bytes, &converted) ||
+              text_to_utf8(SV("GB18030"), bytes, &converted);
+    GameTree *tree = sgf_parse(ok ? string_sv(&converted) : bytes, error);
+    if (tree && ok) game_node_set_prop(tree, tree->root, SV("CA"), SV("UTF-8"));
+    string_free(&converted);
+    return tree;
+}
+
 GameTree *sgf_load_file(StringView path, SgfError *error) {
-    String text = { 0 };
-    if (!os_read_file(path, &text)) {
+    String bytes = { 0 };
+    if (!os_read_file(path, &bytes)) {
         if (error) snprintf(error->message, sizeof(error->message), "cannot read file");
         return NULL;
     }
-    StringView content = string_sv(&text);
-    if (sv_starts_with(content, SV("\xEF\xBB\xBF"))) content = sv_drop(content, 3);   // UTF-8 BOM
-    GameTree *tree = sgf_parse(content, error);
-    string_free(&text);
+    GameTree *tree = sgf_parse_bytes(string_sv(&bytes), error);
+    string_free(&bytes);
     return tree;
 }
 

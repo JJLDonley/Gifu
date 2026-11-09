@@ -82,6 +82,7 @@ add_library(catagui_core STATIC
     src/base/log.c
     src/base/json.c
     src/base/thread.c
+    src/base/text_encoding.c
     src/core/coord.c
     src/core/board.c
     src/core/game_tree.c
