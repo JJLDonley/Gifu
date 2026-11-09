@@ -36,6 +36,7 @@
     (bool analysis.on_start :label settings.analyze_on_start :fallback "Analyze on start")
     (bool analysis.show_candidates :label command.analysis.candidates :fallback Candidates)
     (bool analysis.show_ownership :label command.analysis.ownership :fallback Territory)
+    (bool analysis.show_human_policy :label command.analysis.human_policy :fallback "Human moves")
     (number analysis.max_candidates :step 1 :format "%.0f" :label settings.max_candidates :fallback "Candidates shown")
     (number analysis.interval_cs :step 5 :format "%.0f cs" :label settings.interval :fallback "Update interval")
     (number analysis.game_visits :min 50 :max 5000 :step 50 :format "%.0f" :label settings.game_visits :fallback "Game analysis visits"))

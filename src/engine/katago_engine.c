@@ -38,6 +38,11 @@ typedef struct KataGoEngine {
     i32 score_id;
     u64 score_position;
 
+    // Human policy.
+    i32 human_id;
+    u64 human_position;
+    HumanPolicy human;
+
     // Move generation.
     i32 genmove_id;
     MoveRequest genmove;
@@ -110,6 +115,15 @@ static void kg_request_score(Engine *e, u64 position_id) {
     k->score_position = position_id;
     k->score_id = send(k, "final_score");
     if (k->analyzing) send_analyze(k);   // keep analysing afterwards
+}
+
+static void kg_request_human_policy(Engine *e, u64 position_id) {
+    KataGoEngine *k = as_katago(e);
+    if (!k->gtp) return;
+    k->analysis_id = -1;
+    k->human_position = position_id;
+    k->human_id = send(k, "kata-raw-human-nn all");   // averaged over the 8 symmetries
+    if (k->analyzing) send_analyze(k);
 }
 
 static void kg_request_move(Engine *e, const MoveRequest *request) {
@@ -211,6 +225,17 @@ static bool kg_poll(Engine *e, EngineEvent *out) {
                                           .position_id = k->score_position, .text = sv_trim(string_sv(&ev.text)) };
                     return true;
                 }
+                if (ev.id == k->human_id && k->human_id > 0) {
+                    k->human_id = 0;
+                    if (ev.success && kata_raw_nn_parse(string_sv(&ev.text), k->width, k->height, &k->human)) {
+                        k->human.position_id = k->human_position;
+                        *out = (EngineEvent){ .kind = ENGINE_EVENT_HUMAN_POLICY, .status = k->status, .human_policy = &k->human,
+                                              .position_id = k->human_position };
+                    } else {
+                        *out = (EngineEvent){ .kind = ENGINE_EVENT_ERROR, .status = k->status, .text = string_sv(&ev.text) };
+                    }
+                    return true;
+                }
                 if (ev.id == k->genmove_id && k->genmove_id > 0) {
                     k->genmove_id = 0;
                     k->analysis_id = -1;
@@ -290,6 +315,7 @@ static const EngineVTable KATAGO_VTABLE = {
     .request_move = kg_request_move,
     .is_thinking = kg_is_thinking,
     .request_score = kg_request_score,
+    .request_human_policy = kg_request_human_policy,
     .poll = kg_poll,
     .destroy = kg_destroy,
 };

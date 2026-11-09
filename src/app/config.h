@@ -23,6 +23,7 @@ typedef struct Config {
     i32 analysis_interval_cs;
     i32 max_candidates;
     bool show_ownership;
+    bool show_human_policy;   // human SL network moves on the board (needs a human_model engine)
     bool show_coordinates;
     bool show_candidates;
     bool show_move_numbers;

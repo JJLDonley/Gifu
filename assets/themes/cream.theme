@@ -25,6 +25,7 @@ colors.winrate_white    = #FFFBF2
 colors.graph_line       = #3A2F25
 colors.score_line       = #B08A5A
 colors.candidate_text   = #1C1A17
+colors.human_policy     = #6A1B9A
 
 background.kind           = paper
 background.paper.grain    = 0.025

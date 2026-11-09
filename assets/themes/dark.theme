@@ -27,3 +27,4 @@ colors.winrate_white    = #E8E8E8
 colors.graph_line       = #F2F2F2
 colors.score_line       = #7A7A7A
 colors.candidate_text   = #000000
+colors.human_policy     = #E1BEE7

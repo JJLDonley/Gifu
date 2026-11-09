@@ -102,3 +102,29 @@ bool kata_analysis_parse_line(StringView line, i32 width, i32 height, AnalysisSn
     for (i32 i = 0; i < out->candidate_count; ++i) out->total_visits += out->candidates[i].visits;
     return out->candidate_count > 0 || out->has_ownership;
 }
+
+bool kata_raw_nn_parse(StringView text, i32 width, i32 height, HumanPolicy *out) {
+    out->width = width;
+    out->height = height;
+    out->pass = 0;
+    out->white_win = 0.5f;
+    bool have_policy = false;
+    StringView rest = text;
+    for (StringView token = sv_chop_token(&rest); token.len; token = sv_chop_token(&rest)) {
+        if (sv_eq(token, SV("whiteWin"))) {
+            out->white_win = parse_f32(sv_chop_token(&rest));
+        } else if (sv_eq(token, SV("policyPass"))) {
+            out->pass = parse_f32(sv_chop_token(&rest));
+        } else if (sv_eq(token, SV("policy"))) {
+            i32 n = width * height, i = 0;
+            for (; i < n; ++i) {
+                StringView v = sv_chop_token(&rest);
+                if (v.len == 0) break;
+                f32 p = parse_f32(v);   // "NAN" (occupied) parses as 0
+                out->policy[i] = p == p && p > 0 ? p : 0.0f;
+            }
+            have_policy = i == n;
+        }
+    }
+    return have_policy;
+}

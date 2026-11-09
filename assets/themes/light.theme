@@ -28,6 +28,7 @@ colors.graph_line       = #111111
 colors.score_line       = #9E9E9E
 colors.candidate_best   = #1E88E5
 colors.candidate_good   = #43A047
+colors.human_policy   = #7B1FA2
 colors.candidate_bad    = #E53935
 colors.candidate_text   = #000000
 

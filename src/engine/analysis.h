@@ -43,6 +43,18 @@ static inline f32 analysis_black_score(const AnalysisSnapshot *a, f32 side_to_mo
     return a->to_play == STONE_WHITE ? -side_to_move_score : side_to_move_score;
 }
 
+// Human SL network move distribution for one position (`kata-raw-human-nn`).
+typedef struct HumanPolicy {
+    u64 position_id;
+    i32 width, height;
+    f32 policy[BOARD_MAX_POINTS];   // index y * width + x (row 0 = top), 0 on occupied points
+    f32 pass;
+    f32 white_win;                  // the human net's own win estimate for White
+} HumanPolicy;
+
+// Parses a `kata-raw-nn` / `kata-raw-human-nn` response body.
+NODISCARD bool kata_raw_nn_parse(StringView text, i32 width, i32 height, HumanPolicy *out);
+
 // Parses one KataGo `kata-analyze` output line ("info move ... [ownership ...]").
 // Candidates are sorted by `order`. Returns false if nothing usable was found.
 NODISCARD bool kata_analysis_parse_line(StringView line, i32 width, i32 height, AnalysisSnapshot *out);

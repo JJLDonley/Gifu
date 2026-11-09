@@ -345,6 +345,40 @@ void board_view_free(Ui *ui) {
 
 // ---- Draw callback ----------------------------------------------------------------------------------
 
+// Human SL network moves: rings sized by probability (relative to the most
+// likely move), with the percentage when there is room and no candidate on top.
+static void draw_human_policy(Ui *ui, const BoardGeometry *g, const HumanPolicy *h, const AnalysisSnapshot *a, const Board *board) {
+    const ThemeColors *c = &ui->theme->colors;
+    if (h->width != g->width || h->height != g->height) return;
+    f32 best = 0;
+    for (i32 i = 0; i < h->width * h->height; ++i) best = fmaxf(best, h->policy[i]);
+    if (best <= 0) return;
+    bool covered[BOARD_MAX_POINTS] = { 0 };   // points showing a KataGo candidate
+    if (a && ui->app->config.show_candidates) {
+        i32 limit = ui->app->config.max_candidates > 0 ? MIN(ui->app->config.max_candidates, a->candidate_count) : a->candidate_count;
+        for (i32 i = 0; i < limit; ++i) {
+            if (!point_is_pass(a->candidates[i].move)) covered[board_index(board, a->candidates[i].move)] = true;
+        }
+    }
+    for (i32 y = 0; y < g->height; ++y) {
+        for (i32 x = 0; x < g->width; ++x) {
+            i32 i = y * g->width + x;
+            f32 p = h->policy[i];
+            if (p < 0.02f || p < best * 0.08f || board->cells[i] != STONE_EMPTY) continue;
+            f32 rel = sqrtf(p / best);
+            Vector2 center = point_center(g, (Point){ (i8)x, (i8)y });
+            f32 r = g->cell * 0.5f;
+            f32 width = fmaxf(1.5f, g->cell * (0.05f + 0.07f * rel));
+            DrawRing(center, r - width, r, 0, 360, 48, color_with_alpha(c->human_policy, 0.35f + 0.6f * rel));
+            if (!covered[i] && g->cell >= 22) {
+                char text[8];
+                snprintf(text, sizeof(text), "%.0f", p * 100.0f);
+                font_draw_centered(ui->fonts, FONT_UI_BOLD, g->cell * 0.32f, sv(text), center, color_with_alpha(c->human_policy, 0.6f + 0.4f * rel));
+            }
+        }
+    }
+}
+
 static void draw_board(void *user, Rectangle bounds) {
     Ui *ui = user;
     App *app = ui->app;
@@ -422,6 +456,7 @@ static void draw_board(void *user, Rectangle bounds) {
         }
         f32 fade = anim_towards(&ui->anim, CANDIDATE_KEY, analysis ? 1.0f : 0.0f, 10.0f, 0.0f);
         if (analysis && app->config.show_candidates && fade > 0.01f) draw_candidates(ui, &g, analysis, board, fade);
+        if (app->config.show_human_policy && app->human_policy_node == node) draw_human_policy(ui, &g, app->human_policy, analysis, board);
         // Ghost stone under the cursor, fading in/out per point.
         for (i32 i = 0; i < board->width * board->height; ++i) {
             Point p = board_point(board, i);

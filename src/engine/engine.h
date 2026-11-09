@@ -52,6 +52,7 @@ typedef enum EngineEventKind {
     ENGINE_EVENT_MOVE,       // `move` answers a request_move (`resigned` if the engine resigned)
     ENGINE_EVENT_SCORE,      // `text` answers request_score, e.g. "B+3.5" or "0"
     ENGINE_EVENT_ANALYSIS,   // `analysis` points at the latest snapshot
+    ENGINE_EVENT_HUMAN_POLICY,   // `human_policy` answers request_human_policy
     ENGINE_EVENT_LOG,        // `text` is one log line
     ENGINE_EVENT_ERROR,      // `text` describes a failed command
 } EngineEventKind;
@@ -60,6 +61,7 @@ typedef struct EngineEvent {
     EngineEventKind kind;
     EngineStatus status;
     const AnalysisSnapshot *analysis;   // valid until the next poll
+    const HumanPolicy *human_policy;    // valid until the next poll
     StringView text;                    // valid until the next poll
     Move move;
     u64 position_id;
@@ -78,6 +80,8 @@ typedef struct EngineVTable {
     void (*request_move)(Engine *engine, const MoveRequest *request);
     bool (*is_thinking)(const Engine *engine);
     void (*request_score)(Engine *engine, u64 position_id);
+    // Human SL network policy for the synced position (engines without a human model answer with an error).
+    void (*request_human_policy)(Engine *engine, u64 position_id);
     bool (*poll)(Engine *engine, EngineEvent *out);
     void (*destroy)(Engine *engine);
 } EngineVTable;
@@ -96,6 +100,9 @@ static inline bool engine_poll(Engine *e, EngineEvent *out) { return e->vtable->
 static inline void engine_request_move(Engine *e, const MoveRequest *r) { e->vtable->request_move(e, r); }
 static inline bool engine_is_thinking(const Engine *e) { return e->vtable->is_thinking(e); }
 static inline void engine_request_score(Engine *e, u64 position_id) { e->vtable->request_score(e, position_id); }
+static inline void engine_request_human_policy(Engine *e, u64 position_id) {
+    if (e->vtable->request_human_policy) e->vtable->request_human_policy(e, position_id);
+}
 static inline void engine_destroy(Engine *e) {
     if (e) e->vtable->destroy(e);
 }

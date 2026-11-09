@@ -58,7 +58,7 @@ static const struct {
     F(background), F(surface), F(surface_alt), F(border), F(text), F(text_muted), F(accent), F(accent_text),
     F(hover), F(danger), F(board), F(board_line), F(board_label), F(black_stone), F(white_stone),
     F(black_stone_edge), F(white_stone_edge), F(last_move), F(winrate_black), F(winrate_white), F(graph_line),
-    F(score_line), F(candidate_best), F(candidate_good), F(candidate_bad), F(candidate_text),
+    F(score_line), F(candidate_best), F(candidate_good), F(candidate_bad), F(candidate_text), F(human_policy),
 #undef F
 };
 
@@ -114,6 +114,7 @@ Theme theme_fallback(void) {
     c->candidate_best = (Color){ 30, 136, 229, 255 };
     c->candidate_good = (Color){ 67, 160, 71, 255 };
     c->candidate_bad = (Color){ 229, 57, 53, 255 };
+    c->human_policy = (Color){ 123, 31, 162, 255 };
     c->candidate_text = (Color){ 0, 0, 0, 255 };
     t.background.kind = BACKGROUND_SOLID;
     t.background.opacity = 1.0f;

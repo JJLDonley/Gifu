@@ -32,6 +32,7 @@ static const ConfigField FIELDS[] = {
     INT("analysis.max_candidates", max_candidates, 12, 1, 48),
     INT("analysis.game_visits", analysis_game_visits, 300, 20, 100000),
     BOOL("analysis.show_ownership", show_ownership, 0),
+    BOOL("analysis.show_human_policy", show_human_policy, 0),
     BOOL("analysis.show_candidates", show_candidates, 1),
     BOOL("board.show_coordinates", show_coordinates, 1),
     BOOL("board.show_move_numbers", show_move_numbers, 0),

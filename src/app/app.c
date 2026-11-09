@@ -102,6 +102,8 @@ static void stop_engine(App *app) {
     app->main.status = ENGINE_STATUS_STOPPED;
     app->main.synced_node = NULL;
     app->main.waiting_move = false;
+    app->main.human_requested = 0;
+    app->human_policy_node = NULL;   // may come from a different human profile
     app->score_requested = false;
     app->score_pending = false;
     app->analysis_valid = false;
@@ -310,12 +312,16 @@ static void slot_clear(EngineSlot *slot) {
     slot->synced_node = NULL;
     slot->analysis_valid = false;
     slot->waiting_move = false;
+    slot->human_requested = 0;
 }
+
+static bool slot_has_human(const EngineSlot *s);
 
 void app_second_engine(App *app, bool on) {
     EngineSlot *s = &app->second;
     slot_clear(s);
     string_free(&s->error);
+    if (app->human_policy_node && !slot_has_human(&app->main)) app->human_policy_node = NULL;
     if (!on) {
         app->match_mode = false;
         return;
@@ -341,6 +347,33 @@ void app_second_engine(App *app, bool on) {
     AnalysisRequest req = app_analysis_request(app);
     engine_start_analysis(s->engine, &req);
     app_set_status(app, "Second engine: %s", string_cstr(&p->name));
+}
+
+static bool slot_has_human(const EngineSlot *s) {
+    return s->engine && s->profile && s->profile->human_model.len && s->status == ENGINE_STATUS_READY;
+}
+
+// The engine that answers human-policy requests: main if it has a human model, else the second engine.
+static EngineSlot *human_slot(App *app) {
+    if (slot_has_human(&app->main)) return &app->main;
+    if (slot_has_human(&app->second)) return &app->second;
+    return NULL;
+}
+
+bool app_has_human_engine(const App *app) { return human_slot((App *)app) != NULL; }
+
+static void on_human_policy(App *app, EngineSlot *s, const EngineEvent *ev) {
+    if (ev->position_id != s->synced_position_id || !s->synced_node) return;
+    memcpy(app->human_policy, ev->human_policy, sizeof(HumanPolicy));
+    app->human_policy_node = s->synced_node;
+}
+
+static void human_update(App *app) {
+    EngineSlot *s = app->config.show_human_policy ? human_slot(app) : NULL;
+    if (!s || s->synced_node != app->tree->current || s->human_requested == s->synced_position_id) return;
+    if (app->human_policy_node == app->tree->current) return;
+    s->human_requested = s->synced_position_id;
+    engine_request_human_policy(s->engine, s->synced_position_id);
 }
 
 static void second_update(App *app) {
@@ -379,6 +412,9 @@ static void second_update(App *app) {
                 string_free(&line);
                 break;
             }
+            case ENGINE_EVENT_HUMAN_POLICY:
+                on_human_policy(app, s, &ev);
+                break;
             case ENGINE_EVENT_ERROR:
             case ENGINE_EVENT_SCORE:
                 break;
@@ -447,6 +483,9 @@ void app_update(App *app) {
                 app->result_position = ev.position_id;
                 app_set_status(app, "Result: " SV_FMT, SV_ARG(ev.text));
                 break;
+            case ENGINE_EVENT_HUMAN_POLICY:
+                on_human_policy(app, &app->main, &ev);
+                break;
             case ENGINE_EVENT_LOG:
                 app_log(app, ev.text);
                 break;
@@ -470,6 +509,7 @@ void app_update(App *app) {
         free(spec);
     }
     if (app->main.synced_node != app->tree->current) app->analysis_valid = false;
+    human_update(app);
 
     // Two consecutive passes end the game: score it once and stop engine play.
     const GameNode *cur = app->tree->current;
@@ -528,6 +568,7 @@ void app_config_changed(App *app, StringView key) {
     } else if (sv_eq(key, SV("rules"))) {
         app->main.synced_node = NULL;   // resync sends kata-set-rules
     } else if (sv_eq(key, SV("ai.human_profile"))) {   // humanSLProfile is a launch override
+        app->human_policy_node = NULL;
         if (app->main.profile && app->main.profile->human_model.len) app_restart_engine(app);
         if (app->second.engine && app->second.profile && app->second.profile->human_model.len) app_second_engine(app, true);
     } else if (sv_eq(key, SV("engine2"))) {
@@ -546,6 +587,7 @@ static void replace_tree(App *app, GameTree *tree) {
     app->region = (BoardRegion){ 0 };   // board size may change
     game_tree_free(app->tree);
     app->tree = tree;
+    app->human_policy_node = NULL;
     app->main.synced_node = NULL;
     app->analysis_valid = false;
     app->dirty = false;
@@ -697,6 +739,14 @@ static void cmd_toggle_ownership(void *c) {
     if (app->analysis_enabled) app_set_analysis(app, true);   // re-issue with/without ownership
 }
 static bool shows_ownership(const void *c) { return CAPP(c)->config.show_ownership; }
+static void cmd_toggle_human(void *c) {
+    App *app = c;
+    app->config.show_human_policy = !app->config.show_human_policy;
+    if (app->config.show_human_policy && !app_has_human_engine(app)) {
+        app_set_status(app, "Human policy needs an engine with a human network (e.g. KataGo · Human style)");
+    }
+}
+static bool shows_human(const void *c) { return CAPP(c)->config.show_human_policy; }
 static void cmd_toggle_candidates(void *c) { APP(c)->config.show_candidates = !APP(c)->config.show_candidates; }
 static bool shows_candidates(const void *c) { return CAPP(c)->config.show_candidates; }
 static void cmd_restart_engine(void *c) { app_restart_engine(APP(c)); }
@@ -761,6 +811,7 @@ static const CommandDef APP_COMMANDS[] = {
     { "analysis.toggle", "Analyze", "Analyze", cmd_toggle_analysis, has_engine, is_analyzing },
     { "analysis.play_best", "Play best move", "Best", cmd_play_best, has_best, NULL },
     { "analysis.ownership", "Territory", "Territory", cmd_toggle_ownership, NULL, shows_ownership },
+    { "analysis.human_policy", "Human moves", "Human", cmd_toggle_human, NULL, shows_human },
     { "analysis.candidates", "Candidates", "Candidates", cmd_toggle_candidates, NULL, shows_candidates },
     { "engine.restart", "Restart engine", "Restart", cmd_restart_engine, NULL, NULL },
     { "game.ai_black", "Engine plays Black", "AI ●", cmd_ai_black, has_engine, ai_black },
@@ -799,6 +850,7 @@ bool app_init(App *app, const AppOptions *options) {
     *app = (App){ 0 };
     app->options = *options;
     app->analysis = calloc(1, sizeof(AnalysisSnapshot));
+    app->human_policy = calloc(1, sizeof(HumanPolicy));
     if (!app->analysis) abort();
     app->exe_dir = os_executable_dir();
     app->root_dir = find_root_dir(string_sv(&app->exe_dir));
@@ -900,4 +952,5 @@ void app_shutdown(App *app) {
     string_free(&app->status_message);
     string_free(&app->result);
     free(app->analysis);
+    free(app->human_policy);
 }

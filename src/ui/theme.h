@@ -15,6 +15,7 @@ typedef struct ThemeColors {
     Color black_stone, white_stone, black_stone_edge, white_stone_edge, last_move;
     Color winrate_black, winrate_white, graph_line, score_line;
     Color candidate_best, candidate_good, candidate_bad, candidate_text;
+    Color human_policy;   // human SL network move rings
 } ThemeColors;
 
 typedef enum BackgroundKind { BACKGROUND_SOLID, BACKGROUND_IMAGE, BACKGROUND_PAPER } BackgroundKind;

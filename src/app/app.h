@@ -48,7 +48,8 @@ typedef struct EngineSlot {
     u64 synced_position_id;
     AnalysisSnapshot *analysis;  // latest snapshot for synced_node (second slot; main uses App.analysis)
     bool analysis_valid;
-    bool waiting_move;           // a request_move is outstanding
+    bool waiting_move;
+    u64 human_requested;   // synced_position_id the human policy was requested for           // a request_move is outstanding
 } EngineSlot;
 
 typedef struct App {
@@ -75,6 +76,8 @@ typedef struct App {
     bool analysis_enabled;
     AnalysisSnapshot *analysis;   // latest snapshot for the current node
     bool analysis_valid;
+    HumanPolicy *human_policy;          // human SL network policy ...
+    const GameNode *human_policy_node;  // ... valid while this is the current node
 
     String log_lines[APP_LOG_LINES];
     i32 log_head, log_count;
@@ -132,6 +135,8 @@ void app_second_engine(App *app, bool on);
 void app_set_region(App *app, BoardRegion region);
 // Where KataGo lives: <root>/katago (created by the installer).
 String app_katago_dir(const App *app);
+// True when a running engine (main or second) has a human SL network.
+bool app_has_human_engine(const App *app);
 // Re-reads engine profiles (e.g. after an install) and restarts the engine.
 void app_reload_engines(App *app);   // start/stop the comparison engine
 void app_set_analysis(App *app, bool enabled);
