@@ -109,6 +109,56 @@ bool katago_strongest_network(StringView html, String *name) {
     return true;
 }
 
+// Number right after `marker` in `text` (e.g. the Elo before " ± "), or false.
+static bool number_before(StringView text, StringView marker, f64 *out) {
+    isize at = sv_find(text, marker);
+    if (at <= 0) return false;
+    isize start = at;
+    while (start > 0 && ((text.data[start - 1] >= '0' && text.data[start - 1] <= '9') || text.data[start - 1] == '.')) --start;
+    return sv_parse_f64(sv_trim(sv_take(sv_drop(text, start), at - start)), out);
+}
+
+bool katago_best_network(StringView html, StringView family, i64 min_games, String *name) {
+    f64 best_elo = -1;
+    bool found = false;
+    for (isize at = sv_find(html, SV("<tr")); at >= 0;) {
+        StringView row = sv_drop(html, at + 3);
+        isize end = sv_find(row, SV("</tr>"));
+        if (end < 0) break;
+        StringView rest = sv_drop(row, end);
+        row = sv_take(row, end);
+        at = sv_find(rest, SV("<tr"));
+        if (at >= 0) at += html.len - rest.len;
+        // <td> name ... </td> <td> date </td> <td> 14638.3 ± 26.8 - (1,610 games) </td>
+        isize td = sv_find(row, SV("<td>"));
+        if (td < 0) continue;
+        StringView cell = sv_trim_left(sv_drop(row, td + 4));
+        isize len = 0;
+        while (len < cell.len && is_name_char(cell.data[len])) ++len;
+        StringView n = sv_take(cell, len);
+        if (!sv_starts_with(n, SV("kata1-")) || !sv_starts_with(sv_drop(n, 6), family) || n.len <= 6 + family.len ||
+            n.data[6 + family.len] != '-') {
+            continue;
+        }
+        f64 elo = 0;
+        if (!number_before(row, SV(" \xC2\xB1"), &elo)) continue;   // "±" (UTF-8)
+        isize paren = sv_find(row, SV(" games)"));
+        if (paren < 0) continue;
+        isize open = paren;
+        while (open > 0 && row.data[open - 1] != '(') --open;
+        i64 games = 0;
+        for (isize i = open; i < paren; ++i) {
+            if (row.data[i] >= '0' && row.data[i] <= '9') games = games * 10 + (row.data[i] - '0');
+        }
+        if (games < min_games || elo <= best_elo) continue;
+        best_elo = elo;
+        string_free(name);
+        *name = string_from(n);
+        found = true;
+    }
+    return found;
+}
+
 String katago_network_url(StringView name) {
     return string_format("https://media.katagotraining.org/uploaded/networks/models/kata1/" SV_FMT ".bin.gz", SV_ARG(name));
 }
@@ -229,11 +279,12 @@ static i32 worker_main(void *arg) {
     }
     if (ok && rq->engine && !in->cancel) ok = install_engine(in, string_sv(&releases));
     if (ok && rq->network && !in->cancel) {
-        set_label(in, "Looking up the strongest network");
+        set_label(in, "Looking up the strongest " KATAGO_NETWORK_FAMILY " network");
         String html = { 0 }, name = { 0 };
         if (!http_get(SV("https://katagotraining.org/networks/"), &html, &err)) {
             ok = fail(in, &err, "katagotraining.org");
-        } else if (!katago_strongest_network(string_sv(&html), &name)) {
+        } else if (!katago_best_network(string_sv(&html), SV(KATAGO_NETWORK_FAMILY), KATAGO_NETWORK_MIN_GAMES, &name) &&
+                   !katago_strongest_network(string_sv(&html), &name)) {
             String e = string_from(SV("could not find the strongest network on the page"));
             ok = fail(in, &e, "katagotraining.org");
         } else {

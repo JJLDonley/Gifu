@@ -1,6 +1,7 @@
 #include "app/app.h"
 
 #include "app/file_dialog.h"
+#include "core/tsumego_frame.h"
 #include "base/log.h"
 
 #include <stdarg.h>
@@ -29,6 +30,12 @@ void app_set_status(App *app, const char *fmt, ...) {
 
 void app_log(App *app, StringView line) {
     log_debug("engine: " SV_FMT, SV_ARG(line));   // --verbose mirrors the engine log
+    // KataGo's one-time OpenCL tuning takes minutes with no other sign of life.
+    if (sv_find(line, SV("Beginning GPU tuning")) >= 0) {
+        app_set_status(app, "KataGo is tuning itself for this GPU (first start with this network, a few minutes)");
+    } else if (sv_find(line, SV("Done tuning")) >= 0) {
+        app_set_status(app, "GPU tuning finished");
+    }
     i32 slot = (app->log_head + app->log_count) % APP_LOG_LINES;
     if (app->log_count == APP_LOG_LINES) {
         slot = app->log_head;
@@ -744,6 +751,45 @@ MoveError app_play(App *app, Point point) {
 
 void app_goto(App *app, GameNode *node) { game_tree_goto(app->tree, node); }
 
+bool app_tsumego_frame(App *app) {
+    GameTree *tree = app->tree;
+    GameNode *cur = tree->current;
+    TsumegoFrameOptions options = { .attacker = STONE_EMPTY, .margin = 2 };
+    if (app->region.active) {   // the selected rectangle already leaves some room
+        options.has_problem = true;
+        options.margin = 1;
+        options.problem = (BoardRect){ app->region.x0, app->region.y0, app->region.x1, app->region.y1 };
+    }
+    TsumegoFrame *frame = malloc(sizeof(TsumegoFrame));
+    if (!frame) abort();
+    const char *error = NULL;
+    if (!tsumego_frame_build(&cur->board, &options, frame, &error)) {
+        app_set_status(app, "Tsumego frame: %s", error);
+        free(frame);
+        return false;
+    }
+    // A setup node (AB/AW/AE) after the current one, same player to move.
+    GameNode *node = game_tree_append_child(tree, cur);
+    char coord[3];
+    for (i32 i = 0; i < frame->count; ++i) {
+        const Move *m = &frame->changes[i];
+        point_to_sgf(m->point, coord);
+        StringView ident = m->color == STONE_BLACK ? SV("AB") : m->color == STONE_WHITE ? SV("AW") : SV("AE");
+        game_node_add_prop_value(tree, node, ident, sv(coord));
+    }
+    game_node_set_prop(tree, node, SV("PL"), cur->to_play == STONE_WHITE ? SV("W") : SV("B"));
+    game_node_set_prop(tree, node, SV("C"), SV("Tsumego frame"));
+    game_tree_rebuild(tree, node);
+    game_tree_goto(tree, node);
+    app->dirty = true;
+    BoardRect a = frame->area;
+    app_set_region(app, (BoardRegion){ true, a.x0, a.y0, a.x1, a.y1 });
+    app_set_status(app, "Tsumego frame added (%s attacks); analysis limited to the problem",
+                   frame->attacker == STONE_BLACK ? "Black" : "White");
+    free(frame);
+    return true;
+}
+
 // ---- Commands ---------------------------------------------------------------------------
 
 #define APP(ctx) ((App *)(ctx))
@@ -820,6 +866,11 @@ static bool has_prev_var(const void *c) {
 static bool has_next_var(const void *c) { return CAPP(c)->tree->current->next_sibling != NULL; }
 
 static void cmd_pass(void *c) { app_play(APP(c), POINT_PASS); }
+static void cmd_tsumego_frame(void *c) { app_tsumego_frame(APP(c)); }
+static bool has_stones(const void *c) {
+    const Board *b = &CAPP(c)->tree->current->board;
+    return board_stone_count(b, STONE_BLACK) + board_stone_count(b, STONE_WHITE) > 0;
+}
 static void cmd_delete(void *c) {
     App *app = APP(c);
     if (game_tree_delete_node(app->tree, app->tree->current)) app->dirty = true;
@@ -938,6 +989,7 @@ static const CommandDef APP_COMMANDS[] = {
     { "game.match", "Engine vs engine", "Match", cmd_match, has_engine, in_match },
     { "analysis.game", "Analyze game", "Analyze game", cmd_game_analysis, has_engine, batch_running },
     { "analysis.rank", "Estimate ranks", "Ranks", cmd_rank, has_human_profile, rank_running },
+    { "analysis.tsumego_frame", "Tsumego frame", "Frame", cmd_tsumego_frame, has_stones, NULL },
     { "game.write_result", "Save result", "Save result", cmd_write_result, has_result, NULL },
 };
 

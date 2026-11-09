@@ -39,6 +39,13 @@ bool katago_pick_engine_asset(StringView releases_json, StringView backend, Stri
 bool katago_pick_human_asset(StringView releases_json, DownloadAsset *out);
 // From katagotraining.org/networks/: the strongest confidently-rated kata1 network name.
 bool katago_strongest_network(StringView html, String *name);
+// The highest-rated network of one architecture family (e.g. "b18c384nbt") with
+// at least `min_games` rating games. Transformer nets (tf*) rate higher per
+// visit but run an order of magnitude slower on OpenCL / CPU (13 vs 155
+// visits/s on an Arc A770), so the installer asks for the fast convnet family.
+bool katago_best_network(StringView html, StringView family, i64 min_games, String *name);
+enum { KATAGO_NETWORK_MIN_GAMES = 1000 };
+#define KATAGO_NETWORK_FAMILY "b18c384nbt"
 String katago_network_url(StringView name);
 
 // ---- What is installed ---------------------------------------------------------------------

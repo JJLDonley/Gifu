@@ -92,6 +92,7 @@ add_library(catagui_core STATIC
     src/core/game_tree.c
     src/core/sgf.c
     src/core/game_report.c
+    src/core/tsumego_frame.c
     src/engine/process.c
     src/engine/line_channel.c
     src/engine/gtp_client.c

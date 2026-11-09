@@ -19,7 +19,7 @@
 //
 // Strings may contain variables: ${root} (install root), ${exe_dir},
 // ${platform} (windows|linux|macos) and ${exe} (".exe" on Windows, else "").
-// A `model` that names a directory picks the newest-named *.bin.gz inside it.
+// A `model` that names a directory picks the most recently installed network inside it.
 #pragma once
 
 #include "base/kv.h"

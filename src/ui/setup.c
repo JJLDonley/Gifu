@@ -75,7 +75,7 @@ static void setup_body(Ui *ui, void *user) {
     item_row(ui, 0, &ui->setup_engine, status.engine, tr(ui, "setup.engine", "KataGo engine"),
              tr(ui, "setup.engine_detail", "Latest release for the build above (~15-500 MB)"), running);
     item_row(ui, 1, &ui->setup_network, status.network, tr(ui, "setup.network", "Strongest network"),
-             tr(ui, "setup.network_detail", "kata1 network from katagotraining.org (~260 MB)"), running);
+             tr(ui, "setup.network_detail", "Strongest b18c384nbt (fast on any GPU) from katagotraining.org (~100 MB)"), running);
     item_row(ui, 2, &ui->setup_human, status.human, tr(ui, "setup.human", "Human SL network"),
              tr(ui, "setup.human_detail", "Plays and evaluates like a human of a chosen rank (~100 MB)"), running);
     if (status.human) {

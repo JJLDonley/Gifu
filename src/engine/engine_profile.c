@@ -37,16 +37,25 @@ String path_vars_expand(const PathVars *vars, StringView text) {
 }
 
 // A directory model path resolves to the last *.bin.gz / *.bin / *.txt.gz in it.
+// A model directory resolves to the most recently installed network in it
+// (ties: the last name), so a freshly downloaded network takes over.
 static String resolve_model(String path) {
     if (!os_dir_exists(string_sv(&path))) return path;
     StringVec names = { 0 };
     os_list_dir(string_sv(&path), &names);
     String chosen = { 0 };
-    for (isize i = names.len - 1; i >= 0; --i) {
+    i64 chosen_mtime = 0;
+    for (isize i = 0; i < names.len; ++i) {
         StringView n = string_sv(&names.items[i]);
-        if (sv_ends_with(n, SV(".bin.gz")) || sv_ends_with(n, SV(".bin")) || sv_ends_with(n, SV(".txt.gz"))) {
-            chosen = path_join(string_sv(&path), n);
-            break;
+        if (!sv_ends_with(n, SV(".bin.gz")) && !sv_ends_with(n, SV(".bin")) && !sv_ends_with(n, SV(".txt.gz"))) continue;
+        String candidate = path_join(string_sv(&path), n);
+        i64 mtime = os_file_mtime(string_sv(&candidate));
+        if (chosen.len == 0 || mtime >= chosen_mtime) {
+            string_free(&chosen);
+            chosen = candidate;
+            chosen_mtime = mtime;
+        } else {
+            string_free(&candidate);
         }
     }
     string_vec_free(&names);
