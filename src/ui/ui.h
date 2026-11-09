@@ -113,7 +113,10 @@ typedef struct Ui {
     bool in_tab;            // panels inside a tab group skip their card title
 
     AnimStore anim;
-    f32 scroll_pending;     // wheel distance not yet applied (smooth scrolling)
+    // Smooth wheel scrolling: the hovered scroll container glides to a target.
+    u32 scroll_id;          // Clay id of the container being animated
+    f32 scroll_target;      // desired scrollPosition.y (<= 0)
+    f32 scroll_last;        // position we set last frame (detects drags / clamps)
 
     // Board rendering: the static layer (surface, grid, coordinates) is cached
     // in a render texture and rebuilt only when its inputs change.

@@ -27,6 +27,7 @@ static const ConfigField FIELDS[] = {
     BOOL("analysis.on_start", analyze_on_start, 1),
     INT("analysis.interval_cs", analysis_interval_cs, 10, 5, 100),
     INT("analysis.max_candidates", max_candidates, 12, 1, 48),
+    INT("analysis.game_visits", analysis_game_visits, 300, 20, 100000),
     BOOL("analysis.show_ownership", show_ownership, 0),
     BOOL("analysis.show_candidates", show_candidates, 1),
     BOOL("board.show_coordinates", show_coordinates, 1),

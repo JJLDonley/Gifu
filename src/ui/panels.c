@@ -2,6 +2,8 @@
 // panels appear and in what order.
 #include "ui/ui.h"
 
+#include "core/game_report.h"
+
 #include <math.h>
 #include <stdio.h>
 
@@ -206,6 +208,100 @@ static void panel_move_list(Ui *ui) {
     }
 }
 
+// ---- report (Hawk Eye) -------------------------------------------------------------------------------------
+
+static void report_stat(Ui *ui, StringView label, StringView value, Color color) {
+    const ThemeColors *c = &ui->theme->colors;
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM } }) {
+        ui_label(ui, label, FONT_UI, 11, c->text_muted);
+        ui_label(ui, value, FONT_UI_BOLD, 16, color);
+    }
+}
+
+static void report_player(Ui *ui, const PlayerReport *p, Stone color, StringView name) {
+    const ThemeColors *c = &ui->theme->colors;
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                       .childGap = ui_u16(ui, 6), .padding = { 0, 0, ui_u16(ui, 4), ui_u16(ui, 8) } } }) {
+        CLAY({ .layout = { .childGap = ui_u16(ui, 8), .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
+            stone_dot(ui, color);
+            ui_label(ui, name, FONT_UI_BOLD, 14, c->text);
+            CLAY_TEXT(ui_fmt(ui, "· %d %s", p->moves, p->moves == 1 ? "move" : "moves"), ui_text_style(ui, FONT_UI, 12, c->text_muted));
+        }
+        CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 8) } }) {
+            report_stat(ui, tr(ui, "report.accuracy", "Best move"), arena_format(&ui->frame, "%.0f%%", player_accuracy(p) * 100.0f), c->text);
+            report_stat(ui, tr(ui, "report.top3", "Top 3"),
+                        arena_format(&ui->frame, "%.0f%%", p->moves ? 100.0f * (f32)p->top3 / (f32)p->moves : 0.0f), c->text);
+            report_stat(ui, tr(ui, "report.avg_loss", "Avg loss"), arena_format(&ui->frame, "%.1f%%", p->avg_winrate_loss * 100.0f), c->text);
+            report_stat(ui, tr(ui, "report.errors", "Mistakes/Blunders"), arena_format(&ui->frame, "%d / %d", p->mistakes, p->blunders),
+                        p->blunders ? c->candidate_bad : c->text);
+        }
+        for (i32 i = 0; i < p->worst_count; ++i) {
+            GameNode *n = p->worst[i];
+            char coord[8];
+            point_to_gtp(n->move.point, n->board.width, n->board.height, coord);
+            Clay_ElementId id = CLAY_IDI("ReportWorst", (u32)(color * 16 + i));
+            bool over = Clay_PointerOver(id);
+            f32 h = anim_towards(&ui->anim, id.id, over ? 1.0f : 0.0f, 18.0f, 0.0f);
+            CLAY({ .id = id,
+                   .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 10),
+                               .padding = { ui_u16(ui, 6), ui_u16(ui, 6), ui_u16(ui, 3), ui_u16(ui, 3) } },
+                   .backgroundColor = color_to_clay(color_with_alpha(c->hover, h * c->hover.a / 255.0f)),
+                   .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 3)) }) {
+                CLAY_TEXT(ui_fmt(ui, SV_FMT " %d", SV_ARG(tr(ui, "label.move", "Move")), n->move_number), ui_text_style(ui, FONT_UI, 13, c->text));
+                ui_label(ui, sv(coord), FONT_MONO, 13, c->text_muted);
+                CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childAlignment = { .x = CLAY_ALIGN_X_RIGHT } } }) {
+                    CLAY_TEXT(ui_fmt(ui, "-%.1f%%", p->worst_loss[i] * 100.0f),
+                              ui_text_style(ui, FONT_MONO, 13, p->worst_loss[i] > 0.10f ? c->candidate_bad : c->text_muted));
+                }
+            }
+            if (over && ui->mouse_pressed && !ui->pointer_over_menu) app_goto(ui->app, n);
+        }
+    }
+}
+
+// Per-player summary of the analysed line: agreement with the engine's best /
+// top-3 moves, average win-rate loss, mistakes and blunders, worst moves.
+static void panel_report(Ui *ui) {
+    App *app = ui->app;
+    const ThemeColors *c = &ui->theme->colors;
+    enum { MAX_LINE = 4096 };
+    GameNode **line = arena_new_array(&ui->frame, GameNode *, MAX_LINE);
+    isize count = MIN(game_tree_active_line(app->tree, line, MAX_LINE), (isize)MAX_LINE);
+    GameReport *report = arena_new(&ui->frame, GameReport);
+    game_report_compute(line, count, report);
+    CLAY(ui_card(ui, CLAY_ID("PanelReport"))) {
+        ui_card_title(ui, tr(ui, "panel.report", "Report"));
+        CLAY(ui_scroll_area(ui, CLAY_ID("ReportScroll"), 0)) {
+            // Progress / call to action.
+            CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 8),
+                               .childAlignment = { .y = CLAY_ALIGN_Y_CENTER }, .padding = { 0, 0, 0, ui_u16(ui, 6) } } }) {
+                CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) } } }) {
+                    if (app->batch_running) {
+                        CLAY_TEXT(ui_fmt(ui, SV_FMT " %td / %td", SV_ARG(tr(ui, "label.analyzing", "Analyzing")), app->batch_index + 1, app->batch_count),
+                                  ui_text_style(ui, FONT_UI, 13, c->text_muted));
+                    } else {
+                        CLAY_TEXT(ui_fmt(ui, "%d / %d " SV_FMT, report->analysed_nodes, (i32)count, SV_ARG(tr(ui, "report.analysed", "positions analysed"))),
+                                  ui_text_style(ui, FONT_UI, 13, c->text_muted));
+                    }
+                }
+                ui_command_button(ui, SV("analysis.game"), SV("@chart"), BUTTON_NORMAL, 0);
+            }
+            if (app->batch_running) {
+                f32 progress = app->batch_count ? (f32)app->batch_index / (f32)app->batch_count : 0.0f;
+                f32 shown = anim_towards(&ui->anim, 0x9B07u, progress, 8.0f, progress);
+                CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(ui_px(ui, 4)) } },
+                       .backgroundColor = color_to_clay(c->surface_alt), .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 2)) }) {
+                    CLAY({ .layout = { .sizing = { CLAY_SIZING_PERCENT(CLAMP(shown, 0.001f, 1.0f)), CLAY_SIZING_GROW(0) } },
+                           .backgroundColor = color_to_clay(c->accent), .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 2)) }) {}
+                }
+            }
+            StringView black = game_tree_info(app->tree, SV("PB")), white = game_tree_info(app->tree, SV("PW"));
+            report_player(ui, &report->player[STONE_BLACK], STONE_BLACK, black.len ? black : tr(ui, "label.black", "Black"));
+            report_player(ui, &report->player[STONE_WHITE], STONE_WHITE, white.len ? white : tr(ui, "label.white", "White"));
+        }
+    }
+}
+
 // ---- candidates ---------------------------------------------------------------------------------------
 
 static void panel_candidates(Ui *ui) {
@@ -323,6 +419,7 @@ static const struct {
     { "comment", panel_comment },
     { "variation_tree", panel_variation_tree },
     { "move_list", panel_move_list },
+    { "report", panel_report },
     { "engine_log", panel_engine_log },
 };
 

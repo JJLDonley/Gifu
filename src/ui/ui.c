@@ -266,6 +266,47 @@ static void handle_keys(Ui *ui) {
     }
 }
 
+// Wheel scrolling: each notch moves the innermost hovered scroll container's
+// target by ~3 lines; the position eases towards the target every frame.
+static void smooth_scroll(Ui *ui) {
+    const f32 NOTCH = 60.0f * ui->scale;
+    if (ui->wheel != 0.0f) {
+        // Innermost hovered container that can actually scroll vertically.
+        Clay_ElementIdArray over = Clay_GetPointerOverIds();
+        u32 found = 0;
+        for (i32 i = over.length - 1; i >= 0 && !found; --i) {
+            Clay_ElementId id = over.internalArray[i];   // the Get() accessor is private to clay.h
+            Clay_ScrollContainerData data = Clay_GetScrollContainerData(id);
+            if (data.found && data.config.vertical && data.contentDimensions.height > data.scrollContainerDimensions.height + 1) {
+                found = id.id;
+                if (ui->scroll_id != found || fabsf(data.scrollPosition->y - ui->scroll_last) > 1.0f) {
+                    ui->scroll_target = data.scrollPosition->y;   // new container, or moved by a drag
+                }
+                ui->scroll_id = found;
+                f32 min_y = -(data.contentDimensions.height - data.scrollContainerDimensions.height);
+                ui->scroll_target = CLAMP(ui->scroll_target + ui->wheel * NOTCH, min_y, 0.0f);
+            }
+        }
+    }
+    if (!ui->scroll_id) return;
+    Clay_ElementId target = { .id = ui->scroll_id };
+    Clay_ScrollContainerData data = Clay_GetScrollContainerData(target);
+    if (!data.found) {
+        ui->scroll_id = 0;
+        return;
+    }
+    f32 *y = &data.scrollPosition->y;
+    if (fabsf(*y - ui->scroll_last) > 1.0f && ui->wheel == 0.0f) {   // something else moved it (drag, auto-scroll)
+        ui->scroll_id = 0;
+        return;
+    }
+    f32 k = 1.0f - expf(-14.0f * ui->anim.dt);
+    *y += (ui->scroll_target - *y) * k;
+    if (fabsf(ui->scroll_target - *y) < 0.5f) *y = ui->scroll_target;
+    ui->scroll_last = *y;
+    if (*y == ui->scroll_target) ui->scroll_id = 0;   // done
+}
+
 static void handle_drops(Ui *ui) {
     if (!IsFileDropped()) return;
     FilePathList files = LoadDroppedFiles();
@@ -312,12 +353,10 @@ void ui_frame(Ui *ui) {
 
     Clay_SetLayoutDimensions((Clay_Dimensions){ (f32)GetScreenWidth(), (f32)GetScreenHeight() });
     Clay_SetPointerState((Clay_Vector2){ ui->mouse.x, ui->mouse.y }, ui->mouse_down);
-    // Smooth wheel scrolling: queue the distance and release it over a few frames.
-    ui->scroll_pending += ui->wheel * 56.0f * ui->scale;
-    f32 step = ui->scroll_pending * (1.0f - expf(-18.0f * ui->anim.dt));
-    if (fabsf(ui->scroll_pending) < 0.5f) step = ui->scroll_pending;
-    ui->scroll_pending -= step;
-    Clay_UpdateScrollContainers(true, (Clay_Vector2){ 0, step }, GetFrameTime());
+    // Clay applies wheel deltas x10 with no easing, so it only gets drags here;
+    // the wheel is handled by smooth_scroll().
+    Clay_UpdateScrollContainers(true, (Clay_Vector2){ 0, 0 }, GetFrameTime());
+    smooth_scroll(ui);
 
     Clay_BeginLayout();
     layout_build(ui);

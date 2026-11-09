@@ -16,7 +16,7 @@
 ;;     icons: first prev next last prev2 next2 up down close plus stone_black
 ;;            stone_white gear folder save play pause chart menu check
 ;;   (panel NAME)  game_info winrate_summary winrate_graph variation_tree
-;;                 candidates move_list comment engine_log
+;;                 candidates move_list report comment engine_log
 ;;   (tabs NAME... :grow)  one panel at a time in a fixed box
 ;;   (menu TITLE-KEY COMMAND... - COMMAND... :fallback "Text")   inside menubar
 
@@ -29,7 +29,7 @@
     (menu menu.navigate
       nav.first nav.back10 nav.back nav.forward nav.forward10 nav.last - nav.prev_variation nav.next_variation :fallback "Navigate")
     (menu menu.analysis
-      analysis.toggle analysis.play_best - analysis.candidates analysis.ownership - engine.restart :fallback "Analysis")
+      analysis.toggle analysis.play_best analysis.game - analysis.candidates analysis.ownership - engine.restart :fallback "Analysis")
     (menu menu.view
       view.coordinates view.move_numbers view.next_tab - view.zoom_in view.zoom_out - view.settings :fallback "View"))
 
@@ -39,6 +39,7 @@
     (button file.save :icon @save :label)
     (separator)
     (button analysis.toggle :style primary)
+    (button analysis.game :icon @chart)
     (button analysis.candidates)
     (button analysis.ownership)
     (button view.coordinates)
@@ -55,7 +56,7 @@
       (panel game_info)
       (panel winrate_summary)
       (panel winrate_graph :height 150)
-      (tabs candidates move_list variation_tree comment :grow)))
+      (tabs candidates move_list report variation_tree comment :grow)))
 
   (navbar
     (button nav.first :icon @first)

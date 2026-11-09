@@ -24,6 +24,7 @@ typedef struct Config {
     bool show_candidates;
     bool show_move_numbers;
     f32 ai_seconds_per_move;
+    i32 analysis_game_visits;
     i32 new_game_size;
     f32 new_game_komi;
     i32 new_game_handicap;

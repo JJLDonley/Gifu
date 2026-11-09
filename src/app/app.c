@@ -79,6 +79,7 @@ AnalysisRequest app_analysis_request(const App *app) {
 }
 
 static void stop_engine(App *app) {
+    app_batch_stop(app);
     engine_destroy(app->engine);
     app->engine = NULL;
     app->engine_status = ENGINE_STATUS_STOPPED;
@@ -140,20 +141,65 @@ void app_set_analysis(App *app, bool enabled) {
     }
 }
 
-static void store_node_eval(App *app) {
-    GameNode *node = app->tree->current;
-    const Candidate *best = analysis_best(app->analysis);
+static void store_node_eval(GameNode *node, const AnalysisSnapshot *a) {
+    const Candidate *best = analysis_best(a);
     if (!best) return;
     NodeEval e = {
         .valid = true,
-        .black_winrate = analysis_black_winrate(app->analysis, best->winrate),
-        .black_score = analysis_black_score(app->analysis, best->score_lead),
-        .visits = app->analysis->total_visits,
+        .black_winrate = analysis_black_winrate(a, best->winrate),
+        .black_score = analysis_black_score(a, best->score_lead),
+        .visits = a->total_visits,
     };
-    for (i32 i = 0; i < app->analysis->candidate_count && e.top_count < NODE_EVAL_TOP; ++i) {
-        e.top[e.top_count++] = app->analysis->candidates[i].move;
-    }
+    for (i32 i = 0; i < a->candidate_count && e.top_count < NODE_EVAL_TOP; ++i) e.top[e.top_count++] = a->candidates[i].move;
     node->eval = e;
+}
+
+// ---- Whole-game analysis ------------------------------------------------------------------
+
+void app_batch_stop(App *app) {
+    if (!app->batch_running) return;
+    app->batch_running = false;
+    free(app->batch_nodes);
+    app->batch_nodes = NULL;
+    app->batch_count = app->batch_index = 0;
+    app->synced_node = NULL;   // go back to following the current node
+    if (!app->batch_restore_analysis) app_set_analysis(app, false);
+}
+
+void app_batch_start(App *app) {
+    if (!app->engine) return;
+    app_batch_stop(app);
+    enum { MAX_LINE = 4096 };
+    GameNode **line = malloc(sizeof(GameNode *) * MAX_LINE);
+    if (!line) abort();
+    // Analyse the whole active line: root..current..end of the main continuation.
+    isize count = MIN(game_tree_active_line(app->tree, line, MAX_LINE), (isize)MAX_LINE);
+    app->batch_nodes = line;
+    app->batch_count = count;
+    app->batch_index = 0;
+    // Skip nodes that already have enough visits (e.g. loaded from CGE[]).
+    while (app->batch_index < count && line[app->batch_index]->eval.valid &&
+           line[app->batch_index]->eval.visits >= app->config.analysis_game_visits) {
+        app->batch_index++;
+    }
+    app->batch_restore_analysis = app->analysis_enabled;
+    app->batch_running = true;
+    app->ai_plays[STONE_BLACK] = app->ai_plays[STONE_WHITE] = false;
+    app->synced_node = NULL;
+    app_set_analysis(app, true);
+    app_set_status(app, "Analyzing game (%td positions, %d visits each)", count, app->config.analysis_game_visits);
+}
+
+static void batch_advance(App *app) {
+    app->batch_index++;
+    while (app->batch_index < app->batch_count && app->batch_nodes[app->batch_index]->eval.visits >= app->config.analysis_game_visits) {
+        app->batch_index++;
+    }
+    if (app->batch_index >= app->batch_count) {
+        app_set_status(app, "Game analysis complete");
+        app->dirty = true;   // evals are saved as CGE[] with the game
+        app_batch_stop(app);
+    }
 }
 
 void app_update(App *app) {
@@ -170,10 +216,16 @@ void app_update(App *app) {
                 }
                 break;
             case ENGINE_EVENT_ANALYSIS:
-                if (ev.analysis->position_id == app->synced_position_id) {
+                if (ev.analysis->position_id != app->synced_position_id || !app->synced_node) break;
+                store_node_eval(app->synced_node, ev.analysis);
+                if (app->synced_node == app->tree->current) {
                     memcpy(app->analysis, ev.analysis, sizeof(AnalysisSnapshot));
                     app->analysis_valid = true;
-                    store_node_eval(app);
+                }
+                if (app->batch_running && app->batch_index < app->batch_count &&
+                    app->synced_node == app->batch_nodes[app->batch_index] &&
+                    ev.analysis->total_visits >= app->config.analysis_game_visits) {
+                    batch_advance(app);
                 }
                 break;
             case ENGINE_EVENT_MOVE:
@@ -208,16 +260,20 @@ void app_update(App *app) {
                 break;
         }
     }
-    if (app->synced_node != app->tree->current && app->engine_status != ENGINE_STATUS_FAILED) {
+    // The engine follows the current node, or the batch position while a
+    // whole-game analysis runs.
+    GameNode *target = app->batch_running && app->batch_index < app->batch_count ? app->batch_nodes[app->batch_index]
+                                                                                   : app->tree->current;
+    if (app->synced_node != target && app->engine_status != ENGINE_STATUS_FAILED) {
         PositionSpec *spec = malloc(sizeof(PositionSpec));
         if (!spec) abort();
-        position_spec_from_node(app->tree, app->tree->current, string_sv(&app->config.rules), spec);
+        position_spec_from_node(app->tree, target, string_sv(&app->config.rules), spec);
         engine_set_position(app->engine, spec);
         app->synced_position_id = spec->id;
-        app->synced_node = app->tree->current;
-        app->analysis_valid = false;
+        app->synced_node = target;
         free(spec);
     }
+    if (app->synced_node != app->tree->current) app->analysis_valid = false;
 
     // Two consecutive passes end the game: score it once and stop engine play.
     const GameNode *cur = app->tree->current;
@@ -278,6 +334,7 @@ void app_config_changed(App *app, StringView key) {
 }
 
 static void replace_tree(App *app, GameTree *tree) {
+    app_batch_stop(app);
     game_tree_free(app->tree);
     app->tree = tree;
     app->synced_node = NULL;
@@ -449,6 +506,13 @@ static void cmd_write_result(void *c) {
 }
 static bool has_result(const void *c) { return CAPP(c)->result.len > 0 && CAPP(c)->result_position == CAPP(c)->synced_position_id; }
 
+static void cmd_game_analysis(void *c) {
+    App *app = APP(c);
+    if (app->batch_running) app_batch_stop(app);
+    else app_batch_start(app);
+}
+static bool batch_running(const void *c) { return CAPP(c)->batch_running; }
+
 static void cmd_ai_black(void *c) { APP(c)->ai_plays[STONE_BLACK] = !APP(c)->ai_plays[STONE_BLACK]; }
 static void cmd_ai_white(void *c) { APP(c)->ai_plays[STONE_WHITE] = !APP(c)->ai_plays[STONE_WHITE]; }
 static bool ai_black(const void *c) { return CAPP(c)->ai_plays[STONE_BLACK]; }
@@ -480,6 +544,7 @@ static const CommandDef APP_COMMANDS[] = {
     { "game.ai_white", "Engine plays White", "AI ○", cmd_ai_white, has_engine, ai_white },
     { "game.ai_move", "Engine move", "Genmove", cmd_ai_move, can_ai_move, NULL },
     { "game.score", "Score game", "Score", cmd_score, can_score, NULL },
+    { "analysis.game", "Analyze game", "Analyze game", cmd_game_analysis, has_engine, batch_running },
     { "game.write_result", "Save result", "Save result", cmd_write_result, has_result, NULL },
 };
 
@@ -515,6 +580,18 @@ bool app_init(App *app, const AppOptions *options) {
     if (options->theme.len) {
         string_free(&app->config.theme);
         app->config.theme = string_from(options->theme);
+    }
+    // --set key=value overrides, parsed exactly like config.kv lines.
+    for (i32 i = 0; i < options->setting_count; ++i) {
+        StringView rest = options->settings[i];
+        StringView key = sv_trim(sv_chop_char(&rest, '='));
+        const ConfigField *f = config_field(key);
+        f64 number = 0;
+        bool flag = false;
+        if (!f) log_warn("--set: unknown setting '" SV_FMT "'", SV_ARG(key));
+        else if (f->type == CONFIG_STRING) config_set_string(&app->config, f, sv_trim(rest));
+        else if (f->type == CONFIG_BOOL && kv_parse_bool(sv_trim(rest), &flag)) config_set_bool(&app->config, f, flag);
+        else if (sv_parse_f64(rest, &number)) config_set_number(&app->config, f, number);
     }
 
     // i18n: English base, then the selected language on top.

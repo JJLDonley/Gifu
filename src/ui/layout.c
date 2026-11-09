@@ -103,7 +103,9 @@ static void engine_status_widget(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
         CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 8)), CLAY_SIZING_FIXED(ui_px(ui, 8)) } },
                .backgroundColor = color_to_clay(dot), .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 4)) }) {}
         ui_label(ui, text, FONT_UI, 13, c->text_muted);
-        if (app->analysis_valid && app->analysis_enabled) {
+        if (app->batch_running) {
+            CLAY_TEXT(ui_fmt(ui, "· %td/%td", app->batch_index + 1, app->batch_count), ui_text_style(ui, FONT_MONO, 12, c->text_muted));
+        } else if (app->analysis_valid && app->analysis_enabled) {
             CLAY_TEXT(ui_fmt(ui, "· %d", app->analysis->total_visits), ui_text_style(ui, FONT_MONO, 12, c->text_muted));
         }
     }
@@ -234,7 +236,8 @@ static void panel(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
 // per tabs node.
 static void tabs(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
     const ThemeColors *c = &ui->theme->colors;
-    i32 slot = MIN(ctx->tabs_index++, (i32)countof(ui->tab_selected) - 1);
+    i32 slot = MIN(ctx->tabs_index, (i32)countof(ui->tab_selected) - 1);   // no side effects inside MIN
+    ctx->tabs_index++;
     StringView names[16];
     i32 count = 0;
     for (const Sexpr *a = sexpr_next_arg(node, NULL); a && count < (i32)countof(names); a = sexpr_next_arg(node, a)) names[count++] = a->text;

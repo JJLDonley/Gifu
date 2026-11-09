@@ -13,7 +13,7 @@
 static void usage(void) {
     fprintf(stderr,
             "usage: catagui [file.sgf] [--theme ID] [--engine ID|none] [--portable]\n"
-            "               [--move N|-1] [--run COMMAND_ID]... [--screenshot out.png [--delay SECONDS]] [--verbose]\n");
+            "               [--move N|-1] [--set KEY=VALUE]... [--run COMMAND_ID]... [--screenshot out.png [--delay SECONDS]] [--verbose]\n");
 }
 
 static bool parse_args(int argc, char **argv, AppOptions *opts) {
@@ -26,6 +26,9 @@ static bool parse_args(int argc, char **argv, AppOptions *opts) {
         else if (sv_eq(a, SV("--delay")) && has_value) opts->screenshot_delay = atof(argv[++i]);
         else if (sv_eq(a, SV("--portable"))) opts->portable = true;
         else if (sv_eq(a, SV("--move")) && has_value) opts->start_move = atoi(argv[++i]);
+        else if (sv_eq(a, SV("--set")) && has_value && opts->setting_count < (i32)countof(opts->settings)) {
+            opts->settings[opts->setting_count++] = sv(argv[++i]);
+        }
         else if (sv_eq(a, SV("--size")) && has_value) {
             StringView rest = sv(argv[++i]);
             i64 w = 0, h = 0;

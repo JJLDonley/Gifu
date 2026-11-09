@@ -23,6 +23,8 @@ typedef struct AppOptions {
     i32 window_width, window_height;   // --size WxH (0 = from config)
     StringView run_commands[8];   // command ids executed once the UI is up (--run)
     i32 run_command_count;
+    StringView settings[16];      // "key=value" config overrides (--set)
+    i32 setting_count;
 } AppOptions;
 
 enum { APP_LOG_LINES = 200 };
@@ -49,13 +51,20 @@ typedef struct App {
     EngineStatus engine_status;
     String engine_error;
     bool analysis_enabled;
-    const GameNode *synced_node;
+    GameNode *synced_node;      // node the engine currently holds
     u64 synced_position_id;
     AnalysisSnapshot *analysis;   // latest snapshot for the current node
     bool analysis_valid;
 
     String log_lines[APP_LOG_LINES];
     i32 log_head, log_count;
+
+    // Whole-game analysis: the engine walks these nodes, analysing each one to
+    // config.analysis_game_visits, while the user keeps navigating freely.
+    bool batch_running;
+    bool batch_restore_analysis;   // analysis_enabled before the batch started
+    GameNode **batch_nodes;
+    isize batch_count, batch_index;
 
     // Play vs AI: which colours the engine plays (indexed by Stone).
     bool ai_plays[3];
@@ -96,3 +105,5 @@ void app_reload_language(App *app);
 // Called after a setting changed through the generic config API (settings dialog);
 // applies side effects such as restarting the engine or reloading strings.
 void app_config_changed(App *app, StringView key);
+void app_batch_start(App *app);   // analyse the active line from the start
+void app_batch_stop(App *app);
