@@ -65,7 +65,9 @@ int main(int argc, char **argv) {
                options.window_height ? options.window_height : app->config.window_height, "CataGui");
     SetWindowMinSize(800, 560);
     SetExitKey(KEY_NULL);
-    SetTargetFPS(60);
+    // Pace frames to the display (smooth animations on 120/144 Hz monitors).
+    i32 refresh = GetMonitorRefreshRate(GetCurrentMonitor());
+    SetTargetFPS(refresh >= 30 ? refresh : 60);
     ui_init(ui, app);
     for (i32 i = 0; i < options.run_command_count; ++i) command_execute(&app->commands, options.run_commands[i]);
 

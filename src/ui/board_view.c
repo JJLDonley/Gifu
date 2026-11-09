@@ -1,7 +1,9 @@
 #include "ui/ui.h"
 
 #include <math.h>
+#include <rlgl.h>
 #include <stdio.h>
+#include <string.h>
 
 static const char GTP_COLUMNS[] = "ABCDEFGHJKLMNOPQRSTUVWXYZ";
 
@@ -44,8 +46,8 @@ static void draw_stone(const Theme *t, Vector2 c, f32 r, Stone color, f32 alpha)
     fill = color_with_alpha(fill, alpha * fill.a / 255.0f);
     edge = color_with_alpha(edge, alpha * edge.a / 255.0f);
 
-    if (t->stones.shadow > 0 && alpha >= 1.0f) {
-        DrawCircleV((Vector2){ c.x + r * 0.10f, c.y + r * 0.14f }, r * 1.02f, color_with_alpha(BLACK, t->stones.shadow));
+    if (t->stones.shadow > 0 && alpha > 0.6f) {
+        DrawCircleV((Vector2){ c.x + r * 0.10f, c.y + r * 0.14f }, r * 1.02f, color_with_alpha(BLACK, t->stones.shadow * alpha));
     }
     switch (t->stones.style) {
         case STONE_STYLE_GLOSSY: {
@@ -72,14 +74,19 @@ static void draw_stone(const Theme *t, Vector2 c, f32 r, Stone color, f32 alpha)
 
 // ---- Board surface -----------------------------------------------------------------------------
 
+static void draw_surface_shadow(Ui *ui, const BoardGeometry *g) {
+    const Theme *t = ui->theme;
+    if (!t->board.shadow) return;
+    f32 radius = ui_px(ui, t->shape.radius * 0.5f);
+    f32 roundness = radius * 2.0f / fminf(g->board.width, g->board.height);
+    Rectangle s = { g->board.x + 3, g->board.y + 5, g->board.width, g->board.height };
+    DrawRectangleRounded(s, roundness, 8, color_with_alpha(BLACK, 0.18f));
+}
+
 static void draw_surface(Ui *ui, const BoardGeometry *g) {
     const Theme *t = ui->theme;
     f32 radius = ui_px(ui, t->shape.radius * 0.5f);
     f32 roundness = radius * 2.0f / fminf(g->board.width, g->board.height);
-    if (t->board.shadow) {
-        Rectangle s = { g->board.x + 3, g->board.y + 5, g->board.width, g->board.height };
-        DrawRectangleRounded(s, roundness, 8, color_with_alpha(BLACK, 0.18f));
-    }
     switch (t->board.style) {
         case BOARD_STYLE_WOOD:
         case BOARD_STYLE_IMAGE:
@@ -186,7 +193,7 @@ static Color candidate_color(const ThemeColors *c, const Candidate *cand, i32 ma
     return color_lerp(c->candidate_bad, c->candidate_good, t);
 }
 
-static void draw_candidates(Ui *ui, const BoardGeometry *g, const AnalysisSnapshot *a, const Board *board) {
+static void draw_candidates(Ui *ui, const BoardGeometry *g, const AnalysisSnapshot *a, const Board *board, f32 fade) {
     const ThemeColors *c = &ui->theme->colors;
     i32 max_visits = 0;
     for (i32 i = 0; i < a->candidate_count; ++i) max_visits = MAX(max_visits, a->candidates[i].visits);
@@ -198,18 +205,18 @@ static void draw_candidates(Ui *ui, const BoardGeometry *g, const AnalysisSnapsh
         Vector2 p = point_center(g, cand->move);
         f32 r = g->cell * 0.47f;
         Color col = candidate_color(c, cand, max_visits, i == 0);
-        DrawCircleV(p, r, color_with_alpha(col, 0.88f));
-        if (i == 0) DrawRing(p, r - fmaxf(1.5f, r * 0.10f), r + 0.5f, 0, 360, 48, color_lerp(col, BLACK, 0.35f));
+        DrawCircleV(p, r, color_with_alpha(col, 0.88f * fade));
+        if (i == 0) DrawRing(p, r - fmaxf(1.5f, r * 0.10f), r + 0.5f, 0, 360, 48, color_with_alpha(color_lerp(col, BLACK, 0.35f), fade));
 
         char wr[16], visits[16], score[16];
         snprintf(wr, sizeof(wr), "%.1f", cand->winrate * 100.0f);
         format_visits(visits, sizeof(visits), cand->visits);
         snprintf(score, sizeof(score), "%+.1f", cand->score_lead);
-        Color text = c->candidate_text;
+        Color text = color_with_alpha(c->candidate_text, fade);
         if (g->cell >= 34) {
             font_draw_centered(ui->fonts, FONT_UI_BOLD, g->cell * 0.30f, sv(wr), (Vector2){ p.x, p.y - g->cell * 0.17f }, text);
             font_draw_centered(ui->fonts, FONT_UI, g->cell * 0.22f, sv(visits), (Vector2){ p.x, p.y + g->cell * 0.08f }, text);
-            font_draw_centered(ui->fonts, FONT_UI, g->cell * 0.20f, sv(score), (Vector2){ p.x, p.y + g->cell * 0.27f }, color_with_alpha(text, 0.75f));
+            font_draw_centered(ui->fonts, FONT_UI, g->cell * 0.20f, sv(score), (Vector2){ p.x, p.y + g->cell * 0.27f }, color_with_alpha(text, 0.75f * fade));
         } else {
             font_draw_centered(ui->fonts, FONT_UI_BOLD, g->cell * 0.34f, sv(wr), p, text);
         }
@@ -235,6 +242,100 @@ static void draw_pv(Ui *ui, const BoardGeometry *g, const Candidate *cand, Stone
 
 // ---- Draw callback ----------------------------------------------------------------------------------
 
+// ---- Cached static layer ------------------------------------------------------------------------
+
+static u64 layer_key(Ui *ui, Rectangle bounds, const Board *board) {
+    u64 h = 1469598103934665603ull;
+    u64 parts[] = { (u64)bounds.width, (u64)bounds.height, (u64)board->width, (u64)board->height,
+                    ui->app->config.show_coordinates, (u64)(uintptr_t)ui->theme, (u64)(ui->scale * 1000.0f),
+                    ui->board_texture.id, ui->background.paper.id, ui->language_version };
+    for (i32 i = 0; i < (i32)countof(parts); ++i) h = (h ^ parts[i]) * 1099511628211ull;
+    return h;
+}
+
+static void rebuild_layer(Ui *ui, Rectangle bounds, const Board *board) {
+    i32 w = (i32)bounds.width, h = (i32)bounds.height;
+    if (ui->board_layer.id && (ui->board_layer.texture.width != w || ui->board_layer.texture.height != h)) {
+        UnloadRenderTexture(ui->board_layer);
+        ui->board_layer = (RenderTexture2D){ 0 };
+    }
+    if (!ui->board_layer.id) {
+        ui->board_layer = LoadRenderTexture(w, h);
+        SetTextureFilter(ui->board_layer.texture, TEXTURE_FILTER_BILINEAR);
+    }
+    // Geometry in layer-local coordinates.
+    BoardGeometry g = compute_geometry((Rectangle){ 0, 0, bounds.width, bounds.height }, board->width, board->height,
+                                       ui->app->config.show_coordinates);
+    BeginTextureMode(ui->board_layer);
+    ClearBackground(BLANK);
+    // Colour: normal "over"; alpha: accumulate (a + d*(1-a)). The texture then
+    // holds premultiplied colour with correct coverage, so translucent glyph
+    // edges and tints don't punch holes when drawn with BLEND_ALPHA_PREMULTIPLY.
+    rlSetBlendFactorsSeparate(RL_SRC_ALPHA, RL_ONE_MINUS_SRC_ALPHA, RL_ONE, RL_ONE_MINUS_SRC_ALPHA, RL_FUNC_ADD, RL_FUNC_ADD);
+    BeginBlendMode(BLEND_CUSTOM_SEPARATE);
+    if (g.valid) {
+        draw_surface(ui, &g);
+        draw_grid(ui, &g, ui->app->config.show_coordinates);
+    }
+    EndBlendMode();
+    EndTextureMode();
+}
+
+// ---- Stone animations ---------------------------------------------------------------------------------
+
+enum { ANIM_MAX_CHANGES = 12 };   // bigger jumps (open file, go to start) snap without animation
+static const f64 STONE_IN_SECONDS = 0.16, STONE_OUT_SECONDS = 0.24;
+
+static void update_stone_animations(Ui *ui, const Board *board) {
+    f64 now = GetTime();
+    i32 n = board->width * board->height;
+    bool resized = board->width != ui->prev_width || board->height != ui->prev_height;
+    i32 changes = 0;
+    if (!resized) {
+        for (i32 i = 0; i < n; ++i) changes += board->cells[i] != ui->prev_cells[i];
+    }
+    bool animate = !resized && changes <= ANIM_MAX_CHANGES;
+    for (i32 i = 0; i < n; ++i) {
+        u8 before = resized ? STONE_EMPTY : ui->prev_cells[i], after = board->cells[i];
+        if (before == after) continue;
+        ui->stone_born[i] = animate ? now : 0.0;
+        if (animate && before != STONE_EMPTY && ui->ghost_count < (i32)countof(ui->ghosts)) {
+            ui->ghosts[ui->ghost_count++] = (StoneGhost){ board_point(board, i), (Stone)before, now };
+        }
+    }
+    memcpy(ui->prev_cells, board->cells, (usize)n);
+    ui->prev_width = board->width;
+    ui->prev_height = board->height;
+    // Drop finished ghosts.
+    i32 kept = 0;
+    for (i32 i = 0; i < ui->ghost_count; ++i) {
+        if (now - ui->ghosts[i].born < STONE_OUT_SECONDS) ui->ghosts[kept++] = ui->ghosts[i];
+    }
+    ui->ghost_count = kept;
+}
+
+void board_view_prepare(Ui *ui) {
+    const Board *board = &ui->app->tree->current->board;
+    update_stone_animations(ui, board);
+    Clay_ElementData data = Clay_GetElementData(CLAY_ID("Board"));
+    if (!data.found) return;
+    Rectangle bounds = { roundf(data.boundingBox.x), roundf(data.boundingBox.y), roundf(data.boundingBox.width),
+                         roundf(data.boundingBox.height) };
+    if (bounds.width < 8 || bounds.height < 8) return;
+    u64 key = layer_key(ui, bounds, board);
+    if (key != ui->board_layer_key || !ui->board_layer.id) {
+        rebuild_layer(ui, bounds, board);
+        ui->board_layer_key = key;
+    }
+}
+
+void board_view_free(Ui *ui) {
+    if (ui->board_layer.id) UnloadRenderTexture(ui->board_layer);
+    ui->board_layer = (RenderTexture2D){ 0 };
+}
+
+// ---- Draw callback ----------------------------------------------------------------------------------
+
 static void draw_board(void *user, Rectangle bounds) {
     Ui *ui = user;
     App *app = ui->app;
@@ -243,18 +344,37 @@ static void draw_board(void *user, Rectangle bounds) {
     BoardGeometry g = compute_geometry(bounds, board->width, board->height, app->config.show_coordinates);
     if (!g.valid) return;
     ui->board_geo = g;
+    f64 now = GetTime();
 
-    draw_surface(ui, &g);
-    draw_grid(ui, &g, app->config.show_coordinates);
+    draw_surface_shadow(ui, &g);
+    if (ui->board_layer.id && ui->board_layer.texture.width == (i32)bounds.width && ui->board_layer.texture.height == (i32)bounds.height) {
+        Texture2D t = ui->board_layer.texture;
+        BeginBlendMode(BLEND_ALPHA_PREMULTIPLY);
+        DrawTextureRec(t, (Rectangle){ 0, 0, (f32)t.width, -(f32)t.height }, (Vector2){ bounds.x, bounds.y }, WHITE);
+        EndBlendMode();
+    } else {
+        draw_surface(ui, &g);   // first frame / resize: draw directly
+        draw_grid(ui, &g, app->config.show_coordinates);
+    }
 
     const AnalysisSnapshot *analysis = app->analysis_valid ? app->analysis : NULL;
     if (analysis && app->config.show_ownership && analysis->has_ownership) draw_ownership(ui, &g, analysis, board);
 
-    // Stones.
+    // Stones: newly placed ones ease in (slight overshoot), removed ones fade out.
     f32 r = g.cell * 0.48f;
+    for (i32 i = 0; i < ui->ghost_count; ++i) {
+        f32 t = (f32)((now - ui->ghosts[i].born) / STONE_OUT_SECONDS);
+        if (ui->ghosts[i].point.x >= board->width || ui->ghosts[i].point.y >= board->height) continue;
+        if (board_at(board, ui->ghosts[i].point) != STONE_EMPTY) continue;
+        draw_stone(ui->theme, point_center(&g, ui->ghosts[i].point), r * (1.0f - 0.12f * ease_out_cubic(t)), ui->ghosts[i].color,
+                   1.0f - ease_out_cubic(t));
+    }
     for (i32 i = 0; i < board->width * board->height; ++i) {
         if (board->cells[i] == STONE_EMPTY) continue;
-        draw_stone(ui->theme, point_center(&g, board_point(board, i)), r, (Stone)board->cells[i], 1.0f);
+        f32 t = ui->stone_born[i] > 0 ? (f32)((now - ui->stone_born[i]) / STONE_IN_SECONDS) : 1.0f;
+        f32 scale = t < 1.0f ? 0.82f + 0.18f * ease_out_back(t) : 1.0f;
+        f32 alpha = t < 1.0f ? ease_out_cubic(t * 1.6f) : 1.0f;
+        draw_stone(ui->theme, point_center(&g, board_point(board, i)), r * scale, (Stone)board->cells[i], alpha);
     }
     // Move numbers (stones still on the board, latest number wins), else last-move marker.
     if (app->config.show_move_numbers) {
@@ -274,8 +394,10 @@ static void draw_board(void *user, Rectangle bounds) {
                                point_center(&g, board_point(board, i)), fg);
         }
     } else if (node->has_move && !point_is_pass(node->move.point)) {
-        Vector2 c = point_center(&g, node->move.point);
-        DrawCircleV(c, g.cell * 0.16f, ui->theme->colors.last_move);
+        i32 i = board_index(board, node->move.point);
+        f32 t = ui->stone_born[i] > 0 ? (f32)((now - ui->stone_born[i]) / STONE_IN_SECONDS) : 1.0f;
+        DrawCircleV(point_center(&g, node->move.point), g.cell * 0.16f * ease_out_back(CLAMP(t * 1.2f - 0.2f, 0.0f, 1.0f)),
+                    ui->theme->colors.last_move);
     }
 
     // Candidate preview: hovered on the board or in the candidates panel.
@@ -283,12 +405,21 @@ static void draw_board(void *user, Rectangle bounds) {
     if (analysis && pv_index >= 0 && pv_index < analysis->candidate_count) {
         draw_pv(ui, &g, &analysis->candidates[pv_index], analysis->to_play, board);
     } else {
-        if (analysis && app->config.show_candidates) draw_candidates(ui, &g, analysis, board);
-        // Ghost stone under the cursor.
-        Point h = ui->hover_point;
-        if (!point_is_pass(h) && board_at(board, h) == STONE_EMPTY &&
-            board_check(board, (Move){ node->to_play, h }, app->tree->rules) == MOVE_OK) {
-            draw_stone(ui->theme, point_center(&g, h), r, node->to_play, 0.45f);
+        // Candidates fade in whenever a new position gets its first analysis.
+        enum { CANDIDATE_KEY = 0xCA4D1D47u };
+        if (app->synced_position_id != ui->candidates_position) {
+            ui->candidates_position = app->synced_position_id;
+            anim_set(&ui->anim, CANDIDATE_KEY, 0.0f);
+        }
+        f32 fade = anim_towards(&ui->anim, CANDIDATE_KEY, analysis ? 1.0f : 0.0f, 10.0f, 0.0f);
+        if (analysis && app->config.show_candidates && fade > 0.01f) draw_candidates(ui, &g, analysis, board, fade);
+        // Ghost stone under the cursor, fading in/out per point.
+        for (i32 i = 0; i < board->width * board->height; ++i) {
+            Point p = board_point(board, i);
+            bool hovered = point_eq(p, ui->hover_point) && board->cells[i] == STONE_EMPTY &&
+                           board_check(board, (Move){ node->to_play, p }, app->tree->rules) == MOVE_OK;
+            f32 a = anim_towards(&ui->anim, 0x60000000u + (u32)i, hovered ? 0.45f : 0.0f, 18.0f, 0.0f);
+            if (a > 0.01f && board->cells[i] == STONE_EMPTY) draw_stone(ui->theme, point_center(&g, p), r, node->to_play, a);
         }
     }
 }

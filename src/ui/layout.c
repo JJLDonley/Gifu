@@ -230,14 +230,17 @@ static void tab_group(Ui *ui, const SidebarEntry *entry, i32 group) {
                 StringView label = app_tr(ui->app, tab_key, app_tr(ui->app, panel_key, panel_key + 6).data);
                 Clay_ElementId id = CLAY_IDI("SidebarTab", (u32)(group * 32 + t));
                 bool active = t == *selected, over = Clay_PointerOver(id);
+                f32 on = anim_towards(&ui->anim, id.id, active ? 1.0f : 0.0f, 14.0f, active ? 1.0f : 0.0f);
+                f32 hov = anim_towards(&ui->anim, id.id ^ 0x7AB5u, over ? 1.0f : 0.0f, 16.0f, 0.0f);
+                Color tab_bg = color_lerp(color_with_alpha(c->hover, hov * c->hover.a / 255.0f), c->accent, on);
                 CLAY({ .id = id,
                        .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) },
                                    .padding = { ui_u16(ui, 4), ui_u16(ui, 4), ui_u16(ui, 5), ui_u16(ui, 5) },
                                    .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER } },
-                       .backgroundColor = color_to_clay(active ? c->accent : over ? c->hover : (Color){ 0 }),
+                       .backgroundColor = color_to_clay(tab_bg),
                        .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, ui->theme->shape.radius * 0.6f)) }) {
                     CLAY_TEXT(ui_str(ui, label), CLAY_TEXT_CONFIG({ .fontId = FONT_UI_BOLD, .fontSize = ui_u16(ui, 13),
-                                                                    .textColor = color_to_clay(active ? c->accent_text : c->text_muted),
+                                                                    .textColor = color_to_clay(color_lerp(c->text_muted, c->accent_text, on)),
                                                                     .wrapMode = CLAY_TEXT_WRAP_NONE }));
                 }
                 if (over && ui->mouse_pressed && !ui->pointer_over_menu) *selected = t;

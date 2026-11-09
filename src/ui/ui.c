@@ -2,6 +2,7 @@
 
 #include "base/log.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -103,6 +104,7 @@ static void cmd_zoom_out(void *c) {
 static void open_dialog(Ui *ui, UiDialog dialog) {
     ui->dialog = ui->dialog == dialog ? UI_DIALOG_NONE : dialog;
     ui->focus_id = 0;
+    anim_set(&ui->anim, CLAY_ID("ModalDialog").id, 0.0f);   // replay the open animation
 }
 static void cmd_settings(void *c) { open_dialog(UI(c), UI_DIALOG_SETTINGS); }
 static bool settings_shown(const void *c) { return ((const Ui *)c)->dialog == UI_DIALOG_SETTINGS; }
@@ -189,6 +191,7 @@ bool ui_init(Ui *ui, App *app) {
 }
 
 void ui_shutdown(Ui *ui) {
+    board_view_free(ui);
     background_free(&ui->background);
     if (ui->board_texture.id) UnloadTexture(ui->board_texture);
     string_free(&ui->board_texture_for);
@@ -248,6 +251,7 @@ static void update_title(Ui *ui) {
 
 void ui_frame(Ui *ui) {
     arena_reset(&ui->frame);
+    anim_begin_frame(&ui->anim, GetFrameTime());
     ui->scale = ui->app->config.ui_scale;
     ui->mouse = GetMousePosition();
     ui->mouse_pressed = IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
@@ -267,7 +271,12 @@ void ui_frame(Ui *ui) {
 
     Clay_SetLayoutDimensions((Clay_Dimensions){ (f32)GetScreenWidth(), (f32)GetScreenHeight() });
     Clay_SetPointerState((Clay_Vector2){ ui->mouse.x, ui->mouse.y }, ui->mouse_down);
-    Clay_UpdateScrollContainers(true, (Clay_Vector2){ 0, ui->wheel * 48.0f }, GetFrameTime());
+    // Smooth wheel scrolling: queue the distance and release it over a few frames.
+    ui->scroll_pending += ui->wheel * 56.0f * ui->scale;
+    f32 step = ui->scroll_pending * (1.0f - expf(-18.0f * ui->anim.dt));
+    if (fabsf(ui->scroll_pending) < 0.5f) step = ui->scroll_pending;
+    ui->scroll_pending -= step;
+    Clay_UpdateScrollContainers(true, (Clay_Vector2){ 0, step }, GetFrameTime());
 
     Clay_BeginLayout();
     layout_build(ui);
@@ -275,6 +284,7 @@ void ui_frame(Ui *ui) {
     if (!ui->focus_claimed) ui->focus_id = 0;   // focused input disappeared
     board_view_handle_input(ui);
     if (ui->mouse_released) ui->active_id = 0;
+    board_view_prepare(ui);   // render-texture work must happen outside BeginDrawing
 
     BeginDrawing();
     background_draw(&ui->background, ui->theme, (Rectangle){ 0, 0, (f32)GetScreenWidth(), (f32)GetScreenHeight() });

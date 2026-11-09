@@ -210,11 +210,14 @@ void ui_modal(Ui *ui, JsonValue form, f32 width, ModalSection footer, void *user
     const Theme *t = ui->theme;
     f32 sw = (f32)GetScreenWidth(), sh = (f32)GetScreenHeight();
     Clay_ElementId dialog = CLAY_ID("ModalDialog");
+    f32 open = anim_towards(&ui->anim, dialog.id, 1.0f, 14.0f, 0.0f);   // reset to 0 when a dialog opens
+    f32 slide = (1.0f - ease_out_cubic(open)) * ui_px(ui, 48);
     CLAY({ .id = CLAY_ID("ModalBackdrop"),
            .floating = { .attachTo = CLAY_ATTACH_TO_ROOT, .zIndex = 200 },
            .layout = { .sizing = { CLAY_SIZING_FIXED(sw), CLAY_SIZING_FIXED(sh) },
+                       .padding = { 0, 0, (u16)slide, 0 },
                        .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER } },
-           .backgroundColor = color_to_clay(color_with_alpha(BLACK, t->dark ? 0.55f : 0.30f)) }) {
+           .backgroundColor = color_to_clay(color_with_alpha(BLACK, (t->dark ? 0.55f : 0.30f) * open)) }) {
         CLAY({ .id = dialog,
                .layout = { .sizing = { CLAY_SIZING_FIXED(fminf(ui_px(ui, width), sw - 40)), CLAY_SIZING_FIT(0, sh * 0.88f) },
                            .layoutDirection = CLAY_TOP_TO_BOTTOM },

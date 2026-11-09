@@ -46,18 +46,17 @@ bool ui_button(Ui *ui, Clay_ElementId id, StringView label, ButtonStyle style, b
     const ThemeColors *c = &ui->theme->colors;
     bool over = Clay_PointerOver(id) && enabled;
     bool pressed = over && ui->mouse_down && ui->active_id == id.id;
-    Color bg = (Color){ 0, 0, 0, 0 }, fg = c->text, border = (Color){ 0, 0, 0, 0 };
-    if (style == BUTTON_PRIMARY || checked) {
-        bg = c->accent;
-        fg = c->accent_text;
-    } else if (style == BUTTON_NORMAL) {
-        bg = c->surface_alt;
-        border = c->border;
-    }
-    if (over && !(style == BUTTON_PRIMARY || checked)) {
-        bg = style == BUTTON_NORMAL ? color_lerp(c->surface_alt, c->text, 0.06f) : c->hover;
-    }
-    if (over && (style == BUTTON_PRIMARY || checked)) bg = color_lerp(c->accent, c->surface, 0.15f);
+    // Colours ease between rest / hover / checked states instead of snapping.
+    bool filled = style == BUTTON_PRIMARY || checked;
+    f32 fill = anim_towards(&ui->anim, id.id ^ 0x5EEDu, filled ? 1.0f : 0.0f, 14.0f, filled ? 1.0f : 0.0f);
+    f32 hover = anim_towards(&ui->anim, id.id, over ? 1.0f : 0.0f, 16.0f, 0.0f);
+    Color rest = style == BUTTON_NORMAL ? c->surface_alt : color_with_alpha(c->hover, 0.0f);
+    Color rest_hover = style == BUTTON_NORMAL ? color_lerp(c->surface_alt, c->text, 0.06f) : c->hover;
+    Color plain = color_lerp(rest, rest_hover, hover);
+    Color accent = color_lerp(c->accent, c->surface, 0.15f * hover);
+    Color bg = color_lerp(plain, accent, fill);
+    Color fg = color_lerp(c->text, c->accent_text, fill);
+    Color border = style == BUTTON_NORMAL ? color_with_alpha(c->border, (1.0f - fill) * c->border.a / 255.0f) : (Color){ 0, 0, 0, 0 };
     if (pressed) bg = color_lerp(bg, c->text, 0.12f);
     if (!enabled) {
         fg = color_with_alpha(c->text_muted, 0.55f);
@@ -180,16 +179,20 @@ bool ui_toggle(Ui *ui, Clay_ElementId id, bool on) {
     const ThemeColors *c = &ui->theme->colors;
     f32 w = ui_px(ui, 38), h = ui_px(ui, 22), knob = h - ui_px(ui, 6);
     bool over = Clay_PointerOver(id);
-    Color track = on ? c->accent : color_lerp(c->surface_alt, c->text, 0.18f);
-    if (over) track = color_lerp(track, c->text, 0.08f);
+    f32 t = anim_towards(&ui->anim, id.id, on ? 1.0f : 0.0f, 16.0f, on ? 1.0f : 0.0f);   // knob slides
+    f32 hover = anim_towards(&ui->anim, id.id ^ 0xB0B0u, over ? 1.0f : 0.0f, 16.0f, 0.0f);
+    Color track = color_lerp(color_lerp(c->surface_alt, c->text, 0.18f), c->accent, t);
+    track = color_lerp(track, c->text, 0.08f * hover);
+    f32 pad = ui_px(ui, 3);
+    u16 left = (u16)(pad + t * (w - knob - 2 * pad) + 0.5f);
     CLAY({ .id = id,
            .layout = { .sizing = { CLAY_SIZING_FIXED(w), CLAY_SIZING_FIXED(h) },
-                       .padding = CLAY_PADDING_ALL(ui_u16(ui, 3)),
-                       .childAlignment = { on ? CLAY_ALIGN_X_RIGHT : CLAY_ALIGN_X_LEFT, CLAY_ALIGN_Y_CENTER } },
+                       .padding = { left, 0, (u16)pad, (u16)pad },
+                       .childAlignment = { CLAY_ALIGN_X_LEFT, CLAY_ALIGN_Y_CENTER } },
            .backgroundColor = color_to_clay(track),
            .cornerRadius = CLAY_CORNER_RADIUS(h * 0.5f) }) {
         CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(knob), CLAY_SIZING_FIXED(knob) } },
-               .backgroundColor = color_to_clay(on ? c->accent_text : c->surface),
+               .backgroundColor = color_to_clay(color_lerp(c->surface, c->accent_text, t)),
                .cornerRadius = CLAY_CORNER_RADIUS(knob * 0.5f) }) {}
     }
     return over && ui->mouse_pressed;

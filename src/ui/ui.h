@@ -4,6 +4,7 @@
 #pragma once
 
 #include "app/app.h"
+#include "ui/anim.h"
 #include "ui/background.h"
 #include "ui/clay_render.h"
 #include "ui/font_cache.h"
@@ -79,6 +80,12 @@ void text_edit_free(TextEdit *edit);
 
 // ---- Ui --------------------------------------------------------------------------------------
 
+typedef struct StoneGhost {   // a removed stone fading out
+    Point point;
+    Stone color;
+    f64 born;
+} StoneGhost;
+
 typedef enum UiDialog {
     UI_DIALOG_NONE,
     UI_DIALOG_SETTINGS,
@@ -133,6 +140,22 @@ typedef struct Ui {
     i32 tab_selected[16];   // per tab group (sidebar entry index)
     bool in_tab;            // panels inside a tab group skip their card title
 
+    AnimStore anim;
+    f32 scroll_pending;     // wheel distance not yet applied (smooth scrolling)
+
+    // Board rendering: the static layer (surface, grid, coordinates) is cached
+    // in a render texture and rebuilt only when its inputs change.
+    RenderTexture2D board_layer;
+    u64 board_layer_key;
+    // Stone animations: board seen last frame, per-point appear time, and
+    // fading "ghosts" of removed stones.
+    u8 prev_cells[BOARD_MAX_POINTS];
+    i32 prev_width, prev_height;
+    f64 stone_born[BOARD_MAX_POINTS];
+    StoneGhost ghosts[64];
+    i32 ghost_count;
+    u64 candidates_position;
+
     // Board interaction (computed from last layout).
     BoardGeometry board_geo;
     Point hover_point;
@@ -181,6 +204,9 @@ void ui_card_title(Ui *ui, StringView title);
 
 void board_view_element(Ui *ui);
 void board_view_handle_input(Ui *ui);
+// Before BeginDrawing: refresh the cached board layer and stone animations.
+void board_view_prepare(Ui *ui);
+void board_view_free(Ui *ui);
 void winrate_graph_element(Ui *ui, f32 height);
 void variation_tree_element(Ui *ui, f32 height);
 

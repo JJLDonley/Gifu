@@ -118,6 +118,7 @@ add_executable(catagui
     src/ui/clay_render.c
     src/ui/ui.c
     src/ui/widgets.c
+    src/ui/anim.c
     src/ui/text_input.c
     src/ui/form.c
     src/ui/variation_tree.c
