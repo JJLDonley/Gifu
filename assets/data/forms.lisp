@@ -33,7 +33,10 @@
     (number engine.max_processes :min 1 :max 4 :step 1 :format "%.0f" :label settings.max_processes :fallback "KataGo processes at once (GPU memory)")
     (choice ai.human_profile :columns 5 :label settings.human_profile :fallback "Human strength (moves overlay, AI play)"
       (option rank_20k 20k) (option rank_15k 15k) (option rank_10k 10k) (option rank_5k 5k) (option rank_1k 1k)
-      (option rank_1d 1d) (option rank_3d 3d) (option rank_5d 5d) (option rank_9d 9d) (option proyear_2023 "Pro 2023")))
+      (option rank_1d 1d) (option rank_3d 3d) (option rank_5d 5d) (option rank_9d 9d) (option proyear_2023 "Pro 2023")
+      ; Pre-AlphaZero style (human play before 2016) and professionals of a given year.
+      (option preaz_15k "Pre-AZ 15k") (option preaz_5k "Pre-AZ 5k") (option preaz_1d "Pre-AZ 1d") (option preaz_5d "Pre-AZ 5d") (option preaz_9d "Pre-AZ 9d")
+      (option proyear_1800 "Pro 1800") (option proyear_1900 "Pro 1900") (option proyear_1950 "Pro 1950") (option proyear_1990 "Pro 1990") (option proyear_2015 "Pro 2015")))
   (section settings.analysis :fallback Analysis
     (bool analysis.on_start :label settings.analyze_on_start :fallback "Analyze on start")
     (bool analysis.show_candidates :label command.analysis.candidates :fallback Candidates)
