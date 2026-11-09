@@ -252,7 +252,13 @@ static void update_title(Ui *ui) {
 void ui_frame(Ui *ui) {
     arena_reset(&ui->frame);
     anim_begin_frame(&ui->anim, GetFrameTime());
-    ui->scale = ui->app->config.ui_scale;
+    // Effective scale = user preference x monitor content scale (150% / 200%
+    // displays). Glyphs are rasterized at the final pixel size, so text stays
+    // sharp; re-measure text when the scale changes (e.g. moved to another monitor).
+    Vector2 dpi = GetWindowScaleDPI();
+    f32 scale = ui->app->config.ui_scale * CLAMP(dpi.x, 1.0f, 4.0f);
+    if (scale != ui->scale) Clay_ResetMeasureTextCache();
+    ui->scale = scale;
     ui->mouse = GetMousePosition();
     ui->mouse_pressed = IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
     ui->mouse_released = IsMouseButtonReleased(MOUSE_BUTTON_LEFT);

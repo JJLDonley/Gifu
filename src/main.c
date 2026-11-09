@@ -63,6 +63,15 @@ int main(int argc, char **argv) {
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_MSAA_4X_HINT | FLAG_VSYNC_HINT);
     InitWindow(options.window_width ? options.window_width : app->config.window_width,
                options.window_height ? options.window_height : app->config.window_height, "CataGui");
+    // Start at a size that fits high-DPI monitors (config sizes are at 100%).
+    Vector2 dpi = GetWindowScaleDPI();
+    if (dpi.x > 1.01f && !options.window_width) {
+        i32 w = (i32)((f32)app->config.window_width * dpi.x), h = (i32)((f32)app->config.window_height * dpi.y);
+        i32 monitor = GetCurrentMonitor();
+        w = MIN(w, GetMonitorWidth(monitor) - 40);
+        h = MIN(h, GetMonitorHeight(monitor) - 80);
+        SetWindowSize(w, h);
+    }
     SetWindowMinSize(800, 560);
     SetExitKey(KEY_NULL);
     // Pace frames to the display (smooth animations on 120/144 Hz monitors).
@@ -86,8 +95,9 @@ int main(int argc, char **argv) {
         }
     }
     if (!IsWindowFullscreen() && !options.screenshot.len) {
-        app->config.window_width = GetScreenWidth();
-        app->config.window_height = GetScreenHeight();
+        Vector2 dpi_now = GetWindowScaleDPI();
+        app->config.window_width = (i32)((f32)GetScreenWidth() / MAX(dpi_now.x, 1.0f));
+        app->config.window_height = (i32)((f32)GetScreenHeight() / MAX(dpi_now.y, 1.0f));
     }
     ui_shutdown(ui);
     CloseWindow();
