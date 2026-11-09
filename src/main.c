@@ -3,6 +3,7 @@
 // Usage: catagui [file.sgf] [--theme ID] [--engine ID|none] [--portable]
 //                [--move N|-1] [--screenshot out.png [--delay SECONDS]]
 #include "app/app.h"
+#include "app/headless.h"
 #include "base/log.h"
 #include "ui/ui.h"
 
@@ -12,8 +13,10 @@
 
 static void usage(void) {
     fprintf(stderr,
-            "usage: catagui [file.sgf] [--theme ID] [--engine ID|none] [--portable]\n"
-            "               [--move N|-1] [--set KEY=VALUE]... [--run COMMAND_ID]... [--screenshot out.png [--delay SECONDS]] [--verbose]\n");
+            "usage: catagui [file.sgf] [--theme ID] [--engine ID|none] [--portable] [--size WxH]\n"
+            "               [--move N|-1] [--set KEY=VALUE]... [--run COMMAND_ID]...\n"
+            "               [--screenshot out.png [--delay SECONDS]] [--verbose]\n"
+            "       catagui --analyze FILE.sgf... [--out DIR] [--engine ID] [--set analysis.game_visits=N]\n");
 }
 
 static bool parse_args(int argc, char **argv, AppOptions *opts) {
@@ -26,6 +29,14 @@ static bool parse_args(int argc, char **argv, AppOptions *opts) {
         else if (sv_eq(a, SV("--delay")) && has_value) opts->screenshot_delay = atof(argv[++i]);
         else if (sv_eq(a, SV("--portable"))) opts->portable = true;
         else if (sv_eq(a, SV("--move")) && has_value) opts->start_move = atoi(argv[++i]);
+        else if (sv_eq(a, SV("--out")) && has_value) opts->output_dir = sv(argv[++i]);
+        else if (sv_eq(a, SV("--analyze"))) {
+            // All following non-option arguments are SGF files.
+            while (i + 1 < argc && argv[i + 1][0] != '-' && opts->analyze_count < (i32)countof(opts->analyze_files)) {
+                opts->analyze_files[opts->analyze_count++] = sv(argv[++i]);
+            }
+            opts->headless = true;
+        }
         else if (sv_eq(a, SV("--set")) && has_value && opts->setting_count < (i32)countof(opts->settings)) {
             opts->settings[opts->setting_count++] = sv(argv[++i]);
         }
@@ -58,6 +69,13 @@ int main(int argc, char **argv) {
     }
 
     App *app = calloc(1, sizeof(App));
+    if (options.headless) {   // batch analysis from the command line, no window
+        if (!app || !app_init(app, &options)) return 1;
+        int code = headless_analyze(app);
+        app_shutdown(app);
+        free(app);
+        return code;
+    }
     Ui *ui = calloc(1, sizeof(Ui));
     if (!app || !ui) return 1;
     if (!app_init(app, &options)) return 1;

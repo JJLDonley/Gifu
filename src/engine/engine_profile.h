@@ -7,6 +7,7 @@
 //   katago-opencl.program  = ${root}/katago/${platform}-opencl/katago${exe}
 //   katago-opencl.model    = ${root}/katago/networks
 //   katago-opencl.config   = ...
+//   katago-opencl.analysis_config = ...           (enables fast whole-game analysis)
 //   katago-opencl.arg      = -override-config     (repeat for each argument)
 //   katago-opencl.platforms = linux, windows        (optional)
 //
@@ -17,6 +18,7 @@
 
 #include "base/kv.h"
 #include "base/os.h"
+#include "engine/batch_analyzer.h"
 #include "engine/engine.h"
 
 typedef struct EngineProfile {
@@ -26,6 +28,7 @@ typedef struct EngineProfile {
     String program;
     String model;
     String config;
+    String analysis_config;   // enables the JSON batch analyzer for this engine
     String working_dir;
     StringVec args;
     StringVec platforms;   // empty = all
@@ -49,3 +52,6 @@ bool engine_profile_available(const EngineProfile *profile);
 
 // Factory: maps profile.kind to a concrete Engine implementation.
 Engine *engine_create(const EngineProfile *profile, String *error);
+// Batch analyzer for the profile (NULL with an error when it has no analysis_config).
+BatchAnalyzer *batch_analyzer_create(const EngineProfile *profile, String *error);
+bool engine_profile_can_batch(const EngineProfile *profile);

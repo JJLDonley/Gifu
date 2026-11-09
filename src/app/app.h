@@ -11,6 +11,7 @@
 #include "app/keymap.h"
 #include "core/sgf.h"
 #include "engine/engine_profile.h"
+#include "engine/game_job.h"
 
 typedef struct AppOptions {
     StringView sgf_path;
@@ -25,6 +26,10 @@ typedef struct AppOptions {
     i32 run_command_count;
     StringView settings[16];      // "key=value" config overrides (--set)
     i32 setting_count;
+    StringView analyze_files[256];   // --analyze: headless batch analysis
+    i32 analyze_count;
+    StringView output_dir;           // --out
+    bool headless;                   // no window, no interactive engine
 } AppOptions;
 
 enum { APP_LOG_LINES = 200 };
@@ -61,10 +66,16 @@ typedef struct App {
 
     // Whole-game analysis: the engine walks these nodes, analysing each one to
     // config.analysis_game_visits, while the user keeps navigating freely.
+    // Two strategies: the JSON analyzer (whole game in one query, fast) when
+    // the engine profile has an analysis_config, else walking positions over GTP.
     bool batch_running;
     bool batch_restore_analysis;   // analysis_enabled before the batch started
-    GameNode **batch_nodes;
+    GameNode **batch_nodes;        // GTP walk
     isize batch_count, batch_index;
+    BatchAnalyzer *analyzer;       // JSON analyzer (started on first use)
+    GameJob flash_job;
+    bool flash_running;
+    u32 flash_serial;
 
     // Play vs AI: which colours the engine plays (indexed by Stone).
     bool ai_plays[3];
@@ -107,3 +118,6 @@ void app_reload_language(App *app);
 void app_config_changed(App *app, StringView key);
 void app_batch_start(App *app);   // analyse the active line from the start
 void app_batch_stop(App *app);
+bool app_game_analysis_running(const App *app);
+// Progress of the running whole-game analysis (positions done / total).
+void app_game_analysis_progress(const App *app, isize *done, isize *total);

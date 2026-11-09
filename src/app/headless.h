@@ -1,0 +1,8 @@
+// headless.h - command-line batch analysis (no window).
+#pragma once
+
+#include "app/app.h"
+
+// Analyses app->options.analyze_files and writes the results into the SGFs.
+// Returns a process exit code.
+int headless_analyze(App *app);

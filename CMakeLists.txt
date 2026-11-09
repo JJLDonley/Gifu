@@ -96,6 +96,8 @@ add_library(catagui_core STATIC
     src/engine/kata_analysis.c
     src/engine/position.c
     src/engine/katago_engine.c
+    src/engine/katago_analyzer.c
+    src/engine/game_job.c
     src/engine/engine_profile.c
     src/app/commands.c
     src/app/keymap.c
@@ -117,6 +119,7 @@ add_executable(catagui
     src/main.c
     src/app/app.c
     src/app/file_dialog.c
+    src/app/headless.c
     src/ui/font_cache.c
     src/ui/theme.c
     src/ui/background.c
@@ -178,4 +181,10 @@ if(CATAGUI_BUILD_TESTS)
     catagui_warnings(catagui_engine_test)
     add_test(NAME engine_smoke COMMAND catagui_engine_test)
     set_tests_properties(engine_smoke PROPERTIES LABELS engine TIMEOUT 1000)
+
+    # Headless batch analysis of a small game through the KataGo JSON engine.
+    add_test(NAME headless_analyze
+             COMMAND catagui --analyze ${CATAGUI_TEST_SOURCE_DIR}/tests/data/sample_cjk.sgf
+                     --out ${CMAKE_BINARY_DIR}/analyzed --set analysis.game_visits=20)
+    set_tests_properties(headless_analyze PROPERTIES LABELS engine TIMEOUT 1000 PASS_REGULAR_EXPRESSION "DONE: 1 game")
 endif()

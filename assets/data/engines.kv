@@ -1,5 +1,5 @@
 # Engine profiles: "<id>.<field> = value". Fields: name kind program model config
-# working_dir arg (repeat per argument) platforms (comma list). Variables: ${root}
+# working_dir analysis_config arg (repeat per argument) platforms (comma list). Variables: ${root}
 # (install root), ${exe_dir}, ${platform} (windows|linux|macos), ${exe} (".exe" on
 # Windows). A model that is a directory picks the newest-named network in it.
 # Add or override profiles in <config_dir>/engines.kv.
@@ -9,6 +9,7 @@ katago-opencl.kind = katago-gtp
 katago-opencl.program = ${root}/katago/${platform}-opencl/katago${exe}
 katago-opencl.model = ${root}/katago/networks
 katago-opencl.config = ${root}/katago/${platform}-opencl/default_gtp.cfg
+katago-opencl.analysis_config = ${root}/katago/${platform}-opencl/analysis_example.cfg
 
 katago-cpu.name = KataGo · CPU (Eigen AVX2)
 katago-cpu.kind = katago-gtp
@@ -16,3 +17,4 @@ katago-cpu.platforms = linux
 katago-cpu.program = ${root}/katago/linux-eigenavx2/katago
 katago-cpu.model = ${root}/katago/networks
 katago-cpu.config = ${root}/katago/linux-eigenavx2/default_gtp.cfg
+katago-cpu.analysis_config = ${root}/katago/linux-eigenavx2/analysis_example.cfg

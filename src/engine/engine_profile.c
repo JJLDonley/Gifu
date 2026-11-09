@@ -63,6 +63,7 @@ static void profile_free(EngineProfile *p) {
     string_free(&p->model);
     string_free(&p->config);
     string_free(&p->working_dir);
+    string_free(&p->analysis_config);
     string_vec_free(&p->args);
     string_vec_free(&p->platforms);
 }
@@ -73,7 +74,7 @@ static EngineProfile *profile_for(EngineProfileVec *out, StringView id) {
     }
     vec_push(out, (EngineProfile){ .id = string_from(id), .name = string_from(id), .kind = string_from(SV("katago-gtp")),
                                    .program = string_from(SV("")), .model = string_from(SV("")), .config = string_from(SV("")),
-                                   .working_dir = string_from(SV("")) });
+                                   .working_dir = string_from(SV("")), .analysis_config = string_from(SV("")) });
     return &vec_last(out);
 }
 
@@ -95,6 +96,7 @@ void engine_profiles_from_kv(const KvFile *kv, const PathVars *vars, EngineProfi
         else if (sv_eq(field, SV("program"))) set_field(&p->program, path_vars_expand(vars, e->value));
         else if (sv_eq(field, SV("model"))) set_field(&p->model, path_vars_expand(vars, e->value));
         else if (sv_eq(field, SV("config"))) set_field(&p->config, path_vars_expand(vars, e->value));
+        else if (sv_eq(field, SV("analysis_config"))) set_field(&p->analysis_config, path_vars_expand(vars, e->value));
         else if (sv_eq(field, SV("working_dir"))) set_field(&p->working_dir, path_vars_expand(vars, e->value));
         else if (sv_eq(field, SV("arg"))) vec_push(&p->args, path_vars_expand(vars, e->value));
         else if (sv_eq(field, SV("platforms"))) {
@@ -183,4 +185,25 @@ Engine *engine_create(const EngineProfile *profile, String *error) {
     }
     if (error) *error = string_format("unknown engine kind '" SV_FMT "'", SV_ARG(string_sv(&profile->kind)));
     return NULL;
+}
+
+bool engine_profile_can_batch(const EngineProfile *profile) {
+    return profile && sv_eq(string_sv(&profile->kind), SV("katago-gtp")) && profile->analysis_config.len &&
+           os_file_exists(string_sv(&profile->analysis_config));
+}
+
+BatchAnalyzer *batch_analyzer_create(const EngineProfile *profile, String *error) {
+    if (!engine_profile_can_batch(profile)) {
+        if (error) *error = string_from(SV("engine profile has no usable analysis_config"));
+        return NULL;
+    }
+    StringView working_dir = string_sv(&profile->working_dir);
+    if (working_dir.len == 0) working_dir = path_dirname(string_sv(&profile->program));
+    KataGoAnalyzerSettings settings = {
+        .program = string_sv(&profile->program),
+        .model = string_sv(&profile->model),
+        .config = string_sv(&profile->analysis_config),
+        .working_dir = working_dir,
+    };
+    return katago_analyzer_create(&settings, error);
 }

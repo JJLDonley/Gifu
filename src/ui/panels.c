@@ -276,8 +276,10 @@ static void panel_report(Ui *ui) {
             CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 8),
                                .childAlignment = { .y = CLAY_ALIGN_Y_CENTER }, .padding = { 0, 0, 0, ui_u16(ui, 6) } } }) {
                 CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) } } }) {
-                    if (app->batch_running) {
-                        CLAY_TEXT(ui_fmt(ui, SV_FMT " %td / %td", SV_ARG(tr(ui, "label.analyzing", "Analyzing")), app->batch_index + 1, app->batch_count),
+                    isize done = 0, total = 0;
+                    app_game_analysis_progress(app, &done, &total);
+                    if (app_game_analysis_running(app)) {
+                        CLAY_TEXT(ui_fmt(ui, SV_FMT " %td / %td", SV_ARG(tr(ui, "label.analyzing", "Analyzing")), done, total),
                                   ui_text_style(ui, FONT_UI, 13, c->text_muted));
                     } else {
                         CLAY_TEXT(ui_fmt(ui, "%d / %d " SV_FMT, report->analysed_nodes, (i32)count, SV_ARG(tr(ui, "report.analysed", "positions analysed"))),
@@ -286,8 +288,10 @@ static void panel_report(Ui *ui) {
                 }
                 ui_command_button(ui, SV("analysis.game"), SV("@chart"), BUTTON_NORMAL, 0);
             }
-            if (app->batch_running) {
-                f32 progress = app->batch_count ? (f32)app->batch_index / (f32)app->batch_count : 0.0f;
+            if (app_game_analysis_running(app)) {
+                isize done = 0, total = 0;
+                app_game_analysis_progress(app, &done, &total);
+                f32 progress = total ? (f32)done / (f32)total : 0.0f;
                 f32 shown = anim_towards(&ui->anim, 0x9B07u, progress, 8.0f, progress);
                 CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(ui_px(ui, 4)) } },
                        .backgroundColor = color_to_clay(c->surface_alt), .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 2)) }) {

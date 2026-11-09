@@ -128,7 +128,11 @@ static void start_engine(App *app) {
     }
 }
 
-void app_restart_engine(App *app) { start_engine(app); }
+void app_restart_engine(App *app) {
+    batch_analyzer_destroy(app->analyzer);   // may belong to the previous profile
+    app->analyzer = NULL;
+    start_engine(app);
+}
 
 void app_set_analysis(App *app, bool enabled) {
     app->analysis_enabled = enabled;
@@ -156,7 +160,84 @@ static void store_node_eval(GameNode *node, const AnalysisSnapshot *a) {
 
 // ---- Whole-game analysis ------------------------------------------------------------------
 
+bool app_game_analysis_running(const App *app) { return app->batch_running || app->flash_running; }
+
+void app_game_analysis_progress(const App *app, isize *done, isize *total) {
+    if (app->flash_running) {
+        *done = app->flash_job.received;
+        *total = app->flash_job.turns;
+    } else {
+        *done = app->batch_index;
+        *total = app->batch_count;
+    }
+}
+
+static void flash_finish(App *app) {
+    app->flash_running = false;
+    game_job_free(&app->flash_job);
+    if (app->batch_restore_analysis) app_set_analysis(app, true);   // resume interactive analysis
+}
+
+static void flash_stop(App *app) {
+    if (!app->flash_running) return;
+    if (app->analyzer) batch_analyzer_cancel(app->analyzer, string_sv(&app->flash_job.id));
+    flash_finish(app);
+}
+
+// Whole game in one query to the JSON analyzer. Returns false if unavailable.
+static bool flash_start(App *app) {
+    if (!engine_profile_can_batch(app->engine_profile)) return false;
+    if (app->analyzer && !batch_analyzer_alive(app->analyzer)) {
+        batch_analyzer_destroy(app->analyzer);
+        app->analyzer = NULL;
+    }
+    if (!app->analyzer) {
+        String err = { 0 };
+        app->analyzer = batch_analyzer_create(app->engine_profile, &err);
+        if (!app->analyzer) {
+            log_warn("analysis engine: %s (falling back to GTP)", string_cstr(&err));
+            string_free(&err);
+            return false;
+        }
+    }
+    GameNode *end = app->tree->current;
+    while (end->first_child) end = end->first_child;   // end of the active line
+    char id[32];
+    snprintf(id, sizeof(id), "flash%u", ++app->flash_serial);
+    game_job_build(&app->flash_job, app->tree, end, sv(id), string_sv(&app->config.rules));
+    AnalysisJob request = game_job_request(&app->flash_job, app->config.analysis_game_visits);
+    if (!batch_analyzer_submit(app->analyzer, &request)) {
+        game_job_free(&app->flash_job);
+        return false;
+    }
+    app->flash_running = true;
+    // Give the GPU to the batch: pause interactive analysis until it finishes.
+    app->batch_restore_analysis = app->analysis_enabled;
+    app_set_analysis(app, false);
+    app_set_status(app, "Analyzing game (%d positions, %d visits each)", app->flash_job.turns, app->config.analysis_game_visits);
+    return true;
+}
+
+static void flash_update(App *app) {
+    if (!app->analyzer) return;
+    TurnResult r;
+    while (batch_analyzer_poll(app->analyzer, &r)) {
+        if (app->flash_running && game_job_apply(&app->flash_job, &r) && game_job_done(&app->flash_job)) {
+            if (app->flash_job.failed) app_set_status(app, "Game analysis failed: %s", string_cstr(&app->flash_job.error));
+            else app_set_status(app, "Game analysis complete");
+            app->dirty = true;   // evals are saved as CGE[] with the game
+            flash_finish(app);
+        }
+        turn_result_free(&r);
+    }
+    if (app->flash_running && !batch_analyzer_alive(app->analyzer)) {
+        app_set_status(app, "Analysis engine exited");
+        flash_stop(app);
+    }
+}
+
 void app_batch_stop(App *app) {
+    flash_stop(app);
     if (!app->batch_running) return;
     app->batch_running = false;
     free(app->batch_nodes);
@@ -169,6 +250,7 @@ void app_batch_stop(App *app) {
 void app_batch_start(App *app) {
     if (!app->engine) return;
     app_batch_stop(app);
+    if (flash_start(app)) return;   // fast path: KataGo JSON analysis
     enum { MAX_LINE = 4096 };
     GameNode **line = malloc(sizeof(GameNode *) * MAX_LINE);
     if (!line) abort();
@@ -203,6 +285,7 @@ static void batch_advance(App *app) {
 }
 
 void app_update(App *app) {
+    flash_update(app);
     if (!app->engine) return;
     EngineEvent ev;
     while (engine_poll(app->engine, &ev)) {
@@ -508,10 +591,10 @@ static bool has_result(const void *c) { return CAPP(c)->result.len > 0 && CAPP(c
 
 static void cmd_game_analysis(void *c) {
     App *app = APP(c);
-    if (app->batch_running) app_batch_stop(app);
+    if (app_game_analysis_running(app)) app_batch_stop(app);
     else app_batch_start(app);
 }
-static bool batch_running(const void *c) { return CAPP(c)->batch_running; }
+static bool batch_running(const void *c) { return app_game_analysis_running(CAPP(c)); }
 
 static void cmd_ai_black(void *c) { APP(c)->ai_plays[STONE_BLACK] = !APP(c)->ai_plays[STONE_BLACK]; }
 static void cmd_ai_white(void *c) { APP(c)->ai_plays[STONE_WHITE] = !APP(c)->ai_plays[STONE_WHITE]; }
@@ -619,13 +702,15 @@ bool app_init(App *app, const AppOptions *options) {
     for (i32 i = 0; i < options->start_move; ++i) game_tree_forward(app->tree);
 
     app->analysis_enabled = app->config.analyze_on_start;
-    start_engine(app);
+    if (!options->headless) start_engine(app);
     return true;
 }
 
 void app_shutdown(App *app) {
     stop_engine(app);
-    bool read_only = app->options.screenshot.len > 0;   // automated runs never touch user config
+    batch_analyzer_destroy(app->analyzer);
+    app->analyzer = NULL;
+    bool read_only = app->options.screenshot.len > 0 || app->options.headless;   // automated runs never touch user config
     if (!read_only && !config_save(&app->config)) log_warn("config not saved");
     game_tree_free(app->tree);
     config_free(&app->config);
