@@ -1,0 +1,31 @@
+// Dark — monochrome white-on-black.
+{
+  "name": "Dark",
+  "extends": "light",
+  "dark": true,
+  "colors": {
+    "background":      "#0D0D0D",
+    "surface":         "#161616",
+    "surface_alt":     "#1E1E1E",
+    "border":          "#2A2A2A",
+    "text":            "#EDEDED",
+    "text_muted":      "#9A9A9A",
+    "accent":          "#F2F2F2",
+    "accent_text":     "#0D0D0D",
+    "hover":           "#FFFFFF14",
+    "danger":          "#EF5350",
+    "board":           "#1B1B1B",
+    "board_line":      "#5C5C5C",
+    "board_label":     "#7A7A7A",
+    "black_stone":     "#050505",
+    "white_stone":     "#E8E8E8",
+    "black_stone_edge":"#707070",
+    "white_stone_edge":"#E8E8E8",
+    "last_move":       "#FF5252",
+    "winrate_black":   "#050505",
+    "winrate_white":   "#E8E8E8",
+    "graph_line":      "#F2F2F2",
+    "score_line":      "#7A7A7A",
+    "candidate_text":  "#000000"
+  }
+}

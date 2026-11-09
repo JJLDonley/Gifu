@@ -1,0 +1,15 @@
+# Build output
+/build/
+
+# Downloaded engine + networks (large; fetch with scripts or see README)
+/katago/
+
+# Reference checkout of the original Java LizzieYzy (read-only)
+/lizzieyzy/
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db

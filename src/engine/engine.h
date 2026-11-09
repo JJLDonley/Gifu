@@ -1,0 +1,96 @@
+// engine.h - the Engine interface (dependency-inversion boundary).
+//
+// The app talks only to `Engine`; concrete engines (KataGo GTP today, KataGo
+// analysis-JSON / remote SSH / other GTP engines later) implement EngineVTable.
+#pragma once
+
+#include "core/game_tree.h"
+#include "engine/analysis.h"
+
+typedef enum EngineStatus {
+    ENGINE_STATUS_STOPPED,
+    ENGINE_STATUS_STARTING,
+    ENGINE_STATUS_READY,
+    ENGINE_STATUS_FAILED,
+} EngineStatus;
+
+// A position described the way engines want it: optional setup stones,
+// followed by a move sequence.
+typedef struct PositionSpec {
+    u64 id;
+    i32 width, height;
+    f32 komi;
+    StringView rules;   // KataGo rule name, e.g. "chinese", "japanese", "tromp-taylor"
+    Stone to_play;
+    i32 setup_count;
+    Move setup[BOARD_MAX_POINTS];
+    i32 move_count;
+    Move moves[1024];
+} PositionSpec;
+
+typedef struct AnalysisRequest {
+    i32 interval_centiseconds;
+    bool include_ownership;
+    i32 max_candidates;   // 0 = engine default
+} AnalysisRequest;
+
+typedef struct MoveRequest {
+    u64 position_id;          // the position the move is for (from set_position)
+    Stone color;
+    f32 seconds;              // thinking time per move
+} MoveRequest;
+
+typedef enum EngineEventKind {
+    ENGINE_EVENT_STATUS,     // status changed (see engine_status)
+    ENGINE_EVENT_MOVE,       // `move` answers a request_move (`resigned` if the engine resigned)
+    ENGINE_EVENT_ANALYSIS,   // `analysis` points at the latest snapshot
+    ENGINE_EVENT_LOG,        // `text` is one log line
+    ENGINE_EVENT_ERROR,      // `text` describes a failed command
+} EngineEventKind;
+
+typedef struct EngineEvent {
+    EngineEventKind kind;
+    EngineStatus status;
+    const AnalysisSnapshot *analysis;   // valid until the next poll
+    StringView text;                    // valid until the next poll
+    Move move;
+    u64 position_id;
+    bool resigned;
+} EngineEvent;
+
+typedef struct Engine Engine;
+
+typedef struct EngineVTable {
+    StringView (*name)(const Engine *engine);
+    EngineStatus (*status)(const Engine *engine);
+    void (*set_position)(Engine *engine, const PositionSpec *position);
+    void (*start_analysis)(Engine *engine, const AnalysisRequest *request);
+    void (*stop_analysis)(Engine *engine);
+    bool (*is_analyzing)(const Engine *engine);
+    void (*request_move)(Engine *engine, const MoveRequest *request);
+    bool (*is_thinking)(const Engine *engine);
+    bool (*poll)(Engine *engine, EngineEvent *out);
+    void (*destroy)(Engine *engine);
+} EngineVTable;
+
+struct Engine {
+    const EngineVTable *vtable;
+};
+
+static inline StringView engine_name(const Engine *e) { return e->vtable->name(e); }
+static inline EngineStatus engine_status(const Engine *e) { return e->vtable->status(e); }
+static inline void engine_set_position(Engine *e, const PositionSpec *p) { e->vtable->set_position(e, p); }
+static inline void engine_start_analysis(Engine *e, const AnalysisRequest *r) { e->vtable->start_analysis(e, r); }
+static inline void engine_stop_analysis(Engine *e) { e->vtable->stop_analysis(e); }
+static inline bool engine_is_analyzing(const Engine *e) { return e->vtable->is_analyzing(e); }
+static inline bool engine_poll(Engine *e, EngineEvent *out) { return e->vtable->poll(e, out); }
+static inline void engine_request_move(Engine *e, const MoveRequest *r) { e->vtable->request_move(e, r); }
+static inline bool engine_is_thinking(const Engine *e) { return e->vtable->is_thinking(e); }
+static inline void engine_destroy(Engine *e) {
+    if (e) e->vtable->destroy(e);
+}
+
+const char *engine_status_name(EngineStatus status);
+
+// Builds the engine-facing description of `node` (root..node path).
+void position_spec_from_node(const GameTree *tree, const GameNode *node, StringView rules, PositionSpec *out);

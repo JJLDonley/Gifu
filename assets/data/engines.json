@@ -1,0 +1,25 @@
+// Engine profiles. Variables: ${root} (install root), ${exe_dir}, ${platform}
+// (windows|linux|macos), ${exe} (".exe" on Windows). A "model" pointing at a
+// directory picks the newest-named network file in it. "platforms" limits a
+// profile to some OSes. Users add/override profiles in config.json "engines".
+{
+  "engines": [
+    {
+      "id": "katago-opencl",
+      "name": "KataGo · OpenCL",
+      "kind": "katago-gtp",
+      "program": "${root}/katago/${platform}-opencl/katago${exe}",
+      "model": "${root}/katago/networks",
+      "config": "${root}/katago/${platform}-opencl/default_gtp.cfg"
+    },
+    {
+      "id": "katago-cpu",
+      "name": "KataGo · CPU (Eigen AVX2)",
+      "kind": "katago-gtp",
+      "platforms": ["linux"],
+      "program": "${root}/katago/linux-eigenavx2/katago",
+      "model": "${root}/katago/networks",
+      "config": "${root}/katago/linux-eigenavx2/default_gtp.cfg"
+    }
+  ]
+}

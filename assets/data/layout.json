@@ -1,0 +1,43 @@
+// Window layout. Toolbar / navbar items are either {"command": "<id>"} or a
+// {"type": ...} widget: separator, spacer, engine_status, theme_picker,
+// move_counter. Sidebar panels are drawn in order; available panels:
+// game_info, winrate_summary, winrate_graph, variation_tree, candidates,
+// comment (editable), engine_log.
+{
+  "toolbar": [
+    { "command": "file.new" },
+    { "command": "file.open" },
+    { "command": "file.save" },
+    { "type": "separator" },
+    { "command": "analysis.toggle", "style": "primary" },
+    { "command": "analysis.candidates" },
+    { "command": "analysis.ownership" },
+    { "command": "view.coordinates" },
+    { "type": "separator" },
+    { "command": "game.ai_black", "icon": "AI ●" },
+    { "command": "game.ai_white", "icon": "AI ○" },
+    { "type": "spacer" },
+    { "type": "engine_status" },
+    { "type": "theme_picker" },
+    { "command": "view.settings" }
+  ],
+  "sidebar": {
+    "side": "right",
+    "width": 380,
+    "panels": ["game_info", "winrate_summary", "winrate_graph", "variation_tree", "candidates", "comment"]
+  },
+  "navbar": [
+    { "command": "nav.first",          "icon": "|<" },
+    { "command": "nav.back10",         "icon": "<<" },
+    { "command": "nav.back",           "icon": "<" },
+    { "type": "move_counter" },
+    { "command": "nav.forward",        "icon": ">" },
+    { "command": "nav.forward10",      "icon": ">>" },
+    { "command": "nav.last",           "icon": ">|" },
+    { "type": "separator" },
+    { "command": "nav.prev_variation", "icon": "^" },
+    { "command": "nav.next_variation", "icon": "v" },
+    { "type": "spacer" },
+    { "command": "move.pass" }
+  ]
+}
