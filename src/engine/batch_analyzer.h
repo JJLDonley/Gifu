@@ -55,6 +55,8 @@ void turn_result_free(TurnResult *r);
 // KataGo JSON analysis engine (`katago analysis -model M -config C`).
 typedef struct KataGoAnalyzerSettings {
     StringView program, model, config, working_dir;
+    const StringView *launcher;   // optional prefix (ssh ...)
+    isize launcher_count;
 } KataGoAnalyzerSettings;
 BatchAnalyzer *katago_analyzer_create(const KataGoAnalyzerSettings *settings, String *error);
 

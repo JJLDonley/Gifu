@@ -294,7 +294,7 @@ Engine *katago_engine_create(const KataGoSettings *settings, String *error) {
     args[argc++] = SV("reportAnalysisWinratesAs=SIDETOMOVE");
     for (isize i = 0; i < settings->extra_arg_count && argc < (isize)countof(args); ++i) args[argc++] = settings->extra_args[i];
 
-    ProcessSpec spec = { settings->program, args, argc, settings->working_dir };
+    ProcessSpec spec = { settings->program, args, argc, settings->working_dir, settings->launcher, settings->launcher_count };
     GtpClient *gtp = gtp_client_start(&spec, error);
     if (!gtp) return NULL;
 

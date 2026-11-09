@@ -10,6 +10,8 @@
 //   katago-opencl.analysis_config = ...           (enables fast whole-game analysis)
 //   katago-opencl.arg      = -override-config     (repeat for each argument)
 //   katago-opencl.platforms = linux, windows        (optional)
+//   remote.launcher = ssh -T user@gpu-box           (space-separated prefix; program,
+//                                                   model and config are remote paths)
 //
 // Strings may contain variables: ${root} (install root), ${exe_dir},
 // ${platform} (windows|linux|macos) and ${exe} (".exe" on Windows, else "").
@@ -31,6 +33,7 @@ typedef struct EngineProfile {
     String analysis_config;   // enables the JSON batch analyzer for this engine
     String working_dir;
     StringVec args;
+    StringVec launcher;   // e.g. ssh -T user@host: the engine runs remotely
     StringVec platforms;   // empty = all
 } EngineProfile;
 

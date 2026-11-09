@@ -11,6 +11,10 @@ typedef struct ProcessSpec {
     const StringView *args;   // not including argv[0]
     isize arg_count;
     StringView working_dir;   // empty = inherit
+    // Optional command prefix, e.g. {"ssh", "-T", "user@host"}: runs
+    // `launcher... program args...` (remote engines). The program is found on PATH.
+    const StringView *launcher;
+    isize launcher_count;
 } ProcessSpec;
 
 Process *process_spawn(const ProcessSpec *spec, String *error);

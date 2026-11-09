@@ -65,6 +65,7 @@ static void profile_free(EngineProfile *p) {
     string_free(&p->working_dir);
     string_free(&p->analysis_config);
     string_vec_free(&p->args);
+    string_vec_free(&p->launcher);
     string_vec_free(&p->platforms);
 }
 
@@ -99,6 +100,11 @@ void engine_profiles_from_kv(const KvFile *kv, const PathVars *vars, EngineProfi
         else if (sv_eq(field, SV("analysis_config"))) set_field(&p->analysis_config, path_vars_expand(vars, e->value));
         else if (sv_eq(field, SV("working_dir"))) set_field(&p->working_dir, path_vars_expand(vars, e->value));
         else if (sv_eq(field, SV("arg"))) vec_push(&p->args, path_vars_expand(vars, e->value));
+        else if (sv_eq(field, SV("launcher"))) {
+            string_vec_free(&p->launcher);
+            StringView rest = e->value;
+            for (StringView tok = sv_chop_token(&rest); tok.len; tok = sv_chop_token(&rest)) vec_push(&p->launcher, path_vars_expand(vars, tok));
+        }
         else if (sv_eq(field, SV("platforms"))) {
             StringView rest = e->value;
             while (rest.len) {
@@ -144,6 +150,7 @@ const EngineProfile *engine_profiles_find(const EngineProfileVec *profiles, Stri
 }
 
 bool engine_profile_available(const EngineProfile *profile) {
+    if (profile->launcher.len) return true;   // remote: files live on the other machine
     if (!os_file_exists(string_sv(&profile->program))) return false;
     return profile->model.len == 0 || os_file_exists(string_sv(&profile->model));
 }
@@ -159,8 +166,15 @@ static Engine *create_katago_gtp(const EngineProfile *p, String *error) {
         if (n < (isize)countof(extra)) extra[n++] = string_sv(a);
     }
     StringView working_dir = string_sv(&p->working_dir);
-    if (working_dir.len == 0) working_dir = path_dirname(string_sv(&p->program));
+    if (working_dir.len == 0 && !p->launcher.len) working_dir = path_dirname(string_sv(&p->program));
+    StringView launcher[16];
+    isize launcher_count = 0;
+    vec_foreach(String, l, &p->launcher) {
+        if (launcher_count < (isize)countof(launcher)) launcher[launcher_count++] = string_sv(l);
+    }
     KataGoSettings settings = {
+        .launcher = launcher,
+        .launcher_count = launcher_count,
         .name = string_sv(&p->name),
         .program = string_sv(&p->program),
         .model = string_sv(&p->model),
@@ -189,7 +203,7 @@ Engine *engine_create(const EngineProfile *profile, String *error) {
 
 bool engine_profile_can_batch(const EngineProfile *profile) {
     return profile && sv_eq(string_sv(&profile->kind), SV("katago-gtp")) && profile->analysis_config.len &&
-           os_file_exists(string_sv(&profile->analysis_config));
+           (profile->launcher.len || os_file_exists(string_sv(&profile->analysis_config)));
 }
 
 BatchAnalyzer *batch_analyzer_create(const EngineProfile *profile, String *error) {
@@ -198,8 +212,15 @@ BatchAnalyzer *batch_analyzer_create(const EngineProfile *profile, String *error
         return NULL;
     }
     StringView working_dir = string_sv(&profile->working_dir);
-    if (working_dir.len == 0) working_dir = path_dirname(string_sv(&profile->program));
+    if (working_dir.len == 0 && !profile->launcher.len) working_dir = path_dirname(string_sv(&profile->program));
+    StringView launcher[16];
+    isize launcher_count = 0;
+    vec_foreach(String, l, &profile->launcher) {
+        if (launcher_count < (isize)countof(launcher)) launcher[launcher_count++] = string_sv(l);
+    }
     KataGoAnalyzerSettings settings = {
+        .launcher = launcher,
+        .launcher_count = launcher_count,
         .program = string_sv(&profile->program),
         .model = string_sv(&profile->model),
         .config = string_sv(&profile->analysis_config),

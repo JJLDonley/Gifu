@@ -6,6 +6,22 @@
 #include <stdlib.h>
 #include <string.h>
 
+// `launcher... program args...` -> a plain spec (argv storage in `storage`).
+static ProcessSpec apply_launcher(const ProcessSpec *spec, StringView *storage, isize capacity) {
+    if (spec->launcher_count == 0) return *spec;
+    isize n = 0;
+    for (isize i = 1; i < spec->launcher_count && n < capacity; ++i) storage[n++] = spec->launcher[i];
+    if (n < capacity) storage[n++] = spec->program;
+    for (isize i = 0; i < spec->arg_count && n < capacity; ++i) storage[n++] = spec->args[i];
+    ProcessSpec out = *spec;
+    out.program = spec->launcher[0];
+    out.args = storage;
+    out.arg_count = n;
+    out.launcher = NULL;
+    out.launcher_count = 0;
+    return out;
+}
+
 #if defined(OS_WINDOWS)
 // =============================================================================
 // Windows
@@ -48,7 +64,10 @@ static void append_quoted(String *cmd, StringView arg) {
     string_push_char(cmd, '"');
 }
 
-Process *process_spawn(const ProcessSpec *spec, String *error) {
+Process *process_spawn(const ProcessSpec *original, String *error) {
+    StringView storage[64];
+    ProcessSpec flat = apply_launcher(original, storage, countof(storage));
+    const ProcessSpec *spec = &flat;
     SECURITY_ATTRIBUTES sa = { sizeof(sa), NULL, TRUE };
     HANDLE in_r = NULL, in_w = NULL, out_r = NULL, out_w = NULL, err_r = NULL, err_w = NULL;
     if (!CreatePipe(&in_r, &in_w, &sa, 0) || !CreatePipe(&out_r, &out_w, &sa, 0) || !CreatePipe(&err_r, &err_w, &sa, 0)) {
@@ -180,7 +199,10 @@ static char *dup_cstr(StringView s) {
     return p;
 }
 
-Process *process_spawn(const ProcessSpec *spec, String *error) {
+Process *process_spawn(const ProcessSpec *original, String *error) {
+    StringView storage[64];
+    ProcessSpec flat = apply_launcher(original, storage, countof(storage));
+    const ProcessSpec *spec = &flat;
     signal(SIGPIPE, SIG_IGN);   // writes to a dead engine must not kill the GUI
     int in_pipe[2], out_pipe[2], err_pipe[2];
     if (pipe(in_pipe) || pipe(out_pipe) || pipe(err_pipe)) {
@@ -206,7 +228,7 @@ Process *process_spawn(const ProcessSpec *spec, String *error) {
     for (isize i = 0; i < spec->arg_count; ++i) argv[i + 1] = dup_cstr(spec->args[i]);
 
     pid_t pid = 0;
-    int rc = posix_spawn(&pid, argv[0], &actions, NULL, argv, environ);
+    int rc = posix_spawnp(&pid, argv[0], &actions, NULL, argv, environ);   // PATH lookup (ssh, env, ...)
     posix_spawn_file_actions_destroy(&actions);
     for (isize i = 0; i <= spec->arg_count; ++i) free(argv[i]);
     free(argv);

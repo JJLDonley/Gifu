@@ -11,6 +11,8 @@ typedef struct KataGoSettings {
     StringView working_dir;
     const StringView *extra_args;
     isize extra_arg_count;
+    const StringView *launcher;   // optional prefix (ssh ...)
+    isize launcher_count;
 } KataGoSettings;
 
 Engine *katago_engine_create(const KataGoSettings *settings, String *error);

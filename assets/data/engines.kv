@@ -18,3 +18,13 @@ katago-cpu.program = ${root}/katago/linux-eigenavx2/katago
 katago-cpu.model = ${root}/katago/networks
 katago-cpu.config = ${root}/katago/linux-eigenavx2/default_gtp.cfg
 katago-cpu.analysis_config = ${root}/katago/linux-eigenavx2/analysis_example.cfg
+
+# Remote engine over SSH (key-based login: there is no terminal for a password
+# prompt). Program, model and config are paths on the remote machine. Put your
+# own version in <config_dir>/engines.kv.
+#   remote.name = KataGo on gpu-box
+#   remote.launcher = ssh -T user@gpu-box
+#   remote.program = /opt/katago/katago
+#   remote.model = /opt/katago/model.bin.gz
+#   remote.config = /opt/katago/default_gtp.cfg
+#   remote.analysis_config = /opt/katago/analysis_example.cfg

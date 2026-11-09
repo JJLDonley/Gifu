@@ -186,7 +186,7 @@ BatchAnalyzer *katago_analyzer_create(const KataGoAnalyzerSettings *s, String *e
         // positions (analysis threads) over deep search on each one.
         SV("-override-config"), SV("reportAnalysisWinratesAs=BLACK,numAnalysisThreads=12,numSearchThreadsPerAnalysisThread=2"),
     };
-    ProcessSpec spec = { s->program, args, countof(args), s->working_dir };
+    ProcessSpec spec = { s->program, args, countof(args), s->working_dir, s->launcher, s->launcher_count };
     LineChannel *channel = line_channel_start(&spec, error);
     if (!channel) return NULL;
     KataGoAnalyzer *k = calloc(1, sizeof(KataGoAnalyzer));
