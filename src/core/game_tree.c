@@ -308,6 +308,20 @@ bool game_tree_delete_node(GameTree *tree, GameNode *node) {
     return true;
 }
 
+bool game_node_winrate_loss(const GameNode *node, f32 *loss) {
+    if (!node->has_move || !node->parent || !node->eval.valid || !node->parent->eval.valid) return false;
+    f32 before = node->parent->eval.black_winrate, after = node->eval.black_winrate;
+    *loss = node->move.color == STONE_BLACK ? before - after : after - before;
+    return true;
+}
+
+bool game_node_score_loss(const GameNode *node, f32 *loss) {
+    if (!node->has_move || !node->parent || !node->eval.valid || !node->parent->eval.valid) return false;
+    f32 before = node->parent->eval.black_score, after = node->eval.black_score;
+    *loss = node->move.color == STONE_BLACK ? before - after : after - before;
+    return true;
+}
+
 i32 game_node_child_count(const GameNode *node) {
     i32 n = 0;
     for (GameNode *c = node->first_child; c; c = c->next_sibling) ++n;

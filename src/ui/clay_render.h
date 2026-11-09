@@ -12,6 +12,12 @@ typedef struct CustomElement {
     void *user;
 } CustomElement;
 
+// Nested clipping: each push intersects with the current clip rectangle and
+// pop restores the parent's. Custom draw callbacks must use these instead of
+// raylib's Begin/EndScissorMode so they don't cancel an enclosing clip.
+void render_push_scissor(Rectangle r);
+void render_pop_scissor(void);
+
 Clay_Dimensions clay_measure_text(Clay_StringSlice text, Clay_TextElementConfig *config, void *user_data);
 void clay_render(Clay_RenderCommandArray commands, FontCache *fonts);
 

@@ -94,6 +94,11 @@ bool game_tree_prev_variation(GameTree *tree);
 void game_tree_goto(GameTree *tree, GameNode *node);
 bool game_tree_delete_node(GameTree *tree, GameNode *node);   // unlinks the subtree (not root)
 
+// Win-rate the player who made this node's move lost by it (0..1, positive =
+// mistake), from the evals before and after. False when either is unknown.
+bool game_node_winrate_loss(const GameNode *node, f32 *loss);
+bool game_node_score_loss(const GameNode *node, f32 *loss);
+
 i32 game_node_child_count(const GameNode *node);
 i32 game_node_sibling_index(const GameNode *node);
 // The "active line": root..current followed by first-children past current.

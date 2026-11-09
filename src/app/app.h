@@ -20,6 +20,7 @@ typedef struct AppOptions {
     f64 screenshot_delay;    // seconds before capture
     bool portable;           // keep config next to the executable
     i32 start_move;          // advance N moves after loading (-1 = end)
+    i32 window_width, window_height;   // --size WxH (0 = from config)
     StringView run_commands[8];   // command ids executed once the UI is up (--run)
     i32 run_command_count;
 } AppOptions;

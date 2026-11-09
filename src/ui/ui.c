@@ -109,6 +109,16 @@ static bool settings_shown(const void *c) { return ((const Ui *)c)->dialog == UI
 static void cmd_new_game(void *c) { open_dialog(UI(c), UI_DIALOG_NEW_GAME); }
 static void cmd_move_numbers(void *c) { UI(c)->app->config.show_move_numbers = !UI(c)->app->config.show_move_numbers; }
 static bool shows_move_numbers(const void *c) { return ((const Ui *)c)->app->config.show_move_numbers; }
+// Cycles the first tab group in the sidebar.
+static void cmd_next_tab(void *c) {
+    Ui *ui = UI(c);
+    for (isize i = 0; i < ui->layout.panels.len; ++i) {
+        const SidebarEntry *e = &ui->layout.panels.items[i];
+        if (e->tab_count == 0 || i >= (isize)countof(ui->tab_selected)) continue;
+        ui->tab_selected[i] = (ui->tab_selected[i] + 1) % e->tab_count;
+        return;
+    }
+}
 static void cmd_debug(void *c) {
     UI(c)->debug = !UI(c)->debug;
     Clay_SetDebugModeEnabled(UI(c)->debug);
@@ -123,6 +133,7 @@ static void register_ui_commands(Ui *ui) {
         { "view.debug", "Layout debugger", "Debug", cmd_debug, NULL, NULL, ui },
         { "view.settings", "Settings", "Settings", cmd_settings, NULL, settings_shown, ui },
         { "file.new", "New game", "New", cmd_new_game, NULL, NULL, ui },
+        { "view.next_tab", "Next tab", "Tab", cmd_next_tab, NULL, NULL, ui },
         { "view.move_numbers", "Move numbers", "123", cmd_move_numbers, NULL, shows_move_numbers, ui },
     };
     command_register_all(&ui->app->commands, defs, countof(defs));
@@ -167,6 +178,9 @@ bool ui_init(Ui *ui, App *app) {
     Clay_Arena arena = Clay_CreateArenaWithCapacityAndMemory(memory_size, ui->clay_memory);
     Clay_Initialize(arena, (Clay_Dimensions){ (f32)GetScreenWidth(), (f32)GetScreenHeight() }, (Clay_ErrorHandler){ clay_error, 0 });
     Clay_SetMeasureTextFunction(clay_measure_text, ui->fonts);
+    // Culling drops off-screen clip containers but not their scrolled children,
+    // which then render unclipped. The layout is small, so render everything.
+    Clay_SetCullingEnabled(false);
 
     isize theme = themes_find(&ui->themes, string_sv(&app->config.theme));
     ui_apply_theme(ui, theme >= 0 ? theme : 0);

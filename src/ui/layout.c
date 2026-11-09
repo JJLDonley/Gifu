@@ -39,13 +39,25 @@ void layout_parse(LayoutSpec *spec, JsonValue root, f32 default_sidebar) {
     spec->sidebar_width = (f32)json_number(json_get(sidebar, "width"), default_sidebar);
     spec->sidebar_left = sv_eq(json_string(json_get(sidebar, "side"), SV("right")), SV("left"));
     JsonValue panels = json_get(sidebar, "panels");
-    for (isize i = 0; i < json_array_len(panels); ++i) vec_push(&spec->panels, json_string(json_array_at(panels, i), SV("")));
+    for (isize i = 0; i < json_array_len(panels); ++i) {
+        JsonValue entry = json_array_at(panels, i);
+        JsonValue tabs = json_get(entry, "tabs");
+        if (json_is_array(tabs)) {
+            SidebarEntry group = { .tab_start = (i32)spec->tab_panels.len };
+            for (isize k = 0; k < json_array_len(tabs); ++k) vec_push(&spec->tab_panels, json_string(json_array_at(tabs, k), SV("")));
+            group.tab_count = (i32)spec->tab_panels.len - group.tab_start;
+            vec_push(&spec->panels, group);
+        } else {
+            vec_push(&spec->panels, (SidebarEntry){ .panel = json_string(entry, SV("")) });
+        }
+    }
 }
 
 void layout_free(LayoutSpec *spec) {
     vec_free(&spec->toolbar);
     vec_free(&spec->navbar);
     vec_free(&spec->panels);
+    vec_free(&spec->tab_panels);
 }
 
 // ---- Toolbar widgets -----------------------------------------------------------------------
@@ -193,6 +205,46 @@ static Clay_ElementDeclaration bar(Ui *ui, Clay_ElementId id, bool top) {
     };
 }
 
+// Segmented tab bar + the selected panel. Selection is remembered per group.
+static void tab_group(Ui *ui, const SidebarEntry *entry, i32 group) {
+    const ThemeColors *c = &ui->theme->colors;
+    i32 *selected = &ui->tab_selected[MIN(group, (i32)countof(ui->tab_selected) - 1)];
+    *selected = CLAMP(*selected, 0, entry->tab_count - 1);
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                       .childGap = ui_u16(ui, 6) } }) {
+        CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 2),
+                           .padding = CLAY_PADDING_ALL(ui_u16(ui, 3)) },
+               .backgroundColor = color_to_clay(c->surface),
+               .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, ui->theme->shape.radius)),
+               .border = { .color = color_to_clay(c->border), .width = CLAY_BORDER_OUTSIDE((u16)ui->theme->shape.border_width) } }) {
+            for (i32 t = 0; t < entry->tab_count; ++t) {
+                StringView name = ui->layout.tab_panels.items[entry->tab_start + t];
+                // Short label: "tab.<panel>", then "panel.<panel>", then the panel id.
+                char tab_key[96], panel_key[96];
+                snprintf(tab_key, sizeof(tab_key), "tab." SV_FMT, SV_ARG(name));
+                snprintf(panel_key, sizeof(panel_key), "panel." SV_FMT, SV_ARG(name));
+                StringView label = app_tr(ui->app, tab_key, app_tr(ui->app, panel_key, panel_key + 6).data);
+                Clay_ElementId id = CLAY_IDI("SidebarTab", (u32)(group * 32 + t));
+                bool active = t == *selected, over = Clay_PointerOver(id);
+                CLAY({ .id = id,
+                       .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) },
+                                   .padding = { ui_u16(ui, 4), ui_u16(ui, 4), ui_u16(ui, 5), ui_u16(ui, 5) },
+                                   .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER } },
+                       .backgroundColor = color_to_clay(active ? c->accent : over ? c->hover : (Color){ 0 }),
+                       .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, ui->theme->shape.radius * 0.6f)) }) {
+                    CLAY_TEXT(ui_str(ui, label), CLAY_TEXT_CONFIG({ .fontId = FONT_UI_BOLD, .fontSize = ui_u16(ui, 13),
+                                                                    .textColor = color_to_clay(active ? c->accent_text : c->text_muted),
+                                                                    .wrapMode = CLAY_TEXT_WRAP_NONE }));
+                }
+                if (over && ui->mouse_pressed && !ui->pointer_over_menu) *selected = t;
+            }
+        }
+        ui->in_tab = true;
+        panels_render(ui, ui->layout.tab_panels.items[entry->tab_start + *selected]);
+        ui->in_tab = false;
+    }
+}
+
 static void sidebar(Ui *ui) {
     const LayoutSpec *spec = &ui->layout;
     CLAY({ .id = CLAY_ID("Sidebar"),
@@ -201,7 +253,11 @@ static void sidebar(Ui *ui) {
                        .childGap = ui_u16(ui, ui->theme->shape.gap),
                        .layoutDirection = CLAY_TOP_TO_BOTTOM },
            .clip = { .vertical = true, .childOffset = Clay_GetScrollOffset() } }) {
-        for (isize i = 0; i < spec->panels.len; ++i) panels_render(ui, spec->panels.items[i]);
+        for (isize i = 0; i < spec->panels.len; ++i) {
+            const SidebarEntry *e = &spec->panels.items[i];
+            if (e->tab_count == 0) panels_render(ui, e->panel);
+            else tab_group(ui, e, (i32)i);
+        }
     }
 }
 

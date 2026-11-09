@@ -140,6 +140,74 @@ static void panel_winrate_graph(Ui *ui) {
     }
 }
 
+// ---- move_list -------------------------------------------------------------------------------------------
+
+// Moves of the active line with the eval after each move and the win-rate the
+// mover lost; mistakes (> 5%) and blunders (> 10%) are highlighted.
+static void panel_move_list(Ui *ui) {
+    App *app = ui->app;
+    const ThemeColors *c = &ui->theme->colors;
+    enum { MAX_ROWS = 1024 };
+    GameNode **line = arena_new_array(&ui->frame, GameNode *, MAX_ROWS);
+    isize count = MIN(game_tree_active_line(app->tree, line, MAX_ROWS), (isize)MAX_ROWS);
+    Clay_ElementId clip = CLAY_ID("MoveListClip");
+    f32 row_h = ui_px(ui, 22);
+    CLAY(ui_card(ui, CLAY_ID("PanelMoveList"))) {
+        ui_card_title(ui, tr(ui, "panel.move_list", "Moves"));
+        CLAY({ .id = clip,
+               .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(ui_px(ui, 180)) }, .layoutDirection = CLAY_TOP_TO_BOTTOM },
+               .clip = { .vertical = true, .childOffset = Clay_GetScrollOffset() } }) {
+            for (isize i = 1; i < count; ++i) {
+                GameNode *n = line[i];
+                Clay_ElementId id = CLAY_IDI("MoveRow", (u32)i);
+                bool current = n == app->tree->current;
+                bool hovered = Clay_PointerOver(id);
+                f32 loss = 0;
+                bool has_loss = game_node_winrate_loss(n, &loss);
+                Color tint = has_loss && loss > 0.10f ? c->candidate_bad : has_loss && loss > 0.05f ? color_lerp(c->candidate_bad, c->candidate_good, 0.5f) : (Color){ 0 };
+                Color bg = current ? color_with_alpha(c->accent, 0.18f) : hovered ? c->hover : tint.a ? color_with_alpha(tint, 0.14f) : (Color){ 0 };
+                CLAY({ .id = id,
+                       .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(row_h) }, .childGap = ui_u16(ui, 8),
+                                   .padding = { ui_u16(ui, 6), ui_u16(ui, 6), 0, 0 }, .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } },
+                       .backgroundColor = color_to_clay(bg),
+                       .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 3)) }) {
+                    CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 34)), CLAY_SIZING_FIT(0) } } }) {
+                        CLAY_TEXT(ui_fmt(ui, "%d", n->move_number), ui_text_style(ui, FONT_MONO, 12, c->text_muted));
+                    }
+                    if (n->has_move) stone_dot(ui, n->move.color);
+                    char coord[8] = "—";
+                    if (n->has_move) point_to_gtp(n->move.point, n->board.width, n->board.height, coord);
+                    CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 44)), CLAY_SIZING_FIT(0) } } }) {
+                        ui_label(ui, sv(coord), FONT_MONO, 13, c->text);
+                    }
+                    CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 56)), CLAY_SIZING_FIT(0) } } }) {
+                        if (n->eval.valid) CLAY_TEXT(ui_fmt(ui, "%.1f%%", n->eval.black_winrate * 100.0f), ui_text_style(ui, FONT_MONO, 12, c->text_muted));
+                    }
+                    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childAlignment = { .x = CLAY_ALIGN_X_RIGHT } } }) {
+                        if (has_loss && fabsf(loss) >= 0.005f) {
+                            CLAY_TEXT(ui_fmt(ui, "%+.1f", -loss * 100.0f), ui_text_style(ui, FONT_MONO, 12, tint.a ? tint : c->text_muted));
+                        }
+                    }
+                }
+                if (hovered && ui->mouse_pressed && !ui->pointer_over_menu) app_goto(app, n);
+            }
+        }
+    }
+    // Keep the current move in view.
+    Clay_ScrollContainerData scroll = Clay_GetScrollContainerData(clip);
+    if (scroll.found && scroll.scrollPosition && ui->move_list_scrolled_to != app->tree->current) {
+        for (isize i = 1; i < count; ++i) {
+            if (line[i] != app->tree->current) continue;
+            f32 y = row_h * (f32)(i - 1), vh = scroll.scrollContainerDimensions.height;
+            Clay_Vector2 *pos = scroll.scrollPosition;
+            if (y + pos->y > vh - row_h) pos->y = -(y - vh + row_h * 2);
+            if (y + pos->y < 0) pos->y = -y;
+            break;
+        }
+        ui->move_list_scrolled_to = app->tree->current;
+    }
+}
+
 // ---- candidates ---------------------------------------------------------------------------------------
 
 static void panel_candidates(Ui *ui) {
@@ -254,6 +322,7 @@ static const struct {
     { "candidates", panel_candidates },
     { "comment", panel_comment },
     { "variation_tree", panel_variation_tree },
+    { "move_list", panel_move_list },
     { "engine_log", panel_engine_log },
 };
 

@@ -262,7 +262,7 @@ static void draw_text_input(void *user, Rectangle r) {
     DrawRectangleRounded(r, radius * 2 / fminf(r.width, r.height), 8, color_with_alpha(c->surface_alt, 0.9f));
     DrawRectangleRoundedLinesEx(r, radius * 2 / fminf(r.width, r.height), 8, st->focused ? 2.0f : 1.0f,
                                 st->focused ? c->accent : c->border);
-    BeginScissorMode((i32)r.x, (i32)r.y, (i32)r.width, (i32)r.height);
+    render_push_scissor(r);
     f32 x0 = r.x + st->padding, y0 = r.y + st->padding;
     StringView text = string_sv(&e->text);
     if (text.len == 0 && !st->focused && st->placeholder.len) {
@@ -286,7 +286,7 @@ static void draw_text_input(void *user, Rectangle r) {
         f32 y = y0 + layout->line_height * (f32)line;
         DrawRectangleRec((Rectangle){ floorf(x), y + 2, fmaxf(1.0f, ui->scale * 1.5f), layout->line_height - 4 }, c->text);
     }
-    EndScissorMode();
+    render_pop_scissor();
 }
 
 // ---- Widget -----------------------------------------------------------------------------------------

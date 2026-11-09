@@ -107,6 +107,7 @@ Clay_ElementDeclaration ui_card(Ui *ui, Clay_ElementId id) {
 }
 
 void ui_card_title(Ui *ui, StringView title) {
+    if (ui->in_tab) return;   // the tab bar already names the panel
     CLAY_TEXT(ui_str(ui, title), CLAY_TEXT_CONFIG({ .fontId = FONT_UI_BOLD, .fontSize = ui_u16(ui, 12),
                                                     .textColor = color_to_clay(ui->theme->colors.text_muted),
                                                     .letterSpacing = 1, .wrapMode = CLAY_TEXT_WRAP_NONE }));

@@ -11,6 +11,35 @@ Clay_Dimensions clay_measure_text(Clay_StringSlice text, Clay_TextElementConfig 
     return (Clay_Dimensions){ size.x, size.y };
 }
 
+enum { SCISSOR_STACK_MAX = 32 };
+static Rectangle g_scissor[SCISSOR_STACK_MAX];
+static i32 g_scissor_depth;
+
+static void apply_scissor(void) {
+    if (g_scissor_depth == 0) {
+        EndScissorMode();
+        return;
+    }
+    Rectangle r = g_scissor[g_scissor_depth - 1];
+    BeginScissorMode((i32)r.x, (i32)r.y, (i32)fmaxf(r.width, 0), (i32)fmaxf(r.height, 0));
+}
+
+void render_push_scissor(Rectangle r) {
+    if (g_scissor_depth > 0) {
+        Rectangle p = g_scissor[g_scissor_depth - 1];
+        f32 x0 = fmaxf(r.x, p.x), y0 = fmaxf(r.y, p.y);
+        f32 x1 = fminf(r.x + r.width, p.x + p.width), y1 = fminf(r.y + r.height, p.y + p.height);
+        r = (Rectangle){ x0, y0, fmaxf(0, x1 - x0), fmaxf(0, y1 - y0) };
+    }
+    if (g_scissor_depth < SCISSOR_STACK_MAX) g_scissor[g_scissor_depth++] = r;
+    apply_scissor();
+}
+
+void render_pop_scissor(void) {
+    if (g_scissor_depth > 0) g_scissor_depth--;
+    apply_scissor();
+}
+
 static Rectangle to_rect(Clay_BoundingBox b) {
     return (Rectangle){ roundf(b.x), roundf(b.y), roundf(b.width), roundf(b.height) };
 }
@@ -21,6 +50,7 @@ static f32 roundness_for(Rectangle r, f32 radius) {
 }
 
 void clay_render(Clay_RenderCommandArray commands, FontCache *fonts) {
+    g_scissor_depth = 0;
     for (i32 i = 0; i < commands.length; ++i) {
         Clay_RenderCommand *cmd = Clay_RenderCommandArray_Get(&commands, i);
         Rectangle r = to_rect(cmd->boundingBox);
@@ -41,10 +71,10 @@ void clay_render(Clay_RenderCommandArray commands, FontCache *fonts) {
                 break;
             }
             case CLAY_RENDER_COMMAND_TYPE_SCISSOR_START:
-                BeginScissorMode((i32)r.x, (i32)r.y, (i32)r.width, (i32)r.height);
+                render_push_scissor(r);
                 break;
             case CLAY_RENDER_COMMAND_TYPE_SCISSOR_END:
-                EndScissorMode();
+                render_pop_scissor();
                 break;
             case CLAY_RENDER_COMMAND_TYPE_RECTANGLE: {
                 Clay_RectangleRenderData *rect = &cmd->renderData.rectangle;

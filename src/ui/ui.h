@@ -30,10 +30,19 @@ typedef struct LayoutItem {
 typedef Vec(LayoutItem) LayoutItemVec;
 typedef Vec(StringView) StringViewVec;
 
+// A sidebar entry is a single panel, or a tab group showing one of several.
+typedef struct SidebarEntry {
+    StringView panel;   // empty for tab groups
+    i32 tab_start;      // index into LayoutSpec.tab_panels
+    i32 tab_count;
+} SidebarEntry;
+typedef Vec(SidebarEntry) SidebarEntryVec;
+
 typedef struct LayoutSpec {
     LayoutItemVec toolbar;
     LayoutItemVec navbar;
-    StringViewVec panels;
+    SidebarEntryVec panels;
+    StringViewVec tab_panels;
     f32 sidebar_width;
     bool sidebar_left;
 } LayoutSpec;
@@ -120,6 +129,9 @@ typedef struct Ui {
 
     // Variation tree.
     GameNode *tree_scrolled_to;
+    GameNode *move_list_scrolled_to;
+    i32 tab_selected[16];   // per tab group (sidebar entry index)
+    bool in_tab;            // panels inside a tab group skip their card title
 
     // Board interaction (computed from last layout).
     BoardGeometry board_geo;

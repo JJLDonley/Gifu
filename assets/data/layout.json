@@ -1,8 +1,9 @@
 // Window layout. Toolbar / navbar items are either {"command": "<id>"} or a
 // {"type": ...} widget: separator, spacer, engine_status, theme_picker,
 // move_counter. Sidebar panels are drawn in order; available panels:
-// game_info, winrate_summary, winrate_graph, variation_tree, candidates,
-// comment (editable), engine_log.
+// game_info, winrate_summary, winrate_graph, variation_tree, candidates, move_list,
+// comment (editable), engine_log. An entry {"tabs": [...]} shows several
+// panels as tabs (one visible at a time).
 {
   "toolbar": [
     { "command": "file.new" },
@@ -23,7 +24,12 @@
   "sidebar": {
     "side": "right",
     "width": 380,
-    "panels": ["game_info", "winrate_summary", "winrate_graph", "variation_tree", "candidates", "comment"]
+    "panels": [
+      "game_info",
+      "winrate_summary",
+      "winrate_graph",
+      { "tabs": ["candidates", "move_list", "variation_tree", "comment"] }
+    ]
   },
   "navbar": [
     { "command": "nav.first",          "icon": "|<" },

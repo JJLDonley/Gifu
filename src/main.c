@@ -26,6 +26,13 @@ static bool parse_args(int argc, char **argv, AppOptions *opts) {
         else if (sv_eq(a, SV("--delay")) && has_value) opts->screenshot_delay = atof(argv[++i]);
         else if (sv_eq(a, SV("--portable"))) opts->portable = true;
         else if (sv_eq(a, SV("--move")) && has_value) opts->start_move = atoi(argv[++i]);
+        else if (sv_eq(a, SV("--size")) && has_value) {
+            StringView rest = sv(argv[++i]);
+            i64 w = 0, h = 0;
+            if (!sv_parse_i64(sv_chop_char(&rest, 'x'), &w) || !sv_parse_i64(rest, &h)) return false;
+            opts->window_width = (i32)w;
+            opts->window_height = (i32)h;
+        }
         else if (sv_eq(a, SV("--run")) && has_value && opts->run_command_count < (i32)countof(opts->run_commands)) {
             opts->run_commands[opts->run_command_count++] = sv(argv[++i]);
         }
@@ -54,7 +61,8 @@ int main(int argc, char **argv) {
 
     SetTraceLogLevel(LOG_WARNING);
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_MSAA_4X_HINT | FLAG_VSYNC_HINT);
-    InitWindow(app->config.window_width, app->config.window_height, "CataGui");
+    InitWindow(options.window_width ? options.window_width : app->config.window_width,
+               options.window_height ? options.window_height : app->config.window_height, "CataGui");
     SetWindowMinSize(800, 560);
     SetExitKey(KEY_NULL);
     SetTargetFPS(60);
