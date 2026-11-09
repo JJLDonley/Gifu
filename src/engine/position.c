@@ -12,6 +12,15 @@ const char *engine_status_name(EngineStatus status) {
     return "?";
 }
 
+bool human_profile_valid(StringView profile) {
+    if (profile.len == 0 || profile.len > 32) return false;
+    for (isize i = 0; i < profile.len; ++i) {
+        char c = profile.data[i];
+        if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_')) return false;
+    }
+    return true;
+}
+
 static bool has_setup_props(const GameNode *node) {
     return game_node_find_prop(node, SV("AB")) || game_node_find_prop(node, SV("AW")) ||
            game_node_find_prop(node, SV("AE"));

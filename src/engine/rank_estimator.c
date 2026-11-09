@@ -1,7 +1,6 @@
 #include "engine/rank_estimator.h"
 
 #include "base/log.h"
-#include "engine/gtp_client.h"
 
 #include <math.h>
 #include <stdarg.h>
@@ -49,29 +48,17 @@ void rank_tally_posterior(const RankTally *t, f32 out[RANK_COUNT]) {
 // ---- Job --------------------------------------------------------------------------------------
 
 struct RankEstimator {
-    GtpClient *gtp;
+    Engine *engine;
     PositionSpec *game;
-    i32 next_move;              // next move index to send
-    i32 pending;                // raw-nn answers outstanding for the current move
-    i32 raw_id[RANK_COUNT];
+    PositionSpec *prefix;       // position sent to the engine (game moves 0..next_move)
+    i32 next_move;              // next move index to look at
+    i32 pending;                // human-policy answers outstanding for the current move
     f32 p[RANK_COUNT];
     Move scoring;               // the move being scored
-    Stone expected;             // KataGo's next player (moves of the other colour are not scored)
-    HumanPolicy *policy;        // parse scratch
+    u64 position_id;
+    char restore[40];
     RankProgress progress;
 };
-
-static i32 send(RankEstimator *j, const char *fmt, ...) PRINTF_LIKE(2, 3);
-static i32 send(RankEstimator *j, const char *fmt, ...) {
-    char buffer[8192];
-    va_list args;
-    va_start(args, fmt);
-    vsnprintf(buffer, sizeof(buffer), fmt, args);
-    va_end(args);
-    return gtp_client_send(j->gtp, sv(buffer));
-}
-
-static const char *color_name(Stone c) { return c == STONE_WHITE ? "W" : "B"; }
 
 static void fail(RankEstimator *j, StringView message) {
     if (j->progress.finished) return;
@@ -80,106 +67,72 @@ static void fail(RankEstimator *j, StringView message) {
     log_warn("rank estimate: " SV_FMT, SV_ARG(message));
 }
 
-static bool scoreable(const RankEstimator *j, Move m) { return !point_is_pass(m.point) && m.color == j->expected; }
-
-// Sends the queries for the next scoreable move (playing the others through).
-static void send_next(RankEstimator *j) {
-    const PositionSpec *g = j->game;
-    while (j->next_move < g->move_count) {
-        Move m = g->moves[j->next_move++];
-        char coord[8];
-        point_to_gtp(m.point, g->width, g->height, coord);
-        if (scoreable(j, m)) {
-            for (i32 r = 0; r < RANK_COUNT; ++r) {
-                send(j, "kata-set-param humanSLProfile %s", PROFILES[r]);
-                j->raw_id[r] = send(j, "kata-raw-human-nn 0");
-            }
-            j->pending = RANK_COUNT;
-            j->scoring = m;
-        }
-        send(j, "play %s %s", color_name(m.color), coord);
-        j->expected = stone_opponent(m.color);
-        if (j->pending) return;
-    }
-    j->progress.finished = true;
+// Expected colour of move i: Black first, then alternating (moves out of turn are not scored).
+static bool scoreable(const PositionSpec *g, i32 i) {
+    Stone expect = i == 0 ? STONE_BLACK : stone_opponent(g->moves[i - 1].color);
+    return !point_is_pass(g->moves[i].point) && g->moves[i].color == expect;
 }
 
-RankEstimator *rank_estimator_start(const KataGoSettings *s, const PositionSpec *game, String *error) {
-    if (!s->human_model.len) {
-        if (error) *error = string_from(SV("rank estimation needs an engine profile with a human_model"));
-        return NULL;
+// Positions the engine before the next scoreable move and asks for every rank's policy.
+static void send_next(RankEstimator *j) {
+    const PositionSpec *g = j->game;
+    while (j->next_move < g->move_count && !scoreable(g, j->next_move)) j->next_move++;
+    if (j->next_move >= g->move_count) {
+        j->progress.finished = true;
+        return;
     }
-    StringView args[24];
-    isize argc = 0;
-    args[argc++] = SV("gtp");
-    args[argc++] = SV("-model");
-    args[argc++] = s->model;
-    args[argc++] = SV("-human-model");
-    args[argc++] = s->human_model;
-    if (s->config.len) {
-        args[argc++] = SV("-config");
-        args[argc++] = s->config;
+    i32 i = j->next_move++;
+    j->scoring = g->moves[i];
+    j->prefix->move_count = i;
+    j->prefix->to_play = j->scoring.color;
+    j->prefix->id = j->position_id = 0x7A4C000000000000ull + (u64)i;   // private ids, distinct from the app's
+    engine_set_position(j->engine, j->prefix);
+    for (i32 r = 0; r < RANK_COUNT; ++r) {
+        engine_set_human_profile(j->engine, rank_profile(r));
+        engine_request_human_policy(j->engine, j->position_id);
     }
-    ProcessSpec spec = { s->program, args, argc, s->working_dir, s->launcher, s->launcher_count };
-    GtpClient *gtp = gtp_client_start(&spec, error);
-    if (!gtp) return NULL;
+    j->pending = RANK_COUNT;
+}
 
+RankEstimator *rank_estimator_start(Engine *engine, const PositionSpec *game, StringView restore_profile) {
     RankEstimator *j = calloc(1, sizeof(RankEstimator));
     if (!j) abort();
     j->game = malloc(sizeof(PositionSpec));
-    j->policy = malloc(sizeof(HumanPolicy));
-    if (!j->game || !j->policy) abort();
+    j->prefix = malloc(sizeof(PositionSpec));
+    if (!j->game || !j->prefix) abort();
     memcpy(j->game, game, sizeof(PositionSpec));
-    j->gtp = gtp;
-    j->expected = STONE_BLACK;
-    for (i32 i = 0; i < game->move_count; ++i) {
-        Stone expect = i == 0 ? STONE_BLACK : stone_opponent(game->moves[i - 1].color);
-        if (!point_is_pass(game->moves[i].point) && game->moves[i].color == expect) j->progress.total++;
-    }
-    // Same position setup as the interactive engine.
-    if (game->width == game->height) send(j, "boardsize %d", game->width);
-    else send(j, "rectangular_boardsize %d %d", game->width, game->height);
-    send(j, "clear_board");
-    send(j, "komi %g", game->komi);
-    if (game->rules.len) send(j, "kata-set-rules " SV_FMT, SV_ARG(game->rules));
-    if (game->setup_count > 0) {
-        String cmd = string_from(SV("set_position"));
-        for (i32 i = 0; i < game->setup_count; ++i) {
-            char coord[8];
-            point_to_gtp(game->setup[i].point, game->width, game->height, coord);
-            string_pushf(&cmd, " %s %s", color_name(game->setup[i].color), coord);
-        }
-        gtp_client_send(gtp, string_sv(&cmd));
-        string_free(&cmd);
-    }
+    memcpy(j->prefix, game, sizeof(PositionSpec));
+    j->engine = engine;
+    snprintf(j->restore, sizeof(j->restore), SV_FMT, SV_ARG(restore_profile));
+    for (i32 i = 0; i < game->move_count; ++i) j->progress.total += scoreable(game, i);
+    engine_stop_analysis(engine);   // the GPU is ours until the job ends
     send_next(j);
     return j;
 }
 
 void rank_estimator_update(RankEstimator *j) {
-    if (!j || !j->gtp) return;
-    GtpEvent ev;
-    while (gtp_client_poll(j->gtp, &ev)) {
-        if (ev.kind == GTP_EVENT_EXITED) fail(j, SV("engine exited"));
-        if (ev.kind == GTP_EVENT_RESPONSE && j->pending > 0) {
-            for (i32 r = 0; r < RANK_COUNT; ++r) {
-                if (ev.id != j->raw_id[r]) continue;
-                const PositionSpec *g = j->game;
-                if (!ev.success || !kata_raw_nn_parse(string_sv(&ev.text), g->width, g->height, j->policy)) {
-                    fail(j, ev.success ? SV("unexpected kata-raw-human-nn output") : sv_trim(string_sv(&ev.text)));
-                    break;
-                }
-                j->p[r] = j->policy->policy[j->scoring.point.y * g->width + j->scoring.point.x];
+    if (!j || j->progress.finished) return;
+    EngineEvent ev;
+    while (!j->progress.finished && engine_poll(j->engine, &ev)) {
+        switch (ev.kind) {
+            case ENGINE_EVENT_HUMAN_POLICY: {
+                if (ev.position_id != j->position_id || j->pending <= 0) break;
+                const HumanPolicy *h = ev.human_policy;
+                i32 r = RANK_COUNT - j->pending;   // answers arrive in request order
+                j->p[r] = h->policy[j->scoring.point.y * h->width + j->scoring.point.x];
                 if (--j->pending == 0) {
                     rank_tally_add(&j->progress.tally[j->scoring.color], j->p);
                     j->progress.done++;
                     send_next(j);
                 }
+                break;
             }
-        } else if (ev.kind == GTP_EVENT_RESPONSE && !ev.success && !j->progress.finished) {
-            fail(j, sv_trim(string_sv(&ev.text)));   // e.g. unknown humanSLProfile, bad position
+            case ENGINE_EVENT_ERROR: fail(j, ev.text); break;
+            case ENGINE_EVENT_STATUS:
+                if (ev.status == ENGINE_STATUS_FAILED) fail(j, SV("engine exited"));
+                break;
+            default: break;   // stray analysis output, logs
         }
-        gtp_event_free(&ev);
     }
 }
 
@@ -187,9 +140,9 @@ const RankProgress *rank_estimator_progress(const RankEstimator *j) { return &j-
 
 void rank_estimator_destroy(RankEstimator *j) {
     if (!j) return;
-    gtp_client_stop(j->gtp);
+    if (j->restore[0]) engine_set_human_profile(j->engine, sv(j->restore));
     string_free(&j->progress.error);
     free(j->game);
-    free(j->policy);
+    free(j->prefix);
     free(j);
 }

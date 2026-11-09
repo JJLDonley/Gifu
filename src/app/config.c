@@ -37,6 +37,8 @@ static const ConfigField FIELDS[] = {
     BOOL("board.show_coordinates", show_coordinates, 1),
     BOOL("board.show_move_numbers", show_move_numbers, 0),
     FLOAT("ai.seconds_per_move", ai_seconds_per_move, 2.0, 0.1, 120.0),
+    BOOL("ai.human_style", ai_human_style, 0),
+    INT("engine.max_processes", engine_max_processes, 1, 1, 4),
     INT("new_game.size", new_game_size, 19, 5, 25),
     FLOAT("new_game.komi", new_game_komi, 7.5, -150.0, 150.0),
     INT("new_game.handicap", new_game_handicap, 0, 0, 9),
@@ -177,9 +179,9 @@ bool config_save(const Config *config) {
         group = g;
         switch (f->type) {
             case CONFIG_STRING: {
-                StringView v = config_get_string(config, f);
-                bool quote = v.len && (v.data[0] == ' ' || v.data[v.len - 1] == ' ' || v.data[0] == '"');
-                string_pushf(&out, "%s = %s" SV_FMT "%s\n", f->key, quote ? "\"" : "", SV_ARG(v), quote ? "\"" : "");
+                string_pushf(&out, "%s = ", f->key);
+                kv_write_value(&out, config_get_string(config, f));   // escaped: Windows paths keep their backslashes
+                string_push_char(&out, '\n');
                 break;
             }
             case CONFIG_BOOL: string_pushf(&out, "%s = %s\n", f->key, config_get_bool(config, f) ? "true" : "false"); break;

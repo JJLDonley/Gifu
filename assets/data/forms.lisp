@@ -29,7 +29,9 @@
       (option new-zealand "New Zealand")
       (option tromp-taylor Tromp-Taylor))
     (number ai.seconds_per_move :max 60 :step 0.5 :format "%.1f s" :label settings.ai_time :fallback "Engine time per move")
-    (choice ai.human_profile :columns 5 :label settings.human_profile :fallback "Human network strength (human profiles)"
+    (bool ai.human_style :label settings.human_style :fallback "AI plays like a human (needs the human network)")
+    (number engine.max_processes :min 1 :max 4 :step 1 :format "%.0f" :label settings.max_processes :fallback "KataGo processes at once (GPU memory)")
+    (choice ai.human_profile :columns 5 :label settings.human_profile :fallback "Human strength (moves overlay, AI play)"
       (option rank_20k 20k) (option rank_15k 15k) (option rank_10k 10k) (option rank_5k 5k) (option rank_1k 1k)
       (option rank_1d 1d) (option rank_3d 3d) (option rank_5d 5d) (option rank_9d 9d) (option proyear_2023 "Pro 2023")))
   (section settings.analysis :fallback Analysis

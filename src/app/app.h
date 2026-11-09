@@ -12,6 +12,7 @@
 #include "core/sgf.h"
 #include "engine/engine_profile.h"
 #include "engine/game_job.h"
+#include "engine/rank_estimator.h"
 
 typedef struct AppOptions {
     StringView sgf_path;
@@ -96,6 +97,8 @@ typedef struct App {
 
     // Human rank estimate (human SL network, own KataGo process).
     RankEstimator *rank_job;
+    EngineSlot *rank_slot;      // engine lent to the rank job (not polled by the app meanwhile)
+    bool rank_pending;          // requested while the engine was starting: runs once it is ready
     RankTally rank_result[3];   // indexed by Stone
     bool rank_valid;            // results belong to the current tree
     bool human_available;       // some available profile has a human network (set when profiles load)

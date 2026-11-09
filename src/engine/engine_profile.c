@@ -101,6 +101,7 @@ void engine_profiles_from_kv(const KvFile *kv, const PathVars *vars, EngineProfi
         else if (sv_eq(field, SV("config"))) set_field(&p->config, path_vars_expand(vars, e->value));
         else if (sv_eq(field, SV("analysis_config"))) set_field(&p->analysis_config, path_vars_expand(vars, e->value));
         else if (sv_eq(field, SV("human_model"))) set_field(&p->human_model, path_vars_expand(vars, e->value));
+        else if (sv_eq(field, SV("human_required"))) p->human_required = sv_eq(e->value, SV("true")) || sv_eq(e->value, SV("1"));
         else if (sv_eq(field, SV("working_dir"))) set_field(&p->working_dir, path_vars_expand(vars, e->value));
         else if (sv_eq(field, SV("arg"))) vec_push(&p->args, path_vars_expand(vars, e->value));
         else if (sv_eq(field, SV("launcher"))) {
@@ -129,6 +130,8 @@ void engine_profiles_from_kv(const KvFile *kv, const PathVars *vars, EngineProfi
         p->model = resolve_model(model);
         String human = p->human_model;
         p->human_model = resolve_model(human);
+        // Optional: a local human network that is not installed (yet) is simply not loaded.
+        if (p->human_model.len && !p->launcher.len && !os_file_exists(string_sv(&p->human_model))) string_clear(&p->human_model);
         // A later profile with the same id (user file) replaces an earlier one.
         bool replaced = false;
         for (isize k = 0; k < out->len && !replaced; ++k) {
@@ -157,7 +160,7 @@ const EngineProfile *engine_profiles_find(const EngineProfileVec *profiles, Stri
 bool engine_profile_available(const EngineProfile *profile) {
     if (profile->launcher.len) return true;   // remote: files live on the other machine
     if (!os_file_exists(string_sv(&profile->program))) return false;
-    if (profile->human_model.len && !os_file_exists(string_sv(&profile->human_model))) return false;
+    if (profile->human_required && profile->human_model.len == 0) return false;
     return profile->model.len == 0 || os_file_exists(string_sv(&profile->model));
 }
 
@@ -165,7 +168,6 @@ bool engine_profile_available(const EngineProfile *profile) {
 
 typedef Engine *(*EngineConstructor)(const EngineProfile *profile, StringView human_profile, String *error);
 
-static bool is_profile_char(char c) { return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_'; }
 
 // KataGoSettings for a profile; `storage` holds the arrays the settings point into.
 typedef struct SettingsStorage {
@@ -197,12 +199,6 @@ static KataGoSettings settings_for(const EngineProfile *p, SettingsStorage *st) 
     };
 }
 
-RankEstimator *rank_estimator_create(const EngineProfile *p, const PositionSpec *game, String *error) {
-    SettingsStorage st;
-    KataGoSettings settings = settings_for(p, &st);
-    return rank_estimator_start(&settings, game, error);
-}
-
 const EngineProfile *engine_profiles_find_human(const EngineProfileVec *profiles, StringView preferred) {
     const EngineProfile *p = preferred.len ? engine_profiles_find(profiles, preferred) : NULL;
     if (p && p->human_model.len && engine_profile_available(p)) return p;
@@ -215,18 +211,8 @@ const EngineProfile *engine_profiles_find_human(const EngineProfileVec *profiles
 static Engine *create_katago_gtp(const EngineProfile *p, StringView human_profile, String *error) {
     SettingsStorage st;
     KataGoSettings settings = settings_for(p, &st);
-    String overrides = { 0 };
-    if (p->human_model.len) {
-        bool valid = human_profile.len > 0;   // only [a-z0-9_]: it lands inside a config override list
-        for (isize i = 0; i < human_profile.len; ++i) valid &= is_profile_char(human_profile.data[i]);
-        if (valid) {
-            overrides = string_format("humanSLProfile=" SV_FMT, SV_ARG(human_profile));
-            settings.overrides = string_sv(&overrides);
-        }
-    }
-    Engine *engine = katago_engine_create(&settings, error);
-    string_free(&overrides);
-    return engine;
+    settings.human_profile = human_profile;
+    return katago_engine_create(&settings, error);
 }
 
 static const struct {

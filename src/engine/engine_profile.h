@@ -8,8 +8,10 @@
 //   katago-opencl.model    = ${root}/katago/networks
 //   katago-opencl.config   = ...
 //   katago-opencl.analysis_config = ...           (enables fast whole-game analysis)
-//   katago-human.human_model = ${root}/katago/networks/human   (human SL network:
-//                                                   -human-model, humanSLProfile from config)
+//   katago-opencl.human_model = ${root}/katago/networks/human  (human SL network,
+//                                                   loaded when present: -human-model; the
+//                                                   strength is humanSLProfile from config)
+//   katago-human.human_required = true              (unavailable without it)
 //   katago-opencl.arg      = -override-config     (repeat for each argument)
 //   katago-opencl.platforms = linux, windows        (optional)
 //   remote.launcher = ssh -T user@gpu-box           (space-separated prefix; program,
@@ -24,7 +26,6 @@
 #include "base/os.h"
 #include "engine/batch_analyzer.h"
 #include "engine/engine.h"
-#include "engine/rank_estimator.h"
 
 typedef struct EngineProfile {
     String id;
@@ -34,7 +35,8 @@ typedef struct EngineProfile {
     String model;
     String config;
     String analysis_config;   // enables the JSON batch analyzer for this engine
-    String human_model;       // human SL network (empty = none)
+    String human_model;       // human SL network (empty = none / not installed)
+    bool human_required;      // profile is unusable without its human network (human-style play)
     String working_dir;
     StringVec args;
     StringVec launcher;   // e.g. ssh -T user@host: the engine runs remotely
@@ -64,7 +66,5 @@ Engine *engine_create(const EngineProfile *profile, StringView human_profile, St
 // Batch analyzer for the profile (NULL with an error when it has no analysis_config).
 BatchAnalyzer *batch_analyzer_create(const EngineProfile *profile, String *error);
 bool engine_profile_can_batch(const EngineProfile *profile);
-// Rank estimation job for `game` (needs a katago-gtp profile with a human_model).
-RankEstimator *rank_estimator_create(const EngineProfile *profile, const PositionSpec *game, String *error);
 // First available profile with a human network (preferring `preferred`), or NULL.
 const EngineProfile *engine_profiles_find_human(const EngineProfileVec *profiles, StringView preferred);

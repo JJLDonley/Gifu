@@ -28,6 +28,8 @@ typedef struct Config {
     bool show_candidates;
     bool show_move_numbers;
     f32 ai_seconds_per_move;
+    bool ai_human_style;      // engine moves come from the human network at ai.human_profile
+    i32 engine_max_processes; // KataGo processes the GPU can hold at once (1 = one engine does everything)
     i32 analysis_game_visits;
     i32 new_game_size;
     f32 new_game_komi;

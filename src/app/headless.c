@@ -184,13 +184,43 @@ int headless_install(App *app) {
     return s.failed ? 1 : 0;
 }
 
+// Starts the engine and waits until it answers (KataGo loads its networks first).
+static Engine *start_ready_engine(const EngineProfile *profile, StringView human_profile) {
+    String err = { 0 };
+    Engine *engine = engine_create(profile, human_profile, &err);
+    if (!engine) {
+        fprintf(stderr, "cannot start %s: %s\n", string_cstr(&profile->name), string_cstr(&err));
+        string_free(&err);
+        return NULL;
+    }
+    for (f64 until = os_time_seconds() + 300.0; os_time_seconds() < until;) {
+        EngineEvent ev;
+        while (engine_poll(engine, &ev)) {
+            if (ev.kind == ENGINE_EVENT_STATUS && ev.status == ENGINE_STATUS_READY) return engine;
+            if (ev.kind == ENGINE_EVENT_STATUS && ev.status == ENGINE_STATUS_FAILED) {
+                fprintf(stderr, "%s exited during startup\n", string_cstr(&profile->name));
+                engine_destroy(engine);
+                return NULL;
+            }
+        }
+        os_sleep_ms(20);
+    }
+    fprintf(stderr, "%s did not become ready\n", string_cstr(&profile->name));
+    engine_destroy(engine);
+    return NULL;
+}
+
 int headless_rank(App *app) {
     const AppOptions *o = &app->options;
-    const EngineProfile *profile = engine_profiles_find_human(&app->engine_profiles, o->engine.len ? o->engine : SV(""));
+    StringView wanted = o->engine.len ? o->engine : string_sv(&app->config.engine);
+    const EngineProfile *profile = engine_profiles_find_human(&app->engine_profiles, wanted);
     if (!profile) {
         fprintf(stderr, "no engine profile with a human network (catagui --install human)\n");
         return 2;
     }
+    Engine *engine = start_ready_engine(profile, string_sv(&app->config.human_profile));
+    if (!engine) return 2;
+    printf("Estimating ranks with %s\n", string_cstr(&profile->name));
     i32 failures = 0;
     for (i32 i = 0; i < o->analyze_count; ++i) {
         SgfError sgf_err;
@@ -204,15 +234,8 @@ int headless_rank(App *app) {
         PositionSpec *spec = malloc(sizeof(PositionSpec));
         if (!spec) abort();
         position_spec_from_node(tree, tree->current, string_sv(&app->config.rules), spec);
-        String err = { 0 };
-        RankEstimator *job = rank_estimator_create(profile, spec, &err);
+        RankEstimator *job = rank_estimator_start(engine, spec, string_sv(&app->config.human_profile));
         free(spec);
-        if (!job) {
-            fprintf(stderr, "cannot start %s: %s\n", string_cstr(&profile->name), string_cstr(&err));
-            string_free(&err);
-            game_tree_free(tree);
-            return 2;
-        }
         f64 started = os_time_seconds(), last_print = 0;
         const RankProgress *p = rank_estimator_progress(job);
         while (!p->finished) {
@@ -242,5 +265,6 @@ int headless_rank(App *app) {
         rank_estimator_destroy(job);
         game_tree_free(tree);
     }
+    engine_destroy(engine);
     return failures ? 1 : 0;
 }

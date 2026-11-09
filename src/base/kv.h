@@ -29,6 +29,9 @@ typedef struct KvFile {
 void kv_parse(KvFile *kv, StringView text);   // appends entries
 NODISCARD bool kv_load(KvFile *kv, StringView path);
 void kv_free(KvFile *kv);
+// Appends `value` escaped so kv_parse reads it back unchanged (\\, \n, \t; quoted
+// when it has outer spaces or starts with a quote).
+void kv_write_value(String *out, StringView value);
 
 // Last value for `key`, or `fallback`.
 StringView kv_get(const KvFile *kv, StringView key, StringView fallback);

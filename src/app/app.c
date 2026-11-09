@@ -28,6 +28,7 @@ void app_set_status(App *app, const char *fmt, ...) {
 }
 
 void app_log(App *app, StringView line) {
+    log_debug("engine: " SV_FMT, SV_ARG(line));   // --verbose mirrors the engine log
     i32 slot = (app->log_head + app->log_count) % APP_LOG_LINES;
     if (app->log_count == APP_LOG_LINES) {
         slot = app->log_head;
@@ -96,6 +97,7 @@ void app_set_region(App *app, BoardRegion region) {
 }
 
 static void stop_engine(App *app) {
+    if (app->rank_slot == &app->main) app_rank_stop(app);
     app_batch_stop(app);
     engine_destroy(app->main.engine);
     app->main.engine = NULL;
@@ -194,6 +196,9 @@ void app_game_analysis_progress(const App *app, isize *done, isize *total) {
 static void flash_finish(App *app) {
     app->flash_running = false;
     game_job_free(&app->flash_job);
+    // Release the analysis engine's GPU memory (KataGo processes are expensive).
+    batch_analyzer_destroy(app->analyzer);
+    app->analyzer = NULL;
     if (app->batch_restore_analysis) app_set_analysis(app, true);   // resume interactive analysis
 }
 
@@ -203,9 +208,13 @@ static void flash_stop(App *app) {
     flash_finish(app);
 }
 
-// Whole game in one query to the JSON analyzer. Returns false if unavailable.
+// Whole game in one query to the JSON analyzer. Returns false if unavailable, or
+// if it would not fit next to the running engines (engine.max_processes): the
+// game is then analysed over GTP by the main engine, which keeps running.
 static bool flash_start(App *app) {
     if (!engine_profile_can_batch(app->main.profile)) return false;
+    i32 running = (app->main.engine != NULL) + (app->second.engine != NULL);
+    if (running + 1 > app->config.engine_max_processes) return false;
     if (app->analyzer && !batch_analyzer_alive(app->analyzer)) {
         batch_analyzer_destroy(app->analyzer);
         app->analyzer = NULL;
@@ -240,16 +249,17 @@ static bool flash_start(App *app) {
 static void flash_update(App *app) {
     if (!app->analyzer) return;
     TurnResult r;
-    while (batch_analyzer_poll(app->analyzer, &r)) {
-        if (app->flash_running && game_job_apply(&app->flash_job, &r) && game_job_done(&app->flash_job)) {
+    while (app->analyzer && batch_analyzer_poll(app->analyzer, &r)) {
+        bool done = app->flash_running && game_job_apply(&app->flash_job, &r) && game_job_done(&app->flash_job);
+        turn_result_free(&r);
+        if (done) {
             if (app->flash_job.failed) app_set_status(app, "Game analysis failed: %s", string_cstr(&app->flash_job.error));
             else app_set_status(app, "Game analysis complete");
             app->dirty = true;   // evals are saved as CGE[] with the game
-            flash_finish(app);
+            flash_finish(app);   // destroys the analyzer
         }
-        turn_result_free(&r);
     }
-    if (app->flash_running && !batch_analyzer_alive(app->analyzer)) {
+    if (app->flash_running && app->analyzer && !batch_analyzer_alive(app->analyzer)) {
         app_set_status(app, "Analysis engine exited");
         flash_stop(app);
     }
@@ -318,7 +328,16 @@ static void slot_clear(EngineSlot *slot) {
 static bool slot_has_human(const EngineSlot *s);
 
 void app_second_engine(App *app, bool on) {
+    if (on && app->analyzer) {   // the JSON analyzer is running
+        app_set_status(app, "Second engine: wait for the game analysis to finish");
+        return;
+    }
+    if (on && app->config.engine_max_processes < 2) {
+        app_set_status(app, "Second engine needs engine.max_processes = 2 (most GPUs run one KataGo at a time)");
+        return;
+    }
     EngineSlot *s = &app->second;
+    if (app->rank_slot == s) app_rank_stop(app);
     slot_clear(s);
     string_free(&s->error);
     if (app->human_policy_node && !slot_has_human(&app->main)) app->human_policy_node = NULL;
@@ -369,7 +388,7 @@ static void on_human_policy(App *app, EngineSlot *s, const EngineEvent *ev) {
 }
 
 static void human_update(App *app) {
-    EngineSlot *s = app->config.show_human_policy ? human_slot(app) : NULL;
+    EngineSlot *s = app->config.show_human_policy && !app->rank_job ? human_slot(app) : NULL;
     if (!s || s->synced_node != app->tree->current || s->human_requested == s->synced_position_id) return;
     if (app->human_policy_node == app->tree->current) return;
     s->human_requested = s->synced_position_id;
@@ -377,15 +396,38 @@ static void human_update(App *app) {
 }
 
 void app_rank_stop(App *app) {
+    if (!app->rank_job) return;
     rank_estimator_destroy(app->rank_job);
     app->rank_job = NULL;
+    // Hand the engine back: resync its position and resume analysis.
+    EngineSlot *slot = app->rank_slot;
+    app->rank_slot = NULL;
+    if (!slot || !slot->engine) return;
+    slot->synced_node = NULL;
+    slot->human_requested = 0;
+    engine_set_human_profile(slot->engine, string_sv(&app->config.human_profile));   // in case it changed meanwhile
+    if (slot == &app->main) {
+        if (app->analysis_enabled) app_set_analysis(app, true);
+    } else {
+        AnalysisRequest req = app_analysis_request(app);
+        engine_start_analysis(slot->engine, &req);
+    }
 }
 
 void app_rank_start(App *app) {
     app_rank_stop(app);
-    const EngineProfile *profile = engine_profiles_find_human(&app->engine_profiles, string_sv(&app->config.engine));
-    if (!profile) {
-        app_set_status(app, "Rank estimate needs the human SL network (Engine -> Download engines...)");
+    app->rank_pending = false;
+    EngineSlot *slot = human_slot(app);   // runs inside an engine that is already up (GPU budget)
+    if (!slot) {
+        bool starting = (app->main.engine && app->main.status == ENGINE_STATUS_STARTING && app->main.profile->human_model.len) ||
+                        (app->second.engine && app->second.status == ENGINE_STATUS_STARTING && app->second.profile->human_model.len);
+        if (starting) {
+            app->rank_pending = true;
+            app_set_status(app, "Rank estimate starts when the engine is ready");
+        } else {
+            app_set_status(app, app->human_available ? "Rank estimate needs an engine with the human network (Settings -> Engine)"
+                                                     : "Rank estimate needs the human SL network (Engine -> Download engines...)");
+        }
         return;
     }
     enum { MAX_LINE = 4096 };
@@ -394,16 +436,13 @@ void app_rank_start(App *app) {
     if (!line || !spec) abort();
     isize n = MIN(game_tree_active_line(app->tree, line, MAX_LINE), (isize)MAX_LINE);
     position_spec_from_node(app->tree, line[n - 1], string_sv(&app->config.rules), spec);
-    String err = { 0 };
-    app->rank_job = rank_estimator_create(profile, spec, &err);
-    if (!app->rank_job) {
-        app_set_status(app, "Rank estimate: %s", string_cstr(&err));
-        string_free(&err);
-    } else {
-        app->rank_valid = false;
-        memset(app->rank_result, 0, sizeof(app->rank_result));
-        app_set_status(app, "Estimating ranks with %s", string_cstr(&profile->name));
-    }
+    app_batch_stop(app);
+    slot->waiting_move = false;
+    app->rank_job = rank_estimator_start(slot->engine, spec, string_sv(&app->config.human_profile));
+    app->rank_slot = slot;
+    app->rank_valid = false;
+    memset(app->rank_result, 0, sizeof(app->rank_result));
+    app_set_status(app, "Estimating ranks with %s", string_cstr(&slot->profile->name));
     free(spec);
     free(line);
 }
@@ -417,6 +456,7 @@ bool app_rank_progress(const App *app, i32 *done, i32 *total) {
 }
 
 static void rank_update(App *app) {
+    if (app->rank_pending && human_slot(app)) app_rank_start(app);
     if (!app->rank_job) return;
     rank_estimator_update(app->rank_job);
     const RankProgress *p = rank_estimator_progress(app->rank_job);
@@ -434,7 +474,7 @@ static void rank_update(App *app) {
 
 static void second_update(App *app) {
     EngineSlot *s = &app->second;
-    if (!s->engine) return;
+    if (!s->engine || app->rank_slot == s) return;   // lent to the rank job
     EngineEvent ev;
     while (engine_poll(s->engine, &ev)) {
         switch (ev.kind) {
@@ -492,7 +532,7 @@ void app_update(App *app) {
     flash_update(app);
     rank_update(app);
     second_update(app);
-    if (!app->main.engine) return;
+    if (!app->main.engine || app->rank_slot == &app->main) return;   // lent to the rank job
     EngineEvent ev;
     while (engine_poll(app->main.engine, &ev)) {
         switch (ev.kind) {
@@ -593,7 +633,8 @@ void app_update(App *app) {
     bool anyone_waiting = app->main.waiting_move || app->second.waiting_move;
     if (engine_turn && slot->engine && !anyone_waiting && slot->status == ENGINE_STATUS_READY &&
         slot->synced_node == app->tree->current) {
-        MoveRequest req = { slot->synced_position_id, to_play, app->config.ai_seconds_per_move };
+        MoveRequest req = { slot->synced_position_id, to_play, app->config.ai_seconds_per_move,
+                            app->config.ai_human_style && slot == &app->main };
         engine_request_move(slot->engine, &req);
         slot->waiting_move = true;
         app->ai_move_once = false;
@@ -624,10 +665,13 @@ void app_config_changed(App *app, StringView key) {
         app_restart_engine(app);
     } else if (sv_eq(key, SV("rules"))) {
         app->main.synced_node = NULL;   // resync sends kata-set-rules
-    } else if (sv_eq(key, SV("ai.human_profile"))) {   // humanSLProfile is a launch override
+    } else if (sv_eq(key, SV("ai.human_profile"))) {   // switched in place (kata-set-param)
         app->human_policy_node = NULL;
-        if (app->main.profile && app->main.profile->human_model.len) app_restart_engine(app);
-        if (app->second.engine && app->second.profile && app->second.profile->human_model.len) app_second_engine(app, true);
+        app->main.human_requested = app->second.human_requested = 0;
+        if (!app->rank_job) {   // a running rank job restores the new value when it ends
+            if (app->main.engine) engine_set_human_profile(app->main.engine, string_sv(&app->config.human_profile));
+            if (app->second.engine) engine_set_human_profile(app->second.engine, string_sv(&app->config.human_profile));
+        }
     } else if (sv_eq(key, SV("engine2"))) {
         if (app->second.engine) app_second_engine(app, true);
     } else if (sv_starts_with(key, SV("analysis."))) {
@@ -800,18 +844,22 @@ static void cmd_toggle_ownership(void *c) {
 static bool shows_ownership(const void *c) { return CAPP(c)->config.show_ownership; }
 static void cmd_rank(void *c) {
     App *app = c;
-    if (app->rank_job) app_rank_stop(app);
-    else app_rank_start(app);
+    if (app->rank_job || app->rank_pending) {
+        app->rank_pending = false;
+        app_rank_stop(app);
+    } else {
+        app_rank_start(app);
+    }
 }
-static bool rank_running(const void *c) { return CAPP(c)->rank_job != NULL; }
+static bool rank_running(const void *c) { return CAPP(c)->rank_job != NULL || CAPP(c)->rank_pending; }
 static bool has_human_profile(const void *c) {
     return CAPP(c)->human_available && CAPP(c)->tree->root->first_child != NULL;
 }
 static void cmd_toggle_human(void *c) {
     App *app = c;
     app->config.show_human_policy = !app->config.show_human_policy;
-    if (app->config.show_human_policy && !app_has_human_engine(app)) {
-        app_set_status(app, "Human policy needs an engine with a human network (e.g. KataGo · Human style)");
+    if (app->config.show_human_policy && !app->human_available) {
+        app_set_status(app, "Human moves need the human SL network (Engine -> Download engines...)");
     }
 }
 static bool shows_human(const void *c) { return CAPP(c)->config.show_human_policy; }
@@ -905,6 +953,7 @@ static void load_engine_profiles(App *app) {
 }
 
 void app_reload_engines(App *app) {
+    app_rank_stop(app);
     stop_engine(app);
     slot_clear(&app->second);
     batch_analyzer_destroy(app->analyzer);
@@ -998,6 +1047,7 @@ bool app_init(App *app, const AppOptions *options) {
 }
 
 void app_shutdown(App *app) {
+    app_rank_stop(app);
     stop_engine(app);
     slot_clear(&app->second);
     string_free(&app->second.error);
@@ -1023,5 +1073,4 @@ void app_shutdown(App *app) {
     string_free(&app->result);
     free(app->analysis);
     free(app->human_policy);
-    app_rank_stop(app);
 }

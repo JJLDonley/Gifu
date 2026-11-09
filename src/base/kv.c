@@ -9,6 +9,19 @@ static i32 hex_value(char c) {
     return -1;
 }
 
+void kv_write_value(String *out, StringView v) {
+    bool quote = v.len && (v.data[0] == ' ' || v.data[v.len - 1] == ' ' || v.data[0] == '"');
+    if (quote) string_push_char(out, '"');
+    for (isize i = 0; i < v.len; ++i) {
+        char c = v.data[i];
+        if (c == '\\') string_push(out, SV("\\\\"));
+        else if (c == '\n') string_push(out, SV("\\n"));
+        else if (c == '\t') string_push(out, SV("\\t"));
+        else string_push_char(out, c);
+    }
+    if (quote) string_push_char(out, '"');
+}
+
 static void unescape(StringView in, String *out) {
     string_clear(out);
     for (isize i = 0; i < in.len; ++i) {

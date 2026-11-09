@@ -39,8 +39,14 @@ typedef struct KataGoEngine {
     u64 score_position;
 
     // Human policy.
-    i32 human_id;
-    u64 human_position;
+    i32 human_ids[64];          // FIFO of outstanding kata-raw-human-nn commands
+    u64 human_positions[64];
+    i32 human_head, human_count;
+    char human_profile[40];     // current humanSLProfile
+    bool has_human_model;
+    i32 max_visits_id;          // kata-get-param maxVisits (restored after human-style moves)
+    char default_max_visits[24];
+    bool human_move;            // the pending genmove uses human-style parameters
     HumanPolicy human;
 
     // Move generation.
@@ -121,9 +127,19 @@ static void kg_request_human_policy(Engine *e, u64 position_id) {
     KataGoEngine *k = as_katago(e);
     if (!k->gtp) return;
     k->analysis_id = -1;
-    k->human_position = position_id;
-    k->human_id = send(k, "kata-raw-human-nn all");   // averaged over the 8 symmetries
+    if (k->human_count == (i32)countof(k->human_ids)) return;   // caller is flooding; drop
+    i32 slot = (k->human_head + k->human_count) % (i32)countof(k->human_ids);
+    k->human_positions[slot] = position_id;
+    k->human_ids[slot] = send(k, "kata-raw-human-nn 0");   // ("all" would print 8 separate blocks)
+    k->human_count++;
     if (k->analyzing) send_analyze(k);
+}
+
+static void kg_set_human_profile(Engine *e, StringView profile) {
+    KataGoEngine *k = as_katago(e);
+    if (!k->gtp || !human_profile_valid(profile) || sv_eq(profile, sv(k->human_profile))) return;
+    snprintf(k->human_profile, sizeof(k->human_profile), SV_FMT, SV_ARG(profile));
+    send(k, "kata-set-param humanSLProfile %s", k->human_profile);
 }
 
 static void kg_request_move(Engine *e, const MoveRequest *request) {
@@ -132,6 +148,15 @@ static void kg_request_move(Engine *e, const MoveRequest *request) {
     k->analysis_id = -1;   // genmove interrupts any running kata-analyze
     send(k, "time_settings 0 %.2f 1", MAX(request->seconds, 0.1f));
     k->genmove = *request;
+    // Human style: pick the move from the human policy (KataGo's gtp_human*_example.cfg
+    // settings, switched in for this move only).
+    k->human_move = request->human_style && k->has_human_model && k->default_max_visits[0];
+    if (k->human_move) {
+        send(k, "kata-set-param humanSLChosenMoveProp 1.0");
+        send(k, "kata-set-param humanSLChosenMoveIgnorePass true");
+        send(k, "kata-set-param humanSLChosenMovePiklLambda 100000000");
+        send(k, "kata-set-param maxVisits 40");
+    }
     // kata-genmove_analyze streams "info" lines while thinking (so the UI keeps
     // showing candidates / the graph during engine games), then "play <move>".
     k->genmove_id = send(k, "kata-genmove_analyze %s interval %d%s", request->color == STONE_WHITE ? "W" : "B",
@@ -225,19 +250,34 @@ static bool kg_poll(Engine *e, EngineEvent *out) {
                                           .position_id = k->score_position, .text = sv_trim(string_sv(&ev.text)) };
                     return true;
                 }
-                if (ev.id == k->human_id && k->human_id > 0) {
-                    k->human_id = 0;
+                if (k->human_count > 0 && ev.id == k->human_ids[k->human_head]) {
+                    u64 position = k->human_positions[k->human_head];
+                    k->human_head = (k->human_head + 1) % (i32)countof(k->human_ids);
+                    k->human_count--;
                     if (ev.success && kata_raw_nn_parse(string_sv(&ev.text), k->width, k->height, &k->human)) {
-                        k->human.position_id = k->human_position;
+                        k->human.position_id = position;
                         *out = (EngineEvent){ .kind = ENGINE_EVENT_HUMAN_POLICY, .status = k->status, .human_policy = &k->human,
-                                              .position_id = k->human_position };
+                                              .position_id = position };
                     } else {
                         *out = (EngineEvent){ .kind = ENGINE_EVENT_ERROR, .status = k->status, .text = string_sv(&ev.text) };
                     }
                     return true;
                 }
+                if (ev.id == k->max_visits_id && k->max_visits_id > 0) {
+                    k->max_visits_id = 0;
+                    StringView v = sv_trim(string_sv(&ev.text));
+                    if (ev.success && v.len > 0 && v.len < (isize)sizeof(k->default_max_visits)) {
+                        snprintf(k->default_max_visits, sizeof(k->default_max_visits), SV_FMT, SV_ARG(v));
+                    }
+                    break;
+                }
                 if (ev.id == k->genmove_id && k->genmove_id > 0) {
                     k->genmove_id = 0;
+                    if (k->human_move) {   // back to normal search
+                        k->human_move = false;
+                        send(k, "kata-set-param humanSLChosenMoveProp 0.0");
+                        send(k, "kata-set-param maxVisits %s", k->default_max_visits);
+                    }
                     k->analysis_id = -1;
                     EngineEvent move_event = { .kind = ENGINE_EVENT_MOVE, .status = k->status,
                                                .position_id = k->genmove.position_id, .text = string_sv(&ev.text) };
@@ -316,6 +356,7 @@ static const EngineVTable KATAGO_VTABLE = {
     .is_thinking = kg_is_thinking,
     .request_score = kg_request_score,
     .request_human_policy = kg_request_human_policy,
+    .set_human_profile = kg_set_human_profile,
     .poll = kg_poll,
     .destroy = kg_destroy,
 };
@@ -339,7 +380,8 @@ Engine *katago_engine_create(const KataGoSettings *settings, String *error) {
     }
     // One -override-config with every override, comma-separated.
     String overrides = string_from(SV("reportAnalysisWinratesAs=SIDETOMOVE"));
-    if (settings->overrides.len) string_pushf(&overrides, "," SV_FMT, SV_ARG(settings->overrides));
+    bool human = settings->human_model.len && human_profile_valid(settings->human_profile);
+    if (human) string_pushf(&overrides, ",humanSLProfile=" SV_FMT, SV_ARG(settings->human_profile));
     args[argc++] = SV("-override-config");
     args[argc++] = string_sv(&overrides);
     for (isize i = 0; i < settings->extra_arg_count && argc < (isize)countof(args); ++i) args[argc++] = settings->extra_args[i];
@@ -356,6 +398,9 @@ Engine *katago_engine_create(const KataGoSettings *settings, String *error) {
     k->gtp = gtp;
     k->status = ENGINE_STATUS_STARTING;
     k->analysis_id = -1;
+    if (human) snprintf(k->human_profile, sizeof(k->human_profile), SV_FMT, SV_ARG(settings->human_profile));
+    k->has_human_model = settings->human_model.len > 0;
+    if (k->has_human_model) k->max_visits_id = gtp_client_send(gtp, SV("kata-get-param maxVisits"));
     k->version_id = gtp_client_send(gtp, SV("version"));
     log_info("started engine " SV_FMT, SV_ARG(settings->program));
     return &k->base;

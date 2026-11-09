@@ -45,6 +45,7 @@ typedef struct MoveRequest {
     u64 position_id;          // the position the move is for (from set_position)
     Stone color;
     f32 seconds;              // thinking time per move
+    bool human_style;         // play like a human of the current humanSLProfile (engines with a human model)
 } MoveRequest;
 
 typedef enum EngineEventKind {
@@ -81,7 +82,10 @@ typedef struct EngineVTable {
     bool (*is_thinking)(const Engine *engine);
     void (*request_score)(Engine *engine, u64 position_id);
     // Human SL network policy for the synced position (engines without a human model answer with an error).
+    // Requests are answered in order, one ENGINE_EVENT_HUMAN_POLICY each.
     void (*request_human_policy)(Engine *engine, u64 position_id);
+    // Switches humanSLProfile (e.g. "rank_5k") in place; applies to later requests and searches.
+    void (*set_human_profile)(Engine *engine, StringView profile);
     bool (*poll)(Engine *engine, EngineEvent *out);
     void (*destroy)(Engine *engine);
 } EngineVTable;
@@ -103,6 +107,11 @@ static inline void engine_request_score(Engine *e, u64 position_id) { e->vtable-
 static inline void engine_request_human_policy(Engine *e, u64 position_id) {
     if (e->vtable->request_human_policy) e->vtable->request_human_policy(e, position_id);
 }
+static inline void engine_set_human_profile(Engine *e, StringView profile) {
+    if (e->vtable->set_human_profile) e->vtable->set_human_profile(e, profile);
+}
+// True for "rank_5k", "preaz_1d", "proyear_1990", "rank_3k_1d"... (safe to put in a config override).
+bool human_profile_valid(StringView profile);
 static inline void engine_destroy(Engine *e) {
     if (e) e->vtable->destroy(e);
 }

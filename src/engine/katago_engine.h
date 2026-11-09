@@ -10,7 +10,7 @@ typedef struct KataGoSettings {
     StringView config;
     StringView working_dir;
     StringView human_model;   // optional -human-model
-    StringView overrides;     // extra comma-separated config overrides (e.g. humanSLProfile=rank_5k)
+    StringView human_profile; // initial humanSLProfile (used only with a human_model)
     const StringView *extra_args;
     isize extra_arg_count;
     const StringView *launcher;   // optional prefix (ssh ...)
