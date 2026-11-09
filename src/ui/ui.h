@@ -1,5 +1,5 @@
 // ui.h - the UI layer: owns window-side resources (fonts, themes, textures),
-// builds the Clay layout from data (assets/data/layout.json) every frame and
+// builds the Clay layout from data (assets/data/layout.lisp) every frame and
 // draws it. Talks to the App only via commands and app_* functions.
 #pragma once
 
@@ -89,9 +89,10 @@ typedef struct Ui {
     bool theme_menu_open;
     i32 open_menu;        // index into layout.menus, -1 = closed
     bool pointer_over_menu;
-    // Modal dialogs, built from assets/data/forms.json.
+    // Modal dialogs, built from assets/data/forms.lisp.
     UiDialog dialog;
-    JsonDoc forms_doc;
+    Arena forms_arena;
+    const Sexpr *forms_root;   // assets/data/forms.lisp
     TextEdit form_edits[8];                     // text fields, keyed by config field
     const struct ConfigField *form_edit_fields[8];
     i32 form_edit_count;
@@ -189,10 +190,10 @@ void variation_tree_element(Ui *ui, f32 height);
 
 // ---- Forms & dialogs (form.c) -------------------------------------------------------------------
 typedef void (*ModalSection)(Ui *ui, void *user);
-JsonValue ui_form(Ui *ui, const char *name);       // a form from forms.json
-void form_render(Ui *ui, JsonValue form);
+const Sexpr *ui_form(Ui *ui, const char *name);   // (form NAME ...) from forms.lisp
+void form_render(Ui *ui, const Sexpr *form);
 // Modal with title, scrolling form body and an optional footer (buttons).
-void ui_modal(Ui *ui, JsonValue form, f32 width, ModalSection footer, void *user);
+void ui_modal(Ui *ui, const Sexpr *form, f32 width, ModalSection footer, void *user);
 void ui_dialogs(Ui *ui);                           // renders the open dialog, if any
 void ui_close_dialog(Ui *ui);
 void panels_render(Ui *ui, StringView name);

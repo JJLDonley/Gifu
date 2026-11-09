@@ -1,0 +1,39 @@
+# Key bindings: "Chord = command.id", one per line. Chords: Ctrl/Shift/Alt/Super +
+# a letter, digit or key name (Space Enter Escape Tab Left Right Up Down Home End
+# PageUp PageDown Delete Backspace F1..F12 Comma Period Minus Equal LeftBracket
+# RightBracket ...). Override or add bindings in <config_dir>/keymap.kv.
+
+Left         = nav.back
+Right        = nav.forward
+Up           = nav.back
+Down         = nav.forward
+Shift+Left   = nav.back10
+Shift+Right  = nav.forward10
+Home         = nav.first
+End          = nav.last
+LeftBracket  = nav.prev_variation
+RightBracket = nav.next_variation
+Ctrl+Up      = nav.prev_variation
+Ctrl+Down    = nav.next_variation
+Space        = analysis.toggle
+Enter        = analysis.play_best
+O            = analysis.ownership
+K            = analysis.candidates
+P            = move.pass
+Delete       = move.delete
+C            = view.coordinates
+T            = view.next_theme
+Ctrl+Equal   = view.zoom_in
+Ctrl+Minus   = view.zoom_out
+Ctrl+N       = file.new
+Ctrl+O       = file.open
+Ctrl+S       = file.save
+Ctrl+Shift+S = file.save_as
+Ctrl+R       = engine.restart
+N            = view.move_numbers
+G            = game.ai_move
+E            = game.score
+Ctrl+Comma   = view.settings
+Ctrl+Tab     = view.next_tab
+F10          = view.menu
+F12          = view.debug

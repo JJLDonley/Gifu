@@ -1,23 +1,34 @@
 // Data-driven forms and modal dialogs.
 //
-// assets/data/forms.json describes each form ("settings", "new_game", ...):
-// sections of fields bound to config keys (the config field table). Fields
-// apply immediately; dialogs add their own footer buttons around the form.
+// assets/data/forms.lisp describes each form ("settings", "new_game", ...):
+//   (form NAME :title KEY (section TITLE (TYPE CONFIG-KEY :props... (option V "L")...)...)...)
+// Fields bind to config keys (the config field table) and apply immediately;
+// dialogs add their own footer buttons around the form.
 #include "ui/ui.h"
 
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
 
-static StringView label_of(Ui *ui, JsonValue v) {
-    const char *key = json_string(json_get(v, "label"), SV("")).data;
-    StringView fallback = json_string(json_get(v, "fallback"), json_string(json_get(v, "key"), SV("?")));
-    return key && *key ? i18n_get(&ui->app->i18n, sv(key), fallback) : fallback;
+static StringView field_key(const Sexpr *v) {
+    const Sexpr *k = sexpr_next_arg(v, NULL);
+    return k ? k->text : SV("");
 }
 
-static StringView title_of(Ui *ui, JsonValue v) {
-    StringView key = json_string(json_get(v, "title"), SV(""));
-    return i18n_get(&ui->app->i18n, key, json_string(json_get(v, "fallback"), key));
+static StringView label_of(Ui *ui, const Sexpr *v) {
+    StringView key = sexpr_prop_text(v, "label", SV(""));
+    StringView fallback = sexpr_prop_text(v, "fallback", field_key(v));
+    return key.len ? i18n_get(&ui->app->i18n, key, fallback) : fallback;
+}
+
+// Sections/forms carry their title key as the first arg (sections) or :title (forms).
+static StringView title_of(Ui *ui, const Sexpr *v) {
+    StringView key = sexpr_prop_text(v, "title", SV(""));
+    if (!key.len) {
+        const Sexpr *arg = sexpr_next_arg(v, NULL);
+        key = arg ? arg->text : SV("");
+    }
+    return i18n_get(&ui->app->i18n, key, sexpr_prop_text(v, "fallback", key));
 }
 
 static void apply_change(Ui *ui, const ConfigField *field) {
@@ -38,7 +49,7 @@ static void field_label(Ui *ui, StringView label) {
     }
 }
 
-static void bool_field(Ui *ui, JsonValue v, const ConfigField *f, u32 index) {
+static void bool_field(Ui *ui, const Sexpr *v, const ConfigField *f, u32 index) {
     Config *config = &ui->app->config;
     CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
         field_label(ui, label_of(ui, v));
@@ -49,13 +60,13 @@ static void bool_field(Ui *ui, JsonValue v, const ConfigField *f, u32 index) {
     }
 }
 
-static void number_field(Ui *ui, JsonValue v, const ConfigField *f, u32 index) {
+static void number_field(Ui *ui, const Sexpr *v, const ConfigField *f, u32 index) {
     Config *config = &ui->app->config;
     f64 value = config_get_number(config, f);
-    f64 step = json_number(json_get(v, "step"), 1.0);
-    f64 lo = json_number(json_get(v, "min"), f->min), hi = json_number(json_get(v, "max"), f->max);
+    f64 step = sexpr_prop_number(v, "step", 1.0);
+    f64 lo = sexpr_prop_number(v, "min", f->min), hi = sexpr_prop_number(v, "max", f->max);
     char text[48];
-    String fmt = string_from(json_string(json_get(v, "format"), SV("%g")));
+    String fmt = string_from(sexpr_prop_text(v, "format", SV("%g")));
     snprintf(text, sizeof(text), string_cstr(&fmt), value);
     string_free(&fmt);
     CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 6),
@@ -81,8 +92,8 @@ typedef struct ChoiceOption {
     bool available;
 } ChoiceOption;
 
-static isize collect_options(Ui *ui, JsonValue v, ChoiceOption *out, isize cap) {
-    StringView source = json_string(json_get(v, "source"), SV(""));
+static isize collect_options(Ui *ui, const Sexpr *v, ChoiceOption *out, isize cap) {
+    StringView source = sexpr_prop_text(v, "source", SV(""));
     isize n = 0;
     if (sv_eq(source, SV("themes"))) {
         for (isize i = 0; i < ui->themes.len && n < cap; ++i) {
@@ -93,22 +104,23 @@ static isize collect_options(Ui *ui, JsonValue v, ChoiceOption *out, isize cap) 
             if (n < cap) out[n++] = (ChoiceOption){ string_sv(&p->id), 0, string_sv(&p->name), engine_profile_available(p) };
         }
     } else {
-        JsonValue options = json_get(v, "options");
-        for (isize i = 0; i < json_array_len(options) && n < cap; ++i) {
-            JsonValue o = json_array_at(options, i);
-            JsonValue value = json_get(o, "value");
-            StringView text = json_string(value, SV(""));
-            out[n++] = (ChoiceOption){ text, json_number(value, 0), json_string(json_get(o, "label"), text), true };
+        // (option VALUE "Label")
+        for (const Sexpr *o = sexpr_next_child(v, NULL); o && n < cap; o = sexpr_next_child(v, o)) {
+            if (!sexpr_is_list(o, "option")) continue;
+            const Sexpr *value = sexpr_next_arg(o, NULL);
+            if (!value) continue;
+            const Sexpr *label = sexpr_next_arg(o, value);
+            out[n++] = (ChoiceOption){ value->text, value->number, label ? label->text : value->text, true };
         }
     }
     return n;
 }
 
-static void choice_field(Ui *ui, JsonValue v, const ConfigField *f, u32 index) {
+static void choice_field(Ui *ui, const Sexpr *v, const ConfigField *f, u32 index) {
     Config *config = &ui->app->config;
     ChoiceOption options[32];
     isize count = collect_options(ui, v, options, countof(options));
-    i32 columns = (i32)CLAMP(json_int(json_get(v, "columns"), 3), 1, 6);
+    i32 columns = (i32)CLAMP(sexpr_prop_number(v, "columns", 3), 1, 6);
     bool numeric = f->type != CONFIG_STRING;
     StringView current = config_get_string(config, f);
     f64 current_number = config_get_number(config, f);
@@ -151,7 +163,7 @@ static TextEdit *edit_for(Ui *ui, const ConfigField *f) {
     return &ui->form_edits[i];
 }
 
-static void text_field(Ui *ui, JsonValue v, const ConfigField *f, u32 index) {
+static void text_field(Ui *ui, const Sexpr *v, const ConfigField *f, u32 index) {
     TextEdit *edit = edit_for(ui, f);
     if (!edit) return;
     Clay_ElementId id = CLAY_IDI("FormText", index);
@@ -164,7 +176,7 @@ static void text_field(Ui *ui, JsonValue v, const ConfigField *f, u32 index) {
         CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 120)), CLAY_SIZING_FIT(0) } } }) {
             ui_label(ui, label_of(ui, v), FONT_UI, 14, ui->theme->colors.text);
         }
-        TextInputResult r = ui_text_input(ui, id, edit, 14, 1, json_string(json_get(v, "placeholder"), SV("")));
+        TextInputResult r = ui_text_input(ui, id, edit, 14, 1, sexpr_prop_text(v, "placeholder", SV("")));
         if (r == TEXT_INPUT_CHANGED || r == TEXT_INPUT_COMMITTED) {
             config_set_string(&ui->app->config, f, string_sv(&edit->text));
             apply_change(ui, f);
@@ -174,24 +186,28 @@ static void text_field(Ui *ui, JsonValue v, const ConfigField *f, u32 index) {
 
 // ---- Forms ----------------------------------------------------------------------------------------
 
-JsonValue ui_form(Ui *ui, const char *name) { return json_get(json_root(&ui->forms_doc), name); }
+const Sexpr *ui_form(Ui *ui, const char *name) {
+    if (!ui->forms_root) return NULL;
+    for (const Sexpr *f = ui->forms_root->first; f; f = f->next) {
+        const Sexpr *id = sexpr_is_list(f, "form") ? sexpr_next_arg(f, NULL) : NULL;
+        if (id && sv_eq(id->text, sv(name))) return f;
+    }
+    return NULL;
+}
 
-void form_render(Ui *ui, JsonValue form) {
+void form_render(Ui *ui, const Sexpr *form) {
     const ThemeColors *c = &ui->theme->colors;
-    JsonValue sections = json_get(form, "sections");
     u32 index = 0;
-    for (isize s = 0; s < json_array_len(sections); ++s) {
-        JsonValue section = json_array_at(sections, s);
+    for (const Sexpr *section = sexpr_next_child(form, NULL); section; section = sexpr_next_child(form, section)) {
+        if (!sexpr_is_list(section, "section")) continue;
         CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM,
                            .childGap = ui_u16(ui, 10) } }) {
             ui_card_title(ui, title_of(ui, section));
-            JsonValue fields = json_get(section, "fields");
-            for (isize i = 0; i < json_array_len(fields); ++i, ++index) {
-                JsonValue v = json_array_at(fields, i);
-                const ConfigField *f = config_field(json_string(json_get(v, "key"), SV("")));
-                StringView type = json_string(json_get(v, "type"), SV(""));
+            for (const Sexpr *v = sexpr_next_child(section, NULL); v; v = sexpr_next_child(section, v), ++index) {
+                const ConfigField *f = config_field(field_key(v));
+                StringView type = sexpr_head(v);
                 if (!f) {
-                    ui_label(ui, json_string(json_get(v, "key"), SV("?")), FONT_UI, 12, c->danger);
+                    ui_label(ui, arena_format(&ui->frame, "unknown setting '" SV_FMT "'", SV_ARG(field_key(v))), FONT_UI, 12, c->danger);
                     continue;
                 }
                 if (sv_eq(type, SV("bool"))) bool_field(ui, v, f, index);
@@ -205,7 +221,8 @@ void form_render(Ui *ui, JsonValue form) {
 
 // ---- Modal shell ------------------------------------------------------------------------------------
 
-void ui_modal(Ui *ui, JsonValue form, f32 width, ModalSection footer, void *user) {
+void ui_modal(Ui *ui, const Sexpr *form, f32 width, ModalSection footer, void *user) {
+    if (!form) return;
     const ThemeColors *c = &ui->theme->colors;
     const Theme *t = ui->theme;
     f32 sw = (f32)GetScreenWidth(), sh = (f32)GetScreenHeight();

@@ -1,5 +1,5 @@
 // Vector icons drawn with raylib primitives (crisp at any scale, no font
-// dependency). Referenced from data as "@name" (layout.json "icon").
+// dependency). Referenced from data as "@name" (layout.lisp :icon).
 #include "ui/ui.h"
 
 #include <math.h>

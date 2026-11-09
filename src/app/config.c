@@ -1,5 +1,6 @@
 #include "app/config.h"
 
+#include "base/json.h"
 #include "base/log.h"
 #include "base/os.h"
 
@@ -8,7 +9,6 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
-#include <yyjson.h>
 
 // ---- Field table --------------------------------------------------------------------------
 
@@ -108,89 +108,83 @@ void config_init_defaults(Config *config, StringView path) {
     }
 }
 
+// One-time migration from the old config.json (same dotted keys as nested objects).
+static void migrate_json(Config *config) {
+    String json_path_str = string_format(SV_FMT "/config.json", SV_ARG(path_dirname(string_sv(&config->path))));
+    JsonDoc doc = { 0 };
+    if (os_file_exists(string_sv(&json_path_str)) && json_load_file(string_sv(&json_path_str), &doc, NULL)) {
+        JsonValue root = json_root(&doc);
+        for (isize i = 0; i < countof(FIELDS); ++i) {
+            const ConfigField *f = &FIELDS[i];
+            JsonValue v = json_path(root, f->key);
+            if (!json_exists(v)) continue;
+            if (f->type == CONFIG_STRING && json_is_string(v)) config_set_string(config, f, json_string(v, SV("")));
+            else if (f->type == CONFIG_BOOL) config_set_bool(config, f, json_bool(v, config_get_bool(config, f)));
+            else if (json_is_number(v)) config_set_number(config, f, json_number(v, 0));
+        }
+        log_info("migrated settings from %s", string_cstr(&json_path_str));
+    }
+    json_free(&doc);
+    string_free(&json_path_str);
+}
+
 bool config_load(Config *config, String *error) {
-    if (!os_file_exists(string_sv(&config->path))) return true;
-    json_free(&config->doc);
-    if (!json_load_file(string_sv(&config->path), &config->doc, error)) return false;
-    JsonValue root = json_root(&config->doc);
-    for (isize i = 0; i < countof(FIELDS); ++i) {
-        const ConfigField *f = &FIELDS[i];
-        JsonValue v = json_path(root, f->key);
-        if (!json_exists(v)) continue;
+    UNUSED(error);
+    KvFile kv = { 0 };
+    if (!kv_load(&kv, string_sv(&config->path))) {   // no config.kv yet
+        migrate_json(config);
+        return true;
+    }
+    vec_foreach(KvEntry, e, &kv.entries) {
+        const ConfigField *f = config_field(e->key);
+        if (!f) {
+            log_warn("%s:%d: unknown setting '" SV_FMT "'", string_cstr(&config->path), e->line, SV_ARG(e->key));
+            continue;
+        }
+        f64 number = 0;
+        bool flag = false;
         switch (f->type) {
-            case CONFIG_STRING:
-                if (json_is_string(v)) config_set_string(config, f, json_string(v, SV("")));
+            case CONFIG_STRING: config_set_string(config, f, e->value); break;
+            case CONFIG_BOOL:
+                if (kv_parse_bool(e->value, &flag)) config_set_bool(config, f, flag);
                 break;
-            case CONFIG_BOOL: config_set_bool(config, f, json_bool(v, config_get_bool(config, f))); break;
             case CONFIG_INT:
-            case CONFIG_FLOAT: config_set_number(config, f, json_number(v, config_get_number(config, f))); break;
+            case CONFIG_FLOAT:
+                if (sv_parse_f64(e->value, &number)) config_set_number(config, f, number);
+                break;
         }
     }
+    kv_free(&kv);
     return true;
 }
 
-JsonValue config_section(const Config *config, const char *key) {
-    return json_get(json_root(&config->doc), key);
-}
-
-// Returns (creating if needed) the object for the dotted prefix of `key`, and
-// writes the last segment's name into `leaf`.
-static yyjson_mut_val *object_for_key(yyjson_mut_doc *doc, yyjson_mut_val *root, const char *key, char *leaf, usize leaf_cap) {
-    yyjson_mut_val *obj = root;
-    StringView rest = sv(key);
-    for (;;) {
-        StringView part = sv_chop_char(&rest, '.');
-        if (rest.len == 0) {
-            snprintf(leaf, leaf_cap, SV_FMT, SV_ARG(part));
-            return obj;
-        }
-        yyjson_mut_val *child = yyjson_mut_obj_getn(obj, part.data, (usize)part.len);
-        if (!child) {
-            child = yyjson_mut_obj(doc);
-            yyjson_mut_obj_add(obj, yyjson_mut_strncpy(doc, part.data, (usize)part.len), child);
-        }
-        obj = child;
-    }
-}
-
 bool config_save(const Config *config) {
-    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
-    yyjson_mut_val *root = yyjson_mut_obj(doc);
-    yyjson_mut_doc_set_root(doc, root);
+    String out = string_from(SV("# CataGui settings (written by the app; edit while it is closed).\n"
+                                "# Keymap, engines, layout and themes overrides live next to this file:\n"
+                                "# keymap.kv, engines.kv, layout.lisp, themes/*.theme\n"));
+    StringView group = SV_NULL;
     for (isize i = 0; i < countof(FIELDS); ++i) {
         const ConfigField *f = &FIELDS[i];
-        char leaf[64];
-        yyjson_mut_val *obj = object_for_key(doc, root, f->key, leaf, sizeof(leaf));
-        yyjson_mut_val *key = yyjson_mut_strcpy(doc, leaf);
-        yyjson_mut_val *val = NULL;
+        StringView key = sv(f->key);
+        isize dot = sv_find_char(key, '.');
+        StringView g = dot > 0 ? sv_take(key, dot) : SV("");
+        if (!group.data || !sv_eq(g, group)) string_push_char(&out, '\n');
+        group = g;
         switch (f->type) {
             case CONFIG_STRING: {
-                StringView s = config_get_string(config, f);
-                val = yyjson_mut_strncpy(doc, s.data, (usize)s.len);
+                StringView v = config_get_string(config, f);
+                bool quote = v.len && (v.data[0] == ' ' || v.data[v.len - 1] == ' ' || v.data[0] == '"');
+                string_pushf(&out, "%s = %s" SV_FMT "%s\n", f->key, quote ? "\"" : "", SV_ARG(v), quote ? "\"" : "");
                 break;
             }
-            case CONFIG_BOOL: val = yyjson_mut_bool(doc, config_get_bool(config, f)); break;
-            case CONFIG_INT: val = yyjson_mut_sint(doc, (i64)config_get_number(config, f)); break;
-            case CONFIG_FLOAT: val = yyjson_mut_real(doc, round(config_get_number(config, f) * 1000.0) / 1000.0); break;
+            case CONFIG_BOOL: string_pushf(&out, "%s = %s\n", f->key, config_get_bool(config, f) ? "true" : "false"); break;
+            case CONFIG_INT: string_pushf(&out, "%s = %d\n", f->key, (i32)config_get_number(config, f)); break;
+            case CONFIG_FLOAT: string_pushf(&out, "%s = %g\n", f->key, round(config_get_number(config, f) * 1000.0) / 1000.0); break;
         }
-        yyjson_mut_obj_add(obj, key, val);
     }
-
-    // Preserve user override sections verbatim.
-    static const char *const PRESERVED[] = { "engines", "keymap", "layout" };
-    for (i32 i = 0; i < (i32)countof(PRESERVED); ++i) {
-        JsonValue section = config_section(config, PRESERVED[i]);
-        if (!json_exists(section)) continue;
-        yyjson_mut_obj_add_val(doc, root, PRESERVED[i], yyjson_val_mut_copy(doc, section.val));
-    }
-
-    usize len = 0;
-    char *text = yyjson_mut_write(doc, YYJSON_WRITE_PRETTY_TWO_SPACES, &len);
-    yyjson_mut_doc_free(doc);
-    if (!text) return false;
     os_make_dirs(path_dirname(string_sv(&config->path)));
-    bool ok = os_write_file(string_sv(&config->path), sv_from_parts(text, (isize)len));
-    free(text);
+    bool ok = os_write_file(string_sv(&config->path), string_sv(&out));
+    string_free(&out);
     if (!ok) log_warn("could not write %s", string_cstr(&config->path));
     return ok;
 }
@@ -200,5 +194,4 @@ void config_free(Config *config) {
         if (FIELDS[i].type == CONFIG_STRING) string_free((String *)field_ptr(config, &FIELDS[i]));
     }
     string_free(&config->path);
-    json_free(&config->doc);
 }

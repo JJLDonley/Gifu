@@ -56,12 +56,16 @@ static String find_root_dir(StringView exe_dir) {
     return string_from(exe_dir);
 }
 
-static void load_json_layer(StringView path, JsonDoc *doc) {
-    String err = { 0 };
-    if (!json_load_file(path, doc, &err)) {
-        log_error("%s", string_cstr(&err));
-        string_free(&err);
-    }
+// Loads assets/data/<name> then <config_dir>/<name> (user overrides) into `kv`.
+static void load_kv_layers(const App *app, const char *name, KvFile *kv) {
+    String rel = string_format("data/%s", name);
+    String shipped = path_join(string_sv(&app->assets_dir), string_sv(&rel));
+    String user = path_join(string_sv(&app->config_dir), sv(name));
+    if (!kv_load(kv, string_sv(&shipped))) log_error("cannot read %s", string_cstr(&shipped));
+    if (kv_load(kv, string_sv(&user))) log_info("user overrides: %s", string_cstr(&user));
+    string_free(&rel);
+    string_free(&shipped);
+    string_free(&user);
 }
 
 // ---- Engine -----------------------------------------------------------------------------
@@ -105,7 +109,7 @@ static void start_engine(App *app) {
     }
     app->engine_profile = profile;
     if (!profile) {
-        app->engine_error = string_from(SV("no engine found (see assets/data/engines.json)"));
+        app->engine_error = string_from(SV("no engine found (see assets/data/engines.kv)"));
         return;
     }
     String err = { 0 };
@@ -500,7 +504,7 @@ bool app_init(App *app, const AppOptions *options) {
              string_cstr(&app->config_dir));
 
     // Config (user layer).
-    String config_path = path_join(string_sv(&app->config_dir), SV("config.json"));
+    String config_path = path_join(string_sv(&app->config_dir), SV("config.kv"));
     config_init_defaults(&app->config, string_sv(&config_path));
     string_free(&config_path);
     String err = { 0 };
@@ -518,20 +522,15 @@ bool app_init(App *app, const AppOptions *options) {
 
     // Data layers: shipped assets first, user config overrides.
     PathVars vars = { app->root_dir, app->exe_dir };
-    JsonDoc doc = { 0 };
-    String path = path_join(string_sv(&app->assets_dir), SV("data/keymap.json"));
-    load_json_layer(string_sv(&path), &doc);
-    keymap_load_json(&app->keymap, json_root(&doc));
-    keymap_load_json(&app->keymap, config_section(&app->config, "keymap"));
-    json_free(&doc);
-    string_free(&path);
+    KvFile keymap_kv = { 0 };
+    load_kv_layers(app, "keymap.kv", &keymap_kv);
+    keymap_load_kv(&app->keymap, &keymap_kv, SV("keymap.kv"));
+    kv_free(&keymap_kv);
 
-    path = path_join(string_sv(&app->assets_dir), SV("data/engines.json"));
-    load_json_layer(string_sv(&path), &doc);
-    engine_profiles_from_json(json_get(json_root(&doc), "engines"), &vars, &app->engine_profiles);
-    engine_profiles_from_json(config_section(&app->config, "engines"), &vars, &app->engine_profiles);
-    json_free(&doc);
-    string_free(&path);
+    KvFile engines_kv = { 0 };
+    load_kv_layers(app, "engines.kv", &engines_kv);
+    engine_profiles_from_kv(&engines_kv, &vars, &app->engine_profiles);
+    kv_free(&engines_kv);
 
 
     command_registry_init(&app->commands, app);

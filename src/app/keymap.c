@@ -60,26 +60,22 @@ i32 key_chord_format(KeyChord chord, char *buffer, i32 capacity) {
                     chord.mods & KEYMOD_SUPER ? "Super+" : "", key_name);
 }
 
-void keymap_load_json(Keymap *keymap, JsonValue root) {
-    JsonValue bindings = json_get(root, "bindings");
-    for (isize i = 0; i < json_array_len(bindings); ++i) {
-        JsonValue b = json_array_at(bindings, i);
-        StringView key = json_string(json_get(b, "key"), SV(""));
-        StringView command = json_string(json_get(b, "command"), SV(""));
+void keymap_load_kv(Keymap *keymap, const KvFile *kv, StringView source) {
+    vec_foreach(KvEntry, e, &kv->entries) {
         KeyChord chord;
-        if (!key_chord_parse(key, &chord) || command.len == 0) {
-            log_warn("keymap: bad binding '" SV_FMT "'", SV_ARG(key));
+        if (!key_chord_parse(e->key, &chord) || e->value.len == 0) {
+            log_warn(SV_FMT ":%d: bad key binding '" SV_FMT "'", SV_ARG(source), e->line, SV_ARG(e->key));
             continue;
         }
         bool replaced = false;
         vec_foreach(KeyBinding, existing, &keymap->bindings) {
             if (existing->chord.key == chord.key && existing->chord.mods == chord.mods) {
                 string_free(&existing->command);
-                existing->command = string_from(command);
+                existing->command = string_from(e->value);
                 replaced = true;
             }
         }
-        if (!replaced) vec_push(&keymap->bindings, (KeyBinding){ chord, string_from(command) });
+        if (!replaced) vec_push(&keymap->bindings, (KeyBinding){ chord, string_from(e->value) });
     }
 }
 

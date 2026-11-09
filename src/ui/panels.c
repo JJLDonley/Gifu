@@ -1,4 +1,4 @@
-// Sidebar panels. Each panel is a named renderer; layout.json chooses which
+// Sidebar panels. Each panel is a named renderer; layout.lisp chooses which
 // panels appear and in what order.
 #include "ui/ui.h"
 

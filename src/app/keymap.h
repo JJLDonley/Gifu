@@ -1,9 +1,10 @@
 // keymap.h - key chords ("Ctrl+Shift+O", "Right", "Space") bound to command ids,
-// loaded from assets/data/keymap.json and the user's config.
+// loaded from key=value files: assets/data/keymap.kv, then the user's
+// <config_dir>/keymap.kv (one "Chord = command.id" per line).
 // Key codes are raylib/GLFW key codes (letters/digits are their ASCII values).
 #pragma once
 
-#include "base/json.h"
+#include "base/kv.h"
 #include "base/vec.h"
 
 enum {
@@ -31,9 +32,9 @@ NODISCARD bool key_chord_parse(StringView text, KeyChord *out);
 // "Ctrl+O" style text for tooltips. Returns bytes written.
 i32 key_chord_format(KeyChord chord, char *buffer, i32 capacity);
 
-// Reads {"bindings":[{"key":"Right","command":"nav.next"}, ...]}; later
-// bindings for the same chord override earlier ones.
-void keymap_load_json(Keymap *keymap, JsonValue root);
+// Adds "Chord = command" entries; a later binding for the same chord wins.
+// `source` names the file in warnings.
+void keymap_load_kv(Keymap *keymap, const KvFile *kv, StringView source);
 const KeyBinding *keymap_lookup(const Keymap *keymap, KeyChord chord);
 const KeyBinding *keymap_find_command(const Keymap *keymap, StringView command);
 void keymap_free(Keymap *keymap);

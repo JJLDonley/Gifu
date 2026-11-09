@@ -187,13 +187,19 @@ bool ui_init(Ui *ui, App *app) {
     string_free(&user);
     log_info("loaded %td themes", ui->themes.len);
 
-    String settings_path = path_join(string_sv(&app->assets_dir), SV("data/forms.json"));
-    String err = { 0 };
-    if (!json_load_file(string_sv(&settings_path), &ui->forms_doc, &err)) {
-        log_error("%s", string_cstr(&err));
-        string_free(&err);
+    String forms_path = path_join(string_sv(&app->assets_dir), SV("data/forms.lisp"));
+    String forms_text = { 0 };
+    Sexpr *forms = NULL;
+    SexprError err = { 0 };
+    if (!os_read_file(string_sv(&forms_path), &forms_text)) {
+        log_error("cannot read %s", string_cstr(&forms_path));
+    } else if (!sexpr_parse(&ui->forms_arena, string_sv(&forms_text), &forms, &err)) {
+        log_error("%s:%d:%d: %s", string_cstr(&forms_path), err.line, err.column, err.message);
+    } else {
+        ui->forms_root = forms;
     }
-    string_free(&settings_path);
+    string_free(&forms_text);
+    string_free(&forms_path);
     ui->language_version = app->language_version;
 
     layout_load(ui);
@@ -224,7 +230,7 @@ void ui_shutdown(Ui *ui) {
     font_cache_destroy(ui->fonts);
     themes_free(&ui->themes);
     layout_free(ui);
-    json_free(&ui->forms_doc);
+    arena_free(&ui->forms_arena);
     text_edit_free(&ui->comment);
     for (i32 i = 0; i < ui->form_edit_count; ++i) text_edit_free(&ui->form_edits[i]);
     arena_free(&ui->frame);

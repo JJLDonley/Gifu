@@ -1,5 +1,6 @@
 #include "engine/engine_profile.h"
 
+#include "base/log.h"
 #include "engine/katago_engine.h"
 
 #include <string.h>
@@ -54,12 +55,6 @@ static String resolve_model(String path) {
     return chosen;
 }
 
-static void read_string_array(JsonValue array, const PathVars *vars, StringVec *out) {
-    for (isize i = 0; i < json_array_len(array); ++i) {
-        vec_push(out, path_vars_expand(vars, json_string(json_array_at(array, i), SV(""))));
-    }
-}
-
 static void profile_free(EngineProfile *p) {
     string_free(&p->id);
     string_free(&p->name);
@@ -72,35 +67,66 @@ static void profile_free(EngineProfile *p) {
     string_vec_free(&p->platforms);
 }
 
-void engine_profiles_from_json(JsonValue array, const PathVars *vars, EngineProfileVec *out) {
-    for (isize i = 0; i < json_array_len(array); ++i) {
-        JsonValue item = json_array_at(array, i);
-        EngineProfile p = { 0 };
-        read_string_array(json_get(item, "platforms"), vars, &p.platforms);
-        bool applies = p.platforms.len == 0;
-        vec_foreach(String, plat, &p.platforms) applies |= sv_eq(string_sv(plat), sv(os_platform_name()));
+static EngineProfile *profile_for(EngineProfileVec *out, StringView id) {
+    vec_foreach(EngineProfile, p, out) {
+        if (sv_eq(string_sv(&p->id), id)) return p;
+    }
+    vec_push(out, (EngineProfile){ .id = string_from(id), .name = string_from(id), .kind = string_from(SV("katago-gtp")),
+                                   .program = string_from(SV("")), .model = string_from(SV("")), .config = string_from(SV("")),
+                                   .working_dir = string_from(SV("")) });
+    return &vec_last(out);
+}
+
+static void set_field(String *dst, String value) {
+    string_free(dst);
+    *dst = value;
+}
+
+void engine_profiles_from_kv(const KvFile *kv, const PathVars *vars, EngineProfileVec *out) {
+    EngineProfileVec loaded = { 0 };
+    // Args are replaced wholesale per file: remember which profiles got new args here.
+    vec_foreach(KvEntry, e, &kv->entries) {
+        isize dot = sv_find_char(e->key, '.');
+        if (dot <= 0) continue;
+        StringView id = sv_take(e->key, dot), field = sv_drop(e->key, dot + 1);
+        EngineProfile *p = profile_for(&loaded, id);
+        if (sv_eq(field, SV("name"))) set_field(&p->name, string_from(e->value));
+        else if (sv_eq(field, SV("kind"))) set_field(&p->kind, string_from(e->value));
+        else if (sv_eq(field, SV("program"))) set_field(&p->program, path_vars_expand(vars, e->value));
+        else if (sv_eq(field, SV("model"))) set_field(&p->model, path_vars_expand(vars, e->value));
+        else if (sv_eq(field, SV("config"))) set_field(&p->config, path_vars_expand(vars, e->value));
+        else if (sv_eq(field, SV("working_dir"))) set_field(&p->working_dir, path_vars_expand(vars, e->value));
+        else if (sv_eq(field, SV("arg"))) vec_push(&p->args, path_vars_expand(vars, e->value));
+        else if (sv_eq(field, SV("platforms"))) {
+            StringView rest = e->value;
+            while (rest.len) {
+                StringView item = sv_trim(sv_chop_char(&rest, ','));
+                if (item.len) vec_push(&p->platforms, string_from(item));
+            }
+        } else {
+            log_warn("engines:%d: unknown field '" SV_FMT "'", e->line, SV_ARG(field));
+        }
+    }
+    vec_foreach(EngineProfile, p, &loaded) {
+        bool applies = p->platforms.len == 0;
+        vec_foreach(String, plat, &p->platforms) applies |= sv_eq(string_sv(plat), sv(os_platform_name()));
         if (!applies) {
-            string_vec_free(&p.platforms);
+            profile_free(p);
             continue;
         }
-        p.id = string_from(json_string(json_get(item, "id"), SV("engine")));
-        p.name = string_from(json_string(json_get(item, "name"), string_sv(&p.id)));
-        p.kind = string_from(json_string(json_get(item, "kind"), SV("katago-gtp")));
-        p.program = path_vars_expand(vars, json_string(json_get(item, "program"), SV("")));
-        p.model = resolve_model(path_vars_expand(vars, json_string(json_get(item, "model"), SV(""))));
-        p.config = path_vars_expand(vars, json_string(json_get(item, "config"), SV("")));
-        p.working_dir = path_vars_expand(vars, json_string(json_get(item, "working_dir"), SV("")));
-        read_string_array(json_get(item, "args"), vars, &p.args);
-        // A later profile with the same id (user config) replaces an earlier one.
+        String model = p->model;
+        p->model = resolve_model(model);
+        // A later profile with the same id (user file) replaces an earlier one.
         bool replaced = false;
         for (isize k = 0; k < out->len && !replaced; ++k) {
-            if (!sv_eq(string_sv(&out->items[k].id), string_sv(&p.id))) continue;
+            if (!sv_eq(string_sv(&out->items[k].id), string_sv(&p->id))) continue;
             profile_free(&out->items[k]);
-            out->items[k] = p;
+            out->items[k] = *p;
             replaced = true;
         }
-        if (!replaced) vec_push(out, p);
+        if (!replaced) vec_push(out, *p);
     }
+    vec_free(&loaded);
 }
 
 void engine_profiles_free(EngineProfileVec *profiles) {
