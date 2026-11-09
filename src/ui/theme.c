@@ -1,5 +1,6 @@
 #include "ui/theme.h"
 
+#include "base/kv.h"
 #include "base/log.h"
 
 #include <stddef.h>
@@ -71,24 +72,14 @@ static const EnumName BACKGROUND_FITS[] = { { "cover", BACKGROUND_FIT_COVER }, {
 static const EnumName BOARD_STYLES[] = { { "flat", BOARD_STYLE_FLAT }, { "wood", BOARD_STYLE_WOOD }, { "paper", BOARD_STYLE_PAPER }, { "image", BOARD_STYLE_IMAGE } };
 static const EnumName STONE_STYLES[] = { { "flat", STONE_STYLE_FLAT }, { "glossy", STONE_STYLE_GLOSSY }, { "ink", STONE_STYLE_INK } };
 
-static i32 enum_from_json(JsonValue v, const EnumName *names, isize count, i32 fallback) {
-    StringView s = json_string(v, SV(""));
+static bool enum_from_text(StringView s, const EnumName *names, isize count, i32 *out) {
     for (isize i = 0; i < count; ++i) {
-        if (sv_eq(s, sv(names[i].name))) return names[i].value;
+        if (sv_eq(s, sv(names[i].name))) {
+            *out = names[i].value;
+            return true;
+        }
     }
-    if (s.len) log_warn("theme: unknown value '" SV_FMT "'", SV_ARG(s));
-    return fallback;
-}
-
-static void apply_string(String *dst, JsonValue v) {
-    if (!json_is_string(v)) return;
-    string_free(dst);
-    *dst = string_from(json_string(v, SV("")));
-}
-
-static void apply_color(Color *dst, JsonValue v) {
-    Color c;
-    if (json_is_string(v) && color_parse(json_string(v, SV("")), &c)) *dst = c;
+    return false;
 }
 
 // ---- Theme ----------------------------------------------------------------------------
@@ -164,56 +155,97 @@ void theme_free(Theme *t) {
     string_free(&t->fonts.mono);
 }
 
-void theme_apply_json(Theme *t, JsonValue root) {
-    apply_string(&t->name, json_get(root, "name"));
-    t->dark = json_bool(json_get(root, "dark"), t->dark);
+// Every non-colour theme key, as a typed field (colours use COLOR_FIELDS as
+// "colors.<name>").
+typedef enum ThemeFieldType { TF_F32, TF_I32, TF_U32, TF_BOOL, TF_STRING, TF_COLOR, TF_ENUM } ThemeFieldType;
 
-    JsonValue colors = json_get(root, "colors");
-    for (i32 i = 0; i < (i32)countof(COLOR_FIELDS); ++i) {
-        apply_color((Color *)((u8 *)&t->colors + COLOR_FIELDS[i].offset), json_get(colors, COLOR_FIELDS[i].key));
+typedef struct ThemeField {
+    const char *key;
+    ThemeFieldType type;
+    usize offset;
+    const EnumName *names;
+    isize name_count;
+} ThemeField;
+
+#define FIELD(k, type, member) { k, type, offsetof(Theme, member), NULL, 0 }
+#define ENUM(k, member, table) { k, TF_ENUM, offsetof(Theme, member), table, countof(table) }
+static const ThemeField THEME_FIELDS[] = {
+    FIELD("name", TF_STRING, name),
+    FIELD("dark", TF_BOOL, dark),
+    ENUM("background.kind", background.kind, BACKGROUND_KINDS),
+    ENUM("background.fit", background.fit, BACKGROUND_FITS),
+    FIELD("background.image", TF_STRING, background.image),
+    FIELD("background.opacity", TF_F32, background.opacity),
+    FIELD("background.paper.grain", TF_F32, background.paper.grain),
+    FIELD("background.paper.fibers", TF_F32, background.paper.fibers),
+    FIELD("background.paper.vignette", TF_F32, background.paper.vignette),
+    FIELD("background.paper.stains", TF_I32, background.paper.stains),
+    FIELD("background.paper.stain_color", TF_COLOR, background.paper.stain_color),
+    FIELD("background.paper.seed", TF_U32, background.paper.seed),
+    ENUM("board.style", board.style, BOARD_STYLES),
+    FIELD("board.texture", TF_STRING, board.texture),
+    FIELD("board.line_width", TF_F32, board.line_width),
+    FIELD("board.shadow", TF_BOOL, board.shadow),
+    ENUM("stones.style", stones.style, STONE_STYLES),
+    FIELD("stones.shadow", TF_F32, stones.shadow),
+    FIELD("shape.radius", TF_F32, shape.radius),
+    FIELD("shape.border_width", TF_F32, shape.border_width),
+    FIELD("shape.gap", TF_F32, shape.gap),
+    FIELD("shape.padding", TF_F32, shape.padding),
+    FIELD("fonts.ui", TF_STRING, fonts.ui),
+    FIELD("fonts.ui_bold", TF_STRING, fonts.ui_bold),
+    FIELD("fonts.mono", TF_STRING, fonts.mono),
+};
+#undef FIELD
+#undef ENUM
+
+// Applies one key=value. Returns false when the key or value is not understood.
+static bool apply_entry(Theme *t, StringView key, StringView value) {
+    if (sv_starts_with(key, SV("colors."))) {
+        StringView name = sv_drop(key, 7);
+        for (i32 i = 0; i < (i32)countof(COLOR_FIELDS); ++i) {
+            if (sv_eq(name, sv(COLOR_FIELDS[i].key))) return color_parse(value, (Color *)((u8 *)&t->colors + COLOR_FIELDS[i].offset));
+        }
+        return false;
     }
+    for (i32 i = 0; i < (i32)countof(THEME_FIELDS); ++i) {
+        const ThemeField *f = &THEME_FIELDS[i];
+        if (!sv_eq(key, sv(f->key))) continue;
+        void *p = (u8 *)t + f->offset;
+        f64 number = 0;
+        switch (f->type) {
+            case TF_F32: return sv_parse_f64(value, &number) && (*(f32 *)p = (f32)number, true);
+            case TF_I32: return sv_parse_f64(value, &number) && (*(i32 *)p = (i32)number, true);
+            case TF_U32: return sv_parse_f64(value, &number) && (*(u32 *)p = (u32)number, true);
+            case TF_BOOL: return kv_parse_bool(value, (bool *)p);
+            case TF_COLOR: return color_parse(value, (Color *)p);
+            case TF_ENUM: return enum_from_text(value, f->names, f->name_count, (i32 *)p);
+            case TF_STRING: {
+                String *str = p;
+                string_free(str);
+                *str = string_from(value);
+                return true;
+            }
+        }
+    }
+    return false;
+}
 
-    JsonValue bg = json_get(root, "background");
-    t->background.kind = enum_from_json(json_get(bg, "kind"), BACKGROUND_KINDS, countof(BACKGROUND_KINDS), t->background.kind);
-    t->background.fit = enum_from_json(json_get(bg, "fit"), BACKGROUND_FITS, countof(BACKGROUND_FITS), t->background.fit);
-    t->background.opacity = (f32)json_number(json_get(bg, "opacity"), t->background.opacity);
-    apply_string(&t->background.image, json_get(bg, "image"));
-    JsonValue paper = json_get(bg, "paper");
-    PaperParams *p = &t->background.paper;
-    p->grain = (f32)json_number(json_get(paper, "grain"), p->grain);
-    p->fibers = (f32)json_number(json_get(paper, "fibers"), p->fibers);
-    p->vignette = (f32)json_number(json_get(paper, "vignette"), p->vignette);
-    p->stains = (i32)json_int(json_get(paper, "stains"), p->stains);
-    p->seed = (u32)json_int(json_get(paper, "seed"), p->seed);
-    apply_color(&p->stain_color, json_get(paper, "stain_color"));
-
-    JsonValue board = json_get(root, "board");
-    t->board.style = enum_from_json(json_get(board, "style"), BOARD_STYLES, countof(BOARD_STYLES), t->board.style);
-    apply_string(&t->board.texture, json_get(board, "texture"));
-    t->board.line_width = (f32)json_number(json_get(board, "line_width"), t->board.line_width);
-    t->board.shadow = json_bool(json_get(board, "shadow"), t->board.shadow);
-
-    JsonValue stones = json_get(root, "stones");
-    t->stones.style = enum_from_json(json_get(stones, "style"), STONE_STYLES, countof(STONE_STYLES), t->stones.style);
-    t->stones.shadow = (f32)json_number(json_get(stones, "shadow"), t->stones.shadow);
-
-    JsonValue shape = json_get(root, "shape");
-    t->shape.radius = (f32)json_number(json_get(shape, "radius"), t->shape.radius);
-    t->shape.border_width = (f32)json_number(json_get(shape, "border_width"), t->shape.border_width);
-    t->shape.gap = (f32)json_number(json_get(shape, "gap"), t->shape.gap);
-    t->shape.padding = (f32)json_number(json_get(shape, "padding"), t->shape.padding);
-
-    JsonValue fonts = json_get(root, "fonts");
-    apply_string(&t->fonts.ui, json_get(fonts, "ui"));
-    apply_string(&t->fonts.ui_bold, json_get(fonts, "ui_bold"));
-    apply_string(&t->fonts.mono, json_get(fonts, "mono"));
+void theme_apply_kv(Theme *t, const KvFile *kv, StringView source) {
+    vec_foreach(KvEntry, e, &kv->entries) {
+        if (sv_eq(e->key, SV("extends"))) continue;
+        if (!apply_entry(t, e->key, e->value)) {
+            log_warn(SV_FMT ":%d: cannot apply '" SV_FMT " = " SV_FMT "'", SV_ARG(source), e->line, SV_ARG(e->key), SV_ARG(e->value));
+        }
+    }
 }
 
 // ---- Loading ----------------------------------------------------------------------------
 
 typedef struct ThemeSource {
     String id;
-    JsonDoc doc;
+    String path;
+    KvFile kv;
     bool resolving, resolved;
     isize theme_index;
 } ThemeSource;
@@ -234,8 +266,7 @@ static void resolve(ThemeSourceVec *sources, isize index, ThemeVec *out) {
         return;
     }
     src->resolving = true;
-    JsonValue root = json_root(&src->doc);
-    StringView base_id = json_string(json_get(root, "extends"), SV(""));
+    StringView base_id = kv_get(&src->kv, SV("extends"), SV(""));
     Theme theme;
     isize base = base_id.len ? source_find(sources, base_id) : -1;
     if (base >= 0) {
@@ -250,7 +281,7 @@ static void resolve(ThemeSourceVec *sources, isize index, ThemeVec *out) {
     }
     string_free(&theme.id);
     theme.id = string_from(string_sv(&src->id));
-    theme_apply_json(&theme, root);
+    theme_apply_kv(&theme, &src->kv, string_sv(&src->path));
     src->theme_index = out->len;
     vec_push(out, theme);
     src->resolving = false;
@@ -277,32 +308,32 @@ void themes_load(ThemeVec *out, const StringView *dirs, isize dir_count) {
         if (!os_list_dir(dirs[d], &names)) continue;
         vec_foreach(String, name, &names) {
             StringView n = string_sv(name);
-            if (!sv_ends_with(n, SV(".json"))) continue;
+            if (!sv_ends_with(n, SV(".theme"))) continue;
             String path = path_join(dirs[d], n);
-            JsonDoc doc = { 0 };
-            String err = { 0 };
-            if (!json_load_file(string_sv(&path), &doc, &err)) {
-                log_warn("theme: %s", string_cstr(&err));
-                string_free(&err);
+            KvFile kv = { 0 };
+            if (!kv_load(&kv, string_sv(&path))) {
+                log_warn("theme: cannot read %s", string_cstr(&path));
                 string_free(&path);
                 continue;
             }
-            StringView id = sv_take(n, n.len - 5);
+            StringView id = sv_take(n, n.len - 6);
             isize existing = source_find(&sources, id);
-            if (existing >= 0) {
-                json_free(&sources.items[existing].doc);
-                sources.items[existing].doc = doc;
+            if (existing >= 0) {   // a later directory (user themes) replaces a built-in
+                kv_free(&sources.items[existing].kv);
+                string_free(&sources.items[existing].path);
+                sources.items[existing].kv = kv;
+                sources.items[existing].path = path;
             } else {
-                vec_push(&sources, (ThemeSource){ .id = string_from(id), .doc = doc });
+                vec_push(&sources, (ThemeSource){ .id = string_from(id), .path = path, .kv = kv });
             }
-            string_free(&path);
         }
         string_vec_free(&names);
     }
     for (isize i = 0; i < sources.len; ++i) resolve(&sources, i, out);
     vec_foreach(ThemeSource, s, &sources) {
         string_free(&s->id);
-        json_free(&s->doc);
+        string_free(&s->path);
+        kv_free(&s->kv);
     }
     vec_free(&sources);
     if (out->len == 0) vec_push(out, theme_fallback());

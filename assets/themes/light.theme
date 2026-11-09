@@ -1,0 +1,50 @@
+# Light — monochrome black-on-white. This file documents every theme key;
+# other themes may "extends" a theme and override only what differs.
+
+name = Light
+dark = false
+
+colors.background       = #FFFFFF
+colors.surface          = #FFFFFF
+colors.surface_alt      = #F4F4F4
+colors.border           = #E3E3E3
+colors.text             = #111111
+colors.text_muted       = #6E6E6E
+colors.accent           = #111111
+colors.accent_text      = #FFFFFF
+colors.hover            = #0000000F
+colors.danger           = #C62828
+colors.board            = #F1F1F1
+colors.board_line       = #2A2A2A
+colors.board_label      = #707070
+colors.black_stone      = #121212
+colors.white_stone      = #FFFFFF
+colors.black_stone_edge = #000000
+colors.white_stone_edge = #2A2A2A
+colors.last_move        = #E53935
+colors.winrate_black    = #111111
+colors.winrate_white    = #FFFFFF
+colors.graph_line       = #111111
+colors.score_line       = #9E9E9E
+colors.candidate_best   = #1E88E5
+colors.candidate_good   = #43A047
+colors.candidate_bad    = #E53935
+colors.candidate_text   = #000000
+
+background.kind = solid
+
+board.style      = flat
+board.line_width = 1.0
+board.shadow     = false
+
+stones.style  = flat
+stones.shadow = 0.0
+
+shape.radius       = 8
+shape.border_width = 1
+shape.gap          = 12
+shape.padding      = 14
+
+fonts.ui      = fonts/OpenSans-Regular.ttf
+fonts.ui_bold = fonts/OpenSans-Semibold.ttf
+fonts.mono    = fonts/SourceCodePro-Regular.ttf

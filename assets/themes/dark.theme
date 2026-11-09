@@ -1,0 +1,29 @@
+# Dark — monochrome white-on-black.
+
+extends = light
+name = Dark
+dark = true
+
+colors.background       = #0D0D0D
+colors.surface          = #161616
+colors.surface_alt      = #1E1E1E
+colors.border           = #2A2A2A
+colors.text             = #EDEDED
+colors.text_muted       = #9A9A9A
+colors.accent           = #F2F2F2
+colors.accent_text      = #0D0D0D
+colors.hover            = #FFFFFF14
+colors.danger           = #EF5350
+colors.board            = #1B1B1B
+colors.board_line       = #5C5C5C
+colors.board_label      = #7A7A7A
+colors.black_stone      = #050505
+colors.white_stone      = #E8E8E8
+colors.black_stone_edge = #707070
+colors.white_stone_edge = #E8E8E8
+colors.last_move        = #FF5252
+colors.winrate_black    = #050505
+colors.winrate_white    = #E8E8E8
+colors.graph_line       = #F2F2F2
+colors.score_line       = #7A7A7A
+colors.candidate_text   = #000000

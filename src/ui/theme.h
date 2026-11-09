@@ -1,8 +1,9 @@
-// theme.h - data-driven visual themes (assets/themes/*.json, plus user themes
-// in <config_dir>/themes). A theme may "extends" another by id (file stem).
+// theme.h - data-driven visual themes: key=value files (assets/themes/*.theme,
+// plus user themes in <config_dir>/themes). `extends = id` inherits another
+// theme (by file stem) and overrides only the keys it sets.
 #pragma once
 
-#include "base/json.h"
+#include "base/kv.h"
 #include "base/os.h"
 
 #include <raylib.h>
@@ -68,9 +69,9 @@ typedef Vec(Theme) ThemeVec;
 Theme theme_fallback(void);
 void theme_free(Theme *theme);
 Theme theme_clone(const Theme *theme);
-// Overrides the fields present in `root`.
-void theme_apply_json(Theme *theme, JsonValue root);
-// Loads every *.json in each dir (later dirs override same ids). Resolves "extends".
+// Applies every key of a theme file (warnings name `source` and the line).
+void theme_apply_kv(Theme *theme, const KvFile *kv, StringView source);
+// Loads every *.theme in each dir (later dirs override same ids). Resolves "extends".
 void themes_load(ThemeVec *out, const StringView *dirs, isize dir_count);
 void themes_free(ThemeVec *themes);
 isize themes_find(const ThemeVec *themes, StringView id);

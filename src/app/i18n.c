@@ -1,5 +1,6 @@
 #include "app/i18n.h"
 
+#include "base/kv.h"
 #include "base/os.h"
 
 #include <stdlib.h>
@@ -36,77 +37,11 @@ static void i18n_put(I18n *i18n, StringView key, StringView value) {
     i18n->count++;
 }
 
-static i32 hex_value(char c) {
-    if (c >= '0' && c <= '9') return c - '0';
-    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-    return -1;
-}
-
-// Decodes .properties escapes (\n, \t, \uXXXX, \\) into UTF-8.
-static void unescape(StringView in, String *out) {
-    string_clear(out);
-    for (isize i = 0; i < in.len; ++i) {
-        char c = in.data[i];
-        if (c != '\\' || i + 1 >= in.len) {
-            string_push_char(out, c);
-            continue;
-        }
-        char n = in.data[++i];
-        if (n == 'n') string_push_char(out, '\n');
-        else if (n == 't') string_push_char(out, '\t');
-        else if (n == 'u' && i + 4 < in.len) {
-            u32 cp = 0;
-            bool ok = true;
-            for (i32 k = 1; k <= 4; ++k) {
-                i32 h = hex_value(in.data[i + k]);
-                ok &= h >= 0;
-                cp = (cp << 4) | (u32)(h < 0 ? 0 : h);
-            }
-            if (ok) {
-                char utf8[4];
-                i32 len = utf8_encode(cp, utf8);
-                string_push(out, sv_from_parts(utf8, len));
-                i += 4;
-            }
-        } else string_push_char(out, n);
-    }
-}
-
 bool i18n_load(I18n *i18n, StringView path) {
-    String text = { 0 };
-    if (!os_read_file(path, &text)) return false;
-    StringView rest = string_sv(&text);
-    if (sv_starts_with(rest, SV("\xEF\xBB\xBF"))) rest = sv_drop(rest, 3);
-    String logical = { 0 }, value = { 0 };
-    while (rest.len > 0) {
-        // Join continuation lines ending in a single backslash.
-        string_clear(&logical);
-        for (;;) {
-            StringView line = sv_trim_left(sv_chop_line(&rest));
-            if (line.len > 0 && line.data[line.len - 1] == '\\' && rest.len > 0) {
-                string_push(&logical, sv_take(line, line.len - 1));
-                continue;
-            }
-            string_push(&logical, line);
-            break;
-        }
-        StringView l = string_sv(&logical);
-        if (l.len == 0 || l.data[0] == '#' || l.data[0] == '!') continue;
-        isize sep = -1;
-        for (isize i = 0; i < l.len; ++i) {
-            if ((l.data[i] == '=' || l.data[i] == ':') && (i == 0 || l.data[i - 1] != '\\')) {
-                sep = i;
-                break;
-            }
-        }
-        if (sep < 0) continue;
-        unescape(sv_trim_left(sv_drop(l, sep + 1)), &value);
-        i18n_put(i18n, sv_trim(sv_take(l, sep)), string_sv(&value));
-    }
-    string_free(&logical);
-    string_free(&value);
-    string_free(&text);
+    KvFile kv = { 0 };
+    if (!kv_load(&kv, path)) return false;
+    vec_foreach(KvEntry, e, &kv.entries) i18n_put(i18n, e->key, e->value);
+    kv_free(&kv);
     return true;
 }
 

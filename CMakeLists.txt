@@ -84,6 +84,7 @@ add_library(catagui_core STATIC
     src/base/thread.c
     src/base/text_encoding.c
     src/base/sexpr.c
+    src/base/kv.c
     src/core/coord.c
     src/core/board.c
     src/core/game_tree.c
@@ -138,10 +139,13 @@ if(WIN32)
     target_link_options(catagui PRIVATE $<$<CONFIG:Release>:-mwindows>)
 endif()
 
-# Assets are loaded from <exe_dir>/assets, so mirror them next to the binary.
-add_custom_command(TARGET catagui POST_BUILD
+# Assets are loaded from <exe_dir>/assets, so mirror them next to the binary
+# on every build (not only when the executable relinks).
+add_custom_target(catagui_assets ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different
-            ${CMAKE_SOURCE_DIR}/assets $<TARGET_FILE_DIR:catagui>/assets)
+            ${CMAKE_SOURCE_DIR}/assets $<TARGET_FILE_DIR:catagui>/assets
+    COMMENT "Syncing assets")
+add_dependencies(catagui catagui_assets)
 
 # ---------------------------------------------------------------------------
 # Tests

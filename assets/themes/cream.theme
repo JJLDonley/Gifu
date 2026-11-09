@@ -1,0 +1,44 @@
+# Cream — warm ivory chrome, kaya-wood board, glossy stones.
+
+extends = light
+name = Cream
+
+colors.background       = #F4ECDA
+colors.surface          = #FBF7EE
+colors.surface_alt      = #F1E8D5
+colors.border           = #E1D3B5
+colors.text             = #3A2F25
+colors.text_muted       = #857460
+colors.accent           = #8A5A2E
+colors.accent_text      = #FFF9EF
+colors.hover            = #8A5A2E14
+colors.board            = #E0B978
+colors.board_line       = #3E2F1F
+colors.board_label      = #6B5640
+colors.black_stone      = #1C1A17
+colors.white_stone      = #FAF7F0
+colors.black_stone_edge = #000000
+colors.white_stone_edge = #B9AF9E
+colors.last_move        = #C0392B
+colors.winrate_black    = #2B2520
+colors.winrate_white    = #FFFBF2
+colors.graph_line       = #3A2F25
+colors.score_line       = #B08A5A
+colors.candidate_text   = #1C1A17
+
+background.kind           = paper
+background.paper.grain    = 0.025
+background.paper.fibers   = 0.0
+background.paper.vignette = 0.1
+background.paper.stains   = 0
+background.paper.seed     = 3
+
+board.style      = wood
+board.texture    = textures/board-wood.png
+board.line_width = 1.0
+board.shadow     = true
+
+stones.style  = glossy
+stones.shadow = 0.35
+
+shape.radius = 12
