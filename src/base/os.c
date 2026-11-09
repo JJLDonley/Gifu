@@ -113,6 +113,15 @@ bool os_file_exists(StringView path) {
     return attrs != INVALID_FILE_ATTRIBUTES && !(attrs & FILE_ATTRIBUTE_DIRECTORY);
 }
 
+i64 os_file_mtime(StringView path) {
+    wchar_t *wpath = os_utf8_to_wide(path);
+    WIN32_FILE_ATTRIBUTE_DATA data;
+    BOOL ok = GetFileAttributesExW(wpath, GetFileExInfoStandard, &data);
+    free(wpath);
+    if (!ok) return 0;
+    return ((i64)data.ftLastWriteTime.dwHighDateTime << 32) | (i64)data.ftLastWriteTime.dwLowDateTime;
+}
+
 bool os_dir_exists(StringView path) {
     wchar_t *wpath = os_utf8_to_wide(path);
     DWORD attrs = GetFileAttributesW(wpath);
@@ -235,6 +244,15 @@ static bool stat_mode(StringView path, mode_t *mode) {
 bool os_file_exists(StringView path) {
     mode_t mode;
     return stat_mode(path, &mode) && S_ISREG(mode);
+}
+
+i64 os_file_mtime(StringView path) {
+    char *cpath = to_cstr(path);
+    struct stat st;
+    int rc = stat(cpath, &st);
+    free(cpath);
+    if (rc != 0) return 0;
+    return (i64)st.st_mtim.tv_sec * 1000000000LL + (i64)st.st_mtim.tv_nsec;
 }
 
 bool os_dir_exists(StringView path) {

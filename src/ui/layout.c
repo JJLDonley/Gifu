@@ -1,92 +1,82 @@
-// Builds the window from LayoutSpec (parsed from assets/data/layout.json).
+// Layout: a tree of components read from assets/data/layout.lisp (or the
+// user's <config_dir>/layout.lisp, hot-reloaded on change).
+//
+//   (name :key value :flag positional-args... (child ...) ...)
+//
+// Each component name maps to a render function in COMPONENTS[]. Containers
+// lay children out flex-style: children stretch across the cross axis, take
+// their natural size along the main axis, or share leftover space with :grow.
+// Common props: :grow :width N :height N :gap N :padding N.
 #include "ui/ui.h"
+
+#include "base/log.h"
+#include "base/os.h"
 
 #include <math.h>
 #include <stdio.h>
 
-// ---- Parsing ---------------------------------------------------------------------------
+typedef struct LayoutCtx {
+    bool horizontal;   // parent's main axis
+    bool ghost;        // buttons render ghost-style (navbar)
+    u32 counter;       // unique index for element ids
+    i32 tabs_index;    // stable per-tabs-node state slot
+    i32 menu_index;
+} LayoutCtx;
 
-static const struct {
-    const char *name;
-    LayoutItemKind kind;
-} ITEM_TYPES[] = {
-    { "separator", LAYOUT_ITEM_SEPARATOR },     { "spacer", LAYOUT_ITEM_SPACER },
-    { "engine_status", LAYOUT_ITEM_ENGINE_STATUS }, { "theme_picker", LAYOUT_ITEM_THEME_PICKER },
-    { "move_counter", LAYOUT_ITEM_MOVE_COUNTER },
-};
+typedef void (*ComponentFn)(Ui *ui, const Sexpr *node, LayoutCtx *ctx);
+static void render_node(Ui *ui, const Sexpr *node, LayoutCtx *ctx);
+static void render_children(Ui *ui, const Sexpr *node, LayoutCtx *ctx);
 
-static void parse_items(JsonValue array, LayoutItemVec *out) {
-    for (isize i = 0; i < json_array_len(array); ++i) {
-        JsonValue v = json_array_at(array, i);
-        LayoutItem item = { .kind = LAYOUT_ITEM_COMMAND };
-        StringView type = json_string(json_get(v, "type"), SV(""));
-        for (i32 k = 0; k < (i32)countof(ITEM_TYPES); ++k) {
-            if (sv_eq(type, sv(ITEM_TYPES[k].name))) item.kind = ITEM_TYPES[k].kind;
-        }
-        item.command = json_string(json_get(v, "command"), SV(""));
-        item.icon = json_string(json_get(v, "icon"), SV(""));
-        item.primary = sv_eq(json_string(json_get(v, "style"), SV("")), SV("primary"));
-        item.with_label = json_bool(json_get(v, "label"), false);
-        if (item.kind == LAYOUT_ITEM_COMMAND && item.command.len == 0) continue;
-        vec_push(out, item);
+// ---- Sizing --------------------------------------------------------------------------------------
+
+static Clay_Sizing node_sizing(Ui *ui, const Sexpr *node, const LayoutCtx *ctx, bool stretch_cross) {
+    bool grow = sexpr_flag(node, "grow");
+    f64 w = sexpr_prop_number(node, "width", 0), h = sexpr_prop_number(node, "height", 0);
+    Clay_SizingAxis main = grow ? CLAY_SIZING_GROW(0) : CLAY_SIZING_FIT(0);
+    Clay_SizingAxis cross = stretch_cross ? CLAY_SIZING_GROW(0) : CLAY_SIZING_FIT(0);
+    Clay_Sizing s = ctx->horizontal ? (Clay_Sizing){ main, cross } : (Clay_Sizing){ cross, main };
+    if (w > 0) s.width = CLAY_SIZING_FIXED(ui_px(ui, (f32)w));
+    if (h > 0) s.height = CLAY_SIZING_FIXED(ui_px(ui, (f32)h));
+    return s;
+}
+
+static u16 prop_px(Ui *ui, const Sexpr *node, const char *key, f32 fallback) {
+    return ui_u16(ui, (f32)sexpr_prop_number(node, key, fallback));
+}
+
+// ---- Leaf widgets ------------------------------------------------------------------------------------
+
+static void separator(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
+    UNUSED(node);
+    Clay_Sizing s = ctx->horizontal ? (Clay_Sizing){ CLAY_SIZING_FIXED(1), CLAY_SIZING_FIXED(ui_px(ui, 22)) }
+                                    : (Clay_Sizing){ CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(1) };
+    CLAY({ .layout = { .sizing = s }, .backgroundColor = color_to_clay(ui->theme->colors.border) }) {}
+}
+
+static void spacer(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
+    UNUSED(ui), UNUSED(node);
+    CLAY({ .layout = { .sizing = ctx->horizontal ? (Clay_Sizing){ CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }
+                                                 : (Clay_Sizing){ CLAY_SIZING_FIT(0), CLAY_SIZING_GROW(0) } } }) {}
+}
+
+static void button(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
+    const Sexpr *cmd = sexpr_next_arg(node, NULL);
+    if (!cmd) return;
+    StringView style = sexpr_prop_text(node, "style", SV(""));
+    ButtonStyle bs = sv_eq(style, SV("primary")) ? BUTTON_PRIMARY : sv_eq(style, SV("ghost")) || ctx->ghost ? BUTTON_GHOST : BUTTON_NORMAL;
+    ui_command_button_ex(ui, cmd->text, sexpr_prop_text(node, "icon", SV("")), sexpr_flag(node, "label"), bs, ctx->counter++);
+}
+
+static void status_text(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
+    UNUSED(node), UNUSED(ctx);
+    App *app = ui->app;
+    if (app->status_message.len && os_time_seconds() < app->status_until) {
+        ui_label(ui, string_sv(&app->status_message), FONT_UI, 13, ui->theme->colors.text_muted);
     }
 }
 
-// StringViews point into the JSON document, which the App keeps alive.
-void layout_parse(LayoutSpec *spec, JsonValue root, f32 default_sidebar) {
-    layout_free(spec);
-    JsonValue menus = json_get(root, "menus");
-    for (isize i = 0; i < json_array_len(menus); ++i) {
-        JsonValue m = json_array_at(menus, i);
-        MenuSpec menu = { .title = json_string(json_get(m, "title"), SV("")),
-                          .fallback = json_string(json_get(m, "fallback"), SV("?")),
-                          .item_start = (i32)spec->menu_items.len };
-        JsonValue items = json_get(m, "items");
-        for (isize k = 0; k < json_array_len(items); ++k) vec_push(&spec->menu_items, json_string(json_array_at(items, k), SV("-")));
-        menu.item_count = (i32)spec->menu_items.len - menu.item_start;
-        vec_push(&spec->menus, menu);
-    }
-    parse_items(json_get(root, "toolbar"), &spec->toolbar);
-    parse_items(json_get(root, "navbar"), &spec->navbar);
-    JsonValue sidebar = json_get(root, "sidebar");
-    spec->sidebar_width = (f32)json_number(json_get(sidebar, "width"), default_sidebar);
-    spec->sidebar_left = sv_eq(json_string(json_get(sidebar, "side"), SV("right")), SV("left"));
-    JsonValue panels = json_get(sidebar, "panels");
-    for (isize i = 0; i < json_array_len(panels); ++i) {
-        JsonValue entry = json_array_at(panels, i);
-        JsonValue tabs = json_get(entry, "tabs");
-        if (json_is_array(tabs)) {
-            SidebarEntry group = { .tab_start = (i32)spec->tab_panels.len };
-            for (isize k = 0; k < json_array_len(tabs); ++k) vec_push(&spec->tab_panels, json_string(json_array_at(tabs, k), SV("")));
-            group.tab_count = (i32)spec->tab_panels.len - group.tab_start;
-            vec_push(&spec->panels, group);
-        } else {
-            vec_push(&spec->panels, (SidebarEntry){ .panel = json_string(entry, SV("")) });
-        }
-    }
-}
-
-void layout_free(LayoutSpec *spec) {
-    vec_free(&spec->toolbar);
-    vec_free(&spec->navbar);
-    vec_free(&spec->panels);
-    vec_free(&spec->tab_panels);
-    vec_free(&spec->menus);
-    vec_free(&spec->menu_items);
-}
-
-// ---- Toolbar widgets -----------------------------------------------------------------------
-
-static void separator(Ui *ui) {
-    CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(1), CLAY_SIZING_FIXED(ui_px(ui, 22)) } },
-           .backgroundColor = color_to_clay(ui->theme->colors.border) }) {}
-}
-
-static void spacer(void) {
-    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) } } }) {}
-}
-
-static void engine_status_widget(Ui *ui) {
+static void engine_status_widget(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
+    UNUSED(node), UNUSED(ctx);
     App *app = ui->app;
     const ThemeColors *c = &ui->theme->colors;
     Color dot = c->text_muted;
@@ -119,7 +109,8 @@ static void engine_status_widget(Ui *ui) {
     }
 }
 
-static void theme_picker(Ui *ui) {
+static void theme_picker(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
+    UNUSED(node), UNUSED(ctx);
     const ThemeColors *c = &ui->theme->colors;
     Clay_ElementId id = CLAY_ID("ThemePicker");
     CLAY({ .id = CLAY_ID("ThemePickerAnchor"), .layout = { .sizing = { CLAY_SIZING_FIT(0), CLAY_SIZING_FIT(0) } } }) {
@@ -167,7 +158,8 @@ static void theme_picker(Ui *ui) {
     }
 }
 
-static void move_counter(Ui *ui) {
+static void move_counter(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
+    UNUSED(node), UNUSED(ctx);
     const GameNode *n = ui->app->tree->current;
     GameNode *line[2048];
     isize total = game_tree_active_line(ui->app->tree, line, countof(line));
@@ -186,24 +178,7 @@ static void move_counter(Ui *ui) {
     }
 }
 
-static void items(Ui *ui, const LayoutItemVec *list, bool ghost) {
-    for (isize i = 0; i < list->len; ++i) {
-        const LayoutItem *item = &list->items[i];
-        switch (item->kind) {
-            case LAYOUT_ITEM_COMMAND:
-                ui_command_button_ex(ui, item->command, item->icon, item->with_label,
-                                     item->primary ? BUTTON_PRIMARY : ghost ? BUTTON_GHOST : BUTTON_NORMAL, (u32)i);
-                break;
-            case LAYOUT_ITEM_SEPARATOR: separator(ui); break;
-            case LAYOUT_ITEM_SPACER: spacer(); break;
-            case LAYOUT_ITEM_ENGINE_STATUS: engine_status_widget(ui); break;
-            case LAYOUT_ITEM_THEME_PICKER: theme_picker(ui); break;
-            case LAYOUT_ITEM_MOVE_COUNTER: move_counter(ui); break;
-        }
-    }
-}
-
-// ---- Window ------------------------------------------------------------------------------------
+// ---- Board -------------------------------------------------------------------------------------------
 
 // Floating card over the top of the board when the current position has a score.
 static void result_banner(Ui *ui) {
@@ -234,11 +209,146 @@ static void result_banner(Ui *ui) {
 
 // ---- Menu bar -------------------------------------------------------------------------------------
 
-static void menu_dropdown(Ui *ui, const MenuSpec *menu, i32 menu_index) {
+
+static void board(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
+    CLAY({ .id = CLAY_ID("BoardArea"),
+           .layout = { .sizing = node_sizing(ui, node, ctx, true), .padding = CLAY_PADDING_ALL(prop_px(ui, node, "padding", ui->theme->shape.gap)) } }) {
+        board_view_element(ui);
+        result_banner(ui);
+    }
+}
+
+// ---- Panels & tabs ---------------------------------------------------------------------------------------
+
+static void panel(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
+    UNUSED(ctx);
+    const Sexpr *name = sexpr_next_arg(node, NULL);
+    if (!name) return;
+    ui->panel_node = node;   // panels may read their own props (e.g. :height)
+    panels_render(ui, name->text);
+    ui->panel_node = NULL;
+}
+
+// Segmented tab bar + the selected panel in a box that fills the space it is
+// given (overflow hidden; each panel scrolls inside). Selection is remembered
+// per tabs node.
+static void tabs(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
+    const ThemeColors *c = &ui->theme->colors;
+    i32 slot = MIN(ctx->tabs_index++, (i32)countof(ui->tab_selected) - 1);
+    StringView names[16];
+    i32 count = 0;
+    for (const Sexpr *a = sexpr_next_arg(node, NULL); a && count < (i32)countof(names); a = sexpr_next_arg(node, a)) names[count++] = a->text;
+    if (count == 0) return;
+    i32 *selected = &ui->tab_selected[slot];
+    *selected = ((*selected % count) + count) % count;   // view.next_tab wraps
+    Clay_Sizing sizing = node_sizing(ui, node, ctx, true);
+    if (sexpr_flag(node, "grow") && !ctx->horizontal) sizing.height = CLAY_SIZING_GROW(ui_px(ui, 160));
+    CLAY({ .layout = { .sizing = sizing, .layoutDirection = CLAY_TOP_TO_BOTTOM, .childGap = ui_u16(ui, 6) } }) {
+        CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 2),
+                           .padding = CLAY_PADDING_ALL(ui_u16(ui, 3)) },
+               .backgroundColor = color_to_clay(c->surface),
+               .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, ui->theme->shape.radius)),
+               .border = { .color = color_to_clay(c->border), .width = CLAY_BORDER_OUTSIDE((u16)ui->theme->shape.border_width) } }) {
+            for (i32 t = 0; t < count; ++t) {
+                // Short label: "tab.<panel>", then "panel.<panel>", then the panel id.
+                char tab_key[96], panel_key[96];
+                snprintf(tab_key, sizeof(tab_key), "tab." SV_FMT, SV_ARG(names[t]));
+                snprintf(panel_key, sizeof(panel_key), "panel." SV_FMT, SV_ARG(names[t]));
+                StringView label = app_tr(ui->app, tab_key, app_tr(ui->app, panel_key, panel_key + 6).data);
+                Clay_ElementId id = CLAY_IDI("SidebarTab", (u32)(slot * 32 + t));
+                bool active = t == *selected, over = Clay_PointerOver(id);
+                f32 on = anim_towards(&ui->anim, id.id, active ? 1.0f : 0.0f, 14.0f, active ? 1.0f : 0.0f);
+                f32 hov = anim_towards(&ui->anim, id.id ^ 0x7AB5u, over ? 1.0f : 0.0f, 16.0f, 0.0f);
+                Color tab_bg = color_lerp(color_with_alpha(c->hover, hov * c->hover.a / 255.0f), c->accent, on);
+                CLAY({ .id = id,
+                       .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) },
+                                   .padding = { ui_u16(ui, 4), ui_u16(ui, 4), ui_u16(ui, 5), ui_u16(ui, 5) },
+                                   .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER } },
+                       .backgroundColor = color_to_clay(tab_bg),
+                       .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, ui->theme->shape.radius * 0.6f)) }) {
+                    CLAY_TEXT(ui_str(ui, label), CLAY_TEXT_CONFIG({ .fontId = FONT_UI_BOLD, .fontSize = ui_u16(ui, 13),
+                                                                    .textColor = color_to_clay(color_lerp(c->text_muted, c->accent_text, on)),
+                                                                    .wrapMode = CLAY_TEXT_WRAP_NONE }));
+                }
+                if (over && ui->mouse_pressed && !ui->pointer_over_menu) *selected = t;
+            }
+        }
+        // No clip here: clip containers stop Clay from compressing their
+        // children, so only the panel's own scroll area clips.
+        CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM } }) {
+            ui->in_tab = true;
+            panels_render(ui, names[*selected]);
+            ui->in_tab = false;
+        }
+    }
+}
+
+// ---- Containers ------------------------------------------------------------------------------------------
+
+static void container(Ui *ui, const Sexpr *node, LayoutCtx *ctx, bool horizontal) {
+    Clay_Sizing sizing = node_sizing(ui, node, ctx, true);
+    u16 gap = prop_px(ui, node, "gap", sexpr_flag(node, "padding") ? ui->theme->shape.gap : 0);
+    u16 pad = prop_px(ui, node, "padding", 0);
+    LayoutCtx child = *ctx;
+    child.horizontal = horizontal;
+    if (!sexpr_flag(node, "scroll")) {
+        CLAY({ .layout = { .sizing = sizing, .padding = CLAY_PADDING_ALL(pad), .childGap = gap,
+                           .layoutDirection = horizontal ? CLAY_LEFT_TO_RIGHT : CLAY_TOP_TO_BOTTOM } }) {
+            render_children(ui, node, &child);
+        }
+        ctx->counter = child.counter, ctx->tabs_index = child.tabs_index, ctx->menu_index = child.menu_index;
+        return;
+    }
+    // :scroll (vertical): a viewport around an inner column sized to the viewport
+    // but never below :min-height, so growing children fill tall windows and
+    // short windows scroll instead of overflowing.
+    Clay_ElementId viewport = Clay_GetElementIdWithIndex(CLAY_STRING("ScrollViewport"), ctx->counter++);
+    Clay_ElementData last = Clay_GetElementData(viewport);
+    f32 available = last.found ? last.boundingBox.height : (f32)GetScreenHeight();
+    f32 inner_h = fmaxf(available, ui_px(ui, (f32)sexpr_prop_number(node, "min-height", 640)));
+    CLAY({ .id = viewport, .layout = { .sizing = sizing },
+           .clip = { .vertical = true, .childOffset = Clay_GetScrollOffset() } }) {
+        CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(inner_h) }, .padding = CLAY_PADDING_ALL(pad),
+                           .childGap = gap, .layoutDirection = CLAY_TOP_TO_BOTTOM } }) {
+            child.horizontal = false;
+            render_children(ui, node, &child);
+        }
+    }
+    ctx->counter = child.counter, ctx->tabs_index = child.tabs_index, ctx->menu_index = child.menu_index;
+}
+
+static void row(Ui *ui, const Sexpr *node, LayoutCtx *ctx) { container(ui, node, ctx, true); }
+static void column(Ui *ui, const Sexpr *node, LayoutCtx *ctx) { container(ui, node, ctx, false); }
+
+static void bar(Ui *ui, const Sexpr *node, LayoutCtx *ctx, bool top, bool ghost) {
+    const Theme *t = ui->theme;
+    Clay_BorderWidth border = { 0 };
+    if (top) border.bottom = 1;
+    else border.top = 1;
+    LayoutCtx child = *ctx;
+    child.horizontal = true;
+    child.ghost = ghost;
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) },
+                       .padding = { ui_u16(ui, 12), ui_u16(ui, 12), ui_u16(ui, 8), ui_u16(ui, 8) },
+                       .childGap = ui_u16(ui, 6), .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } },
+           .backgroundColor = color_to_clay(t->colors.surface),
+           .border = { .color = color_to_clay(t->colors.border), .width = border } }) {
+        render_children(ui, node, &child);
+    }
+    ctx->counter = child.counter, ctx->tabs_index = child.tabs_index, ctx->menu_index = child.menu_index;
+}
+
+static void toolbar(Ui *ui, const Sexpr *node, LayoutCtx *ctx) { bar(ui, node, ctx, true, false); }
+static void navbar(Ui *ui, const Sexpr *node, LayoutCtx *ctx) { bar(ui, node, ctx, false, true); }
+
+// ---- Menu bar --------------------------------------------------------------------------------------------
+
+// (menu TITLE-KEY :fallback "File" command command - command ...)
+static void menu_dropdown(Ui *ui, const Sexpr *menu, i32 menu_index) {
     App *app = ui->app;
     const ThemeColors *c = &ui->theme->colors;
-    Clay_ElementId panel = CLAY_IDI("MenuPanel", (u32)menu_index);
-    CLAY({ .id = panel,
+    Clay_ElementId panel_id = CLAY_IDI("MenuPanel", (u32)menu_index);
+    CLAY({ .id = panel_id,
            .floating = { .attachTo = CLAY_ATTACH_TO_PARENT, .zIndex = 150,
                          .attachPoints = { .element = CLAY_ATTACH_POINT_LEFT_TOP, .parent = CLAY_ATTACH_POINT_LEFT_BOTTOM },
                          .offset = { 0, ui_px(ui, 2) } },
@@ -247,12 +357,13 @@ static void menu_dropdown(Ui *ui, const MenuSpec *menu, i32 menu_index) {
            .backgroundColor = color_to_clay(color_with_alpha(c->surface, 1.0f)),
            .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, ui->theme->shape.radius * 0.8f)),
            .border = { .color = color_to_clay(c->border), .width = CLAY_BORDER_OUTSIDE(1) } }) {
-        if (Clay_PointerOver(panel)) ui->pointer_over_menu = true;
-        for (i32 k = 0; k < menu->item_count; ++k) {
-            StringView id_text = ui->layout.menu_items.items[menu->item_start + k];
+        if (Clay_PointerOver(panel_id)) ui->pointer_over_menu = true;
+        i32 k = 0;
+        const Sexpr *title = sexpr_next_arg(menu, NULL);
+        for (const Sexpr *a = sexpr_next_arg(menu, title); a; a = sexpr_next_arg(menu, a), ++k) {
+            StringView id_text = a->text;
             if (sv_eq(id_text, SV("-"))) {
-                CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(1) } },
-                       .backgroundColor = color_to_clay(c->border) }) {}
+                CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(1) } }, .backgroundColor = color_to_clay(c->border) }) {}
                 continue;
             }
             const CommandDef *cmd = command_find(&app->commands, id_text);
@@ -290,156 +401,148 @@ static void menu_dropdown(Ui *ui, const MenuSpec *menu, i32 menu_index) {
     }
 }
 
-static void menu_bar(Ui *ui) {
-    const LayoutSpec *spec = &ui->layout;
-    if (spec->menus.len == 0) return;
+static void menubar(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
+    UNUSED(ctx);
     const ThemeColors *c = &ui->theme->colors;
     CLAY({ .id = CLAY_ID("MenuBar"),
            .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 2),
                        .padding = { ui_u16(ui, 8), ui_u16(ui, 8), ui_u16(ui, 3), ui_u16(ui, 3) } },
            .backgroundColor = color_to_clay(c->surface) }) {
         bool any_title_hovered = false;
-        for (isize i = 0; i < spec->menus.len; ++i) {
-            const MenuSpec *menu = &spec->menus.items[i];
+        i32 i = 0;
+        for (const Sexpr *menu = sexpr_next_child(node, NULL); menu; menu = sexpr_next_child(node, menu)) {
+            if (!sexpr_is_list(menu, "menu")) continue;
+            const Sexpr *title = sexpr_next_arg(menu, NULL);
+            StringView title_key = title ? title->text : SV("");
+            StringView title_text = i18n_get(&ui->app->i18n, title_key, sexpr_prop_text(menu, "fallback", title_key));
             Clay_ElementId id = CLAY_IDI("MenuTitle", (u32)i);
-            bool open = ui->open_menu == (i32)i, over = Clay_PointerOver(id);
+            bool open = ui->open_menu == i, over = Clay_PointerOver(id);
             any_title_hovered |= over;
             f32 t = anim_towards(&ui->anim, id.id, open ? 1.0f : over ? 0.6f : 0.0f, 20.0f, 0.0f);
             CLAY({ .id = id,
                    .layout = { .padding = { ui_u16(ui, 10), ui_u16(ui, 10), ui_u16(ui, 4), ui_u16(ui, 4) } },
                    .backgroundColor = color_to_clay(color_with_alpha(c->hover, t * 2.0f * c->hover.a / 255.0f)),
                    .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 4)) }) {
-                ui_label(ui, i18n_get(&ui->app->i18n, menu->title, menu->fallback), FONT_UI, 14, c->text);
-                if (open) menu_dropdown(ui, menu, (i32)i);
+                ui_label(ui, title_text, FONT_UI, 14, c->text);
+                if (open) menu_dropdown(ui, menu, i);
             }
-            if (over && ui->mouse_pressed) ui->open_menu = open ? -1 : (i32)i;
-            if (over && ui->open_menu >= 0 && !open) ui->open_menu = (i32)i;   // slide between menus
+            if (over && ui->mouse_pressed) ui->open_menu = open ? -1 : i;
+            if (over && ui->open_menu >= 0 && !open) ui->open_menu = i;   // slide between menus
+            ++i;
         }
+        ui->menu_count = i;
+        if (ui->open_menu >= i) ui->open_menu = -1;
         if (ui->open_menu >= 0) ui->pointer_over_menu |= any_title_hovered;
         if (ui->open_menu >= 0 && ui->mouse_pressed && !ui->pointer_over_menu) ui->open_menu = -1;
     }
 }
 
-static Clay_ElementDeclaration bar(Ui *ui, Clay_ElementId id, bool top) {
-    const Theme *t = ui->theme;
-    Clay_BorderWidth border = { 0 };
-    if (top) border.bottom = 1;
-    else border.top = 1;
-    return (Clay_ElementDeclaration){
-        .id = id,
-        .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) },
-                    .padding = { ui_u16(ui, 12), ui_u16(ui, 12), ui_u16(ui, 8), ui_u16(ui, 8) },
-                    .childGap = ui_u16(ui, 6),
-                    .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } },
-        .backgroundColor = color_to_clay(t->colors.surface),
-        .border = { .color = color_to_clay(t->colors.border), .width = border },
-    };
-}
+// ---- Registry --------------------------------------------------------------------------------------------
 
-// Segmented tab bar + the selected panel. Selection is remembered per group.
-static void tab_group(Ui *ui, const SidebarEntry *entry, i32 group) {
-    const ThemeColors *c = &ui->theme->colors;
-    i32 *selected = &ui->tab_selected[MIN(group, (i32)countof(ui->tab_selected) - 1)];
-    *selected = CLAMP(*selected, 0, entry->tab_count - 1);
-    // The group fills the rest of the sidebar; its content box has a fixed size
-    // (overflow hidden) and each panel scrolls inside it, so switching tabs or
-    // long content never moves anything else.
-    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(ui_px(ui, 160)) }, .layoutDirection = CLAY_TOP_TO_BOTTOM,
-                       .childGap = ui_u16(ui, 6) } }) {
-        CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 2),
-                           .padding = CLAY_PADDING_ALL(ui_u16(ui, 3)) },
-               .backgroundColor = color_to_clay(c->surface),
-               .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, ui->theme->shape.radius)),
-               .border = { .color = color_to_clay(c->border), .width = CLAY_BORDER_OUTSIDE((u16)ui->theme->shape.border_width) } }) {
-            for (i32 t = 0; t < entry->tab_count; ++t) {
-                StringView name = ui->layout.tab_panels.items[entry->tab_start + t];
-                // Short label: "tab.<panel>", then "panel.<panel>", then the panel id.
-                char tab_key[96], panel_key[96];
-                snprintf(tab_key, sizeof(tab_key), "tab." SV_FMT, SV_ARG(name));
-                snprintf(panel_key, sizeof(panel_key), "panel." SV_FMT, SV_ARG(name));
-                StringView label = app_tr(ui->app, tab_key, app_tr(ui->app, panel_key, panel_key + 6).data);
-                Clay_ElementId id = CLAY_IDI("SidebarTab", (u32)(group * 32 + t));
-                bool active = t == *selected, over = Clay_PointerOver(id);
-                f32 on = anim_towards(&ui->anim, id.id, active ? 1.0f : 0.0f, 14.0f, active ? 1.0f : 0.0f);
-                f32 hov = anim_towards(&ui->anim, id.id ^ 0x7AB5u, over ? 1.0f : 0.0f, 16.0f, 0.0f);
-                Color tab_bg = color_lerp(color_with_alpha(c->hover, hov * c->hover.a / 255.0f), c->accent, on);
-                CLAY({ .id = id,
-                       .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) },
-                                   .padding = { ui_u16(ui, 4), ui_u16(ui, 4), ui_u16(ui, 5), ui_u16(ui, 5) },
-                                   .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER } },
-                       .backgroundColor = color_to_clay(tab_bg),
-                       .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, ui->theme->shape.radius * 0.6f)) }) {
-                    CLAY_TEXT(ui_str(ui, label), CLAY_TEXT_CONFIG({ .fontId = FONT_UI_BOLD, .fontSize = ui_u16(ui, 13),
-                                                                    .textColor = color_to_clay(color_lerp(c->text_muted, c->accent_text, on)),
-                                                                    .wrapMode = CLAY_TEXT_WRAP_NONE }));
-                }
-                if (over && ui->mouse_pressed && !ui->pointer_over_menu) *selected = t;
-            }
-        }
-        CLAY({ .id = CLAY_IDI("TabContent", (u32)group),
-               // No clip here: clip containers stop Clay from compressing their
-               // children, so only the panel's own scroll area clips.
-               .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM } }) {
-            ui->in_tab = true;
-            panels_render(ui, ui->layout.tab_panels.items[entry->tab_start + *selected]);
-            ui->in_tab = false;
-        }
+static void app_root(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
+    CLAY({ .id = CLAY_ID("Root"),
+           .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM } }) {
+        ctx->horizontal = false;
+        render_children(ui, node, ctx);
     }
 }
 
-// The sidebar is a scrolling viewport around a column. The column is exactly
-// the viewport height when the window is tall enough (so a tab group can fill
-// the remaining space with a fixed-size, internally scrolling box), and never
-// shorter than its minimum, in which case the whole sidebar scrolls instead of
-// pushing the navbar off-screen.
-static void sidebar(Ui *ui) {
-    const LayoutSpec *spec = &ui->layout;
-    Clay_ElementId viewport = CLAY_ID("Sidebar");
-    Clay_ElementData last = Clay_GetElementData(viewport);   // previous frame's size
-    f32 available = last.found ? last.boundingBox.height : (f32)GetScreenHeight();
-    f32 column_h = fmaxf(available, ui_px(ui, 640));
-    f32 gap = ui_px(ui, ui->theme->shape.gap);
-    CLAY({ .id = viewport,
-           .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, spec->sidebar_width)), CLAY_SIZING_GROW(0) } },
-           .clip = { .vertical = true, .childOffset = Clay_GetScrollOffset() } }) {
-        CLAY({ .id = CLAY_ID("SidebarColumn"),
-               .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(column_h) },
-                           .padding = CLAY_PADDING_ALL((u16)gap),
-                           .childGap = (u16)gap,
-                           .layoutDirection = CLAY_TOP_TO_BOTTOM } }) {
-            for (isize i = 0; i < spec->panels.len; ++i) {
-                const SidebarEntry *e = &spec->panels.items[i];
-                if (e->tab_count == 0) panels_render(ui, e->panel);
-                else tab_group(ui, e, (i32)i);
-            }
+static const struct {
+    const char *name;
+    ComponentFn render;
+} COMPONENTS[] = {
+    { "app", app_root },          { "row", row },
+    { "column", column },         { "menubar", menubar },
+    { "toolbar", toolbar },       { "navbar", navbar },
+    { "button", button },         { "separator", separator },
+    { "spacer", spacer },         { "engine-status", engine_status_widget },
+    { "theme-picker", theme_picker }, { "move-counter", move_counter },
+    { "status", status_text },    { "board", board },
+    { "panel", panel },           { "tabs", tabs },
+};
+
+bool layout_component_exists(StringView name) {
+    for (i32 i = 0; i < (i32)countof(COMPONENTS); ++i) {
+        if (sv_eq(name, sv(COMPONENTS[i].name))) return true;
+    }
+    return sv_eq(name, SV("menu"));   // only valid inside menubar
+}
+
+static void render_node(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
+    StringView name = sexpr_head(node);
+    for (i32 i = 0; i < (i32)countof(COMPONENTS); ++i) {
+        if (sv_eq(name, sv(COMPONENTS[i].name))) {
+            COMPONENTS[i].render(ui, node, ctx);
+            return;
         }
     }
+    ui_label(ui, arena_format(&ui->frame, "unknown component: " SV_FMT, SV_ARG(name)), FONT_UI, 12, ui->theme->colors.danger);
+}
+
+static void render_children(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
+    for (const Sexpr *c = sexpr_next_child(node, NULL); c; c = sexpr_next_child(node, c)) render_node(ui, c, ctx);
+}
+
+// ---- Loading ---------------------------------------------------------------------------------------------
+
+static String layout_path(const Ui *ui) {
+    String user = path_join(string_sv(&ui->app->config_dir), SV("layout.lisp"));
+    if (os_file_exists(string_sv(&user))) return user;
+    string_free(&user);
+    return path_join(string_sv(&ui->app->assets_dir), SV("data/layout.lisp"));
+}
+
+bool layout_load(Ui *ui) {
+    String path = layout_path(ui);
+    String text = { 0 };
+    bool ok = os_read_file(string_sv(&path), &text);
+    Arena arena = { 0 };
+    Sexpr *root = NULL;
+    SexprError err = { 0 };
+    if (ok && !sexpr_parse(&arena, string_sv(&text), &root, &err)) {
+        log_error("%s:%d:%d: %s", string_cstr(&path), err.line, err.column, err.message);
+        ok = false;
+    }
+    if (ok && !sexpr_is_list(root->first, "app")) {
+        log_error("%s: the layout must be a single (app ...) form", string_cstr(&path));
+        ok = false;
+    }
+    if (ok) {   // swap in the new tree (keep the old one on errors)
+        arena_free(&ui->layout_arena);
+        ui->layout_arena = arena;
+        ui->layout_root = root->first;
+        log_info("layout: %s", string_cstr(&path));
+    } else {
+        arena_free(&arena);
+    }
+    string_free(&ui->layout_file);
+    ui->layout_file = path;
+    ui->layout_mtime = os_file_mtime(string_sv(&ui->layout_file));
+    string_free(&text);
+    return ok;
+}
+
+void layout_free(Ui *ui) {
+    arena_free(&ui->layout_arena);
+    ui->layout_root = NULL;
+    string_free(&ui->layout_file);
 }
 
 void layout_build(Ui *ui) {
-    App *app = ui->app;
-    const LayoutSpec *spec = &ui->layout;
     ui->pointer_over_menu = false;
-    CLAY({ .id = CLAY_ID("Root"),
-           .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM } }) {
-        menu_bar(ui);
-        CLAY(bar(ui, CLAY_ID("Toolbar"), true)) { items(ui, &spec->toolbar, false); }
-        CLAY({ .id = CLAY_ID("Main"), .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(0) } } }) {
-            if (spec->sidebar_left) sidebar(ui);
-            CLAY({ .id = CLAY_ID("BoardArea"),
-                   .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(0) },
-                               .padding = CLAY_PADDING_ALL(ui_u16(ui, ui->theme->shape.gap)) } }) {
-                board_view_element(ui);
-                result_banner(ui);
-            }
-            if (!spec->sidebar_left) sidebar(ui);
-        }
-        CLAY(bar(ui, CLAY_ID("Navbar"), false)) {
-            items(ui, &spec->navbar, true);
-            if (app->status_message.len && os_time_seconds() < app->status_until) {
-                ui_label(ui, string_sv(&app->status_message), FONT_UI, 13, ui->theme->colors.text_muted);
-            }
-        }
-        ui_dialogs(ui);
+    // Hot reload: re-read the layout when its file changes (checked twice a second).
+    if (os_time_seconds() - ui->layout_checked > 0.5) {
+        ui->layout_checked = os_time_seconds();
+        if (os_file_mtime(string_sv(&ui->layout_file)) != ui->layout_mtime) layout_load(ui);
     }
+    LayoutCtx ctx = { 0 };
+    if (ui->layout_root) render_node(ui, ui->layout_root, &ctx);
+    ui_dialogs(ui);
+}
+
+// Visits every node (depth-first) — used for validation.
+void layout_visit(const Sexpr *node, void (*visit)(const Sexpr *node, void *user), void *user) {
+    if (!node) return;
+    visit(node, user);
+    for (const Sexpr *c = sexpr_next_child(node, NULL); c; c = sexpr_next_child(node, c)) layout_visit(c, visit, user);
 }

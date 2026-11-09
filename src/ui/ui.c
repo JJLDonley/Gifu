@@ -113,16 +113,8 @@ static void cmd_move_numbers(void *c) { UI(c)->app->config.show_move_numbers = !
 static bool shows_move_numbers(const void *c) { return ((const Ui *)c)->app->config.show_move_numbers; }
 static void cmd_menu(void *c) { UI(c)->open_menu = UI(c)->open_menu >= 0 ? -1 : 0; }
 
-// Cycles the first tab group in the sidebar.
-static void cmd_next_tab(void *c) {
-    Ui *ui = UI(c);
-    for (isize i = 0; i < ui->layout.panels.len; ++i) {
-        const SidebarEntry *e = &ui->layout.panels.items[i];
-        if (e->tab_count == 0 || i >= (isize)countof(ui->tab_selected)) continue;
-        ui->tab_selected[i] = (ui->tab_selected[i] + 1) % e->tab_count;
-        return;
-    }
-}
+// Cycles the first tabs component in the layout.
+static void cmd_next_tab(void *c) { UI(c)->tab_selected[0]++; }
 static void cmd_debug(void *c) {
     UI(c)->debug = !UI(c)->debug;
     Clay_SetDebugModeEnabled(UI(c)->debug);
@@ -150,27 +142,36 @@ static void clay_error(Clay_ErrorData error) {
     log_warn("clay: %.*s", (int)error.errorText.length, error.errorText.chars);
 }
 
-// Warns about command ids referenced by data that nothing registered.
+// Warns about layout nodes / command ids that nothing registered.
+typedef struct RefCheck {
+    CommandRegistry *commands;
+    i32 missing;
+} RefCheck;
+
+static void check_node(const Sexpr *node, void *user) {
+    RefCheck *rc = user;
+    StringView head = sexpr_head(node);
+    if (!layout_component_exists(head)) {
+        log_warn("layout:%d: unknown component '" SV_FMT "'", node->line, SV_ARG(head));
+        rc->missing++;
+    }
+    bool is_button = sv_eq(head, SV("button")), is_menu = sv_eq(head, SV("menu"));
+    if (!is_button && !is_menu) return;
+    const Sexpr *first = sexpr_next_arg(node, NULL);
+    for (const Sexpr *a = is_menu && first ? sexpr_next_arg(node, first) : first; a; a = is_button ? NULL : sexpr_next_arg(node, a)) {
+        if (sv_eq(a->text, SV("-")) || command_find(rc->commands, a->text)) continue;
+        log_warn("layout:%d: unknown command '" SV_FMT "'", a->line, SV_ARG(a->text));
+        rc->missing++;
+    }
+}
+
 static void validate_command_refs(Ui *ui) {
-    CommandRegistry *reg = &ui->app->commands;
-    i32 missing = 0;
-    for (isize i = 0; i < ui->layout.menu_items.len; ++i) {
-        StringView id = ui->layout.menu_items.items[i];
-        if (!sv_eq(id, SV("-")) && !command_find(reg, id)) log_warn("layout.json menus: unknown command '" SV_FMT "'", SV_ARG(id)), missing++;
-    }
-    const LayoutItemVec *bars[] = { &ui->layout.toolbar, &ui->layout.navbar };
-    for (i32 b = 0; b < 2; ++b) {
-        vec_foreach(LayoutItem, it, bars[b]) {
-            if (it->kind == LAYOUT_ITEM_COMMAND && !command_find(reg, it->command)) {
-                log_warn("layout.json: unknown command '" SV_FMT "'", SV_ARG(it->command));
-                missing++;
-            }
-        }
-    }
+    RefCheck rc = { &ui->app->commands, 0 };
+    layout_visit(ui->layout_root, check_node, &rc);
     vec_foreach(KeyBinding, kb, &ui->app->keymap.bindings) {
-        if (!command_find(reg, string_sv(&kb->command))) log_warn("keymap: unknown command '%s'", string_cstr(&kb->command)), missing++;
+        if (!command_find(rc.commands, string_sv(&kb->command))) log_warn("keymap: unknown command '%s'", string_cstr(&kb->command)), rc.missing++;
     }
-    if (missing == 0) log_info("data: all command references resolve");
+    if (rc.missing == 0) log_info("data: all layout components and command references resolve");
 }
 
 bool ui_init(Ui *ui, App *app) {
@@ -195,9 +196,7 @@ bool ui_init(Ui *ui, App *app) {
     string_free(&settings_path);
     ui->language_version = app->language_version;
 
-    layout_parse(&ui->layout, json_root(&app->layout_doc), 380);
-    JsonValue user_layout = config_section(&app->config, "layout");
-    if (json_exists(user_layout)) layout_parse(&ui->layout, user_layout, ui->layout.sidebar_width);
+    layout_load(ui);
 
     Clay_SetMaxElementCount(16384);
     u32 memory_size = Clay_MinMemorySize();
@@ -224,7 +223,7 @@ void ui_shutdown(Ui *ui) {
     string_free(&ui->board_texture_for);
     font_cache_destroy(ui->fonts);
     themes_free(&ui->themes);
-    layout_free(&ui->layout);
+    layout_free(ui);
     json_free(&ui->forms_doc);
     text_edit_free(&ui->comment);
     for (i32 i = 0; i < ui->form_edit_count; ++i) text_edit_free(&ui->form_edits[i]);

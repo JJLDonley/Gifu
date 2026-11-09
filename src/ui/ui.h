@@ -4,59 +4,12 @@
 #pragma once
 
 #include "app/app.h"
+#include "base/sexpr.h"
 #include "ui/anim.h"
 #include "ui/background.h"
 #include "ui/clay_render.h"
 #include "ui/font_cache.h"
 #include "ui/theme.h"
-
-// ---- Layout description (parsed from layout.json) ------------------------------------
-
-typedef enum LayoutItemKind {
-    LAYOUT_ITEM_COMMAND,
-    LAYOUT_ITEM_SEPARATOR,
-    LAYOUT_ITEM_SPACER,
-    LAYOUT_ITEM_ENGINE_STATUS,
-    LAYOUT_ITEM_THEME_PICKER,
-    LAYOUT_ITEM_MOVE_COUNTER,
-} LayoutItemKind;
-
-typedef struct LayoutItem {
-    LayoutItemKind kind;
-    StringView command;
-    StringView icon;
-    bool primary;
-    bool with_label;   // icon + translated command label
-} LayoutItem;
-
-typedef Vec(LayoutItem) LayoutItemVec;
-typedef Vec(StringView) StringViewVec;
-
-// A sidebar entry is a single panel, or a tab group showing one of several.
-typedef struct SidebarEntry {
-    StringView panel;   // empty for tab groups
-    i32 tab_start;      // index into LayoutSpec.tab_panels
-    i32 tab_count;
-} SidebarEntry;
-typedef Vec(SidebarEntry) SidebarEntryVec;
-
-typedef struct MenuSpec {
-    StringView title;      // i18n key
-    StringView fallback;
-    i32 item_start, item_count;   // into LayoutSpec.menu_items ("-" = separator)
-} MenuSpec;
-typedef Vec(MenuSpec) MenuSpecVec;
-
-typedef struct LayoutSpec {
-    MenuSpecVec menus;
-    StringViewVec menu_items;
-    LayoutItemVec toolbar;
-    LayoutItemVec navbar;
-    SidebarEntryVec panels;
-    StringViewVec tab_panels;
-    f32 sidebar_width;
-    bool sidebar_left;
-} LayoutSpec;
 
 // ---- Board geometry -----------------------------------------------------------------------
 
@@ -111,7 +64,14 @@ typedef struct Ui {
     Background background;
     Texture2D board_texture;
     String board_texture_for;
-    LayoutSpec layout;
+    // Layout tree (assets/data/layout.lisp or <config_dir>/layout.lisp).
+    Arena layout_arena;
+    const Sexpr *layout_root;
+    String layout_file;
+    i64 layout_mtime;
+    f64 layout_checked;
+    const Sexpr *panel_node;   // props of the (panel ...) being rendered
+    i32 menu_count;
 
     Arena frame;          // reset every frame (Clay strings, custom element payloads)
     void *clay_memory;
@@ -236,6 +196,8 @@ void ui_modal(Ui *ui, JsonValue form, f32 width, ModalSection footer, void *user
 void ui_dialogs(Ui *ui);                           // renders the open dialog, if any
 void ui_close_dialog(Ui *ui);
 void panels_render(Ui *ui, StringView name);
-void layout_parse(LayoutSpec *spec, JsonValue root, f32 default_sidebar);
-void layout_free(LayoutSpec *spec);
-void layout_build(Ui *ui);
+bool layout_load(Ui *ui);    // (re)reads the layout file; keeps the old tree on errors
+void layout_free(Ui *ui);
+void layout_build(Ui *ui);   // hot-reloads, renders the tree and open dialogs
+bool layout_component_exists(StringView name);
+void layout_visit(const Sexpr *node, void (*visit)(const Sexpr *node, void *user), void *user);

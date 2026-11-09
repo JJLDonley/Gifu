@@ -39,7 +39,6 @@ typedef struct App {
     Keymap keymap;
     CommandRegistry commands;
     EngineProfileVec engine_profiles;
-    JsonDoc layout_doc;
 
     GameTree *tree;
     String sgf_path;

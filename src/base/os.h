@@ -12,6 +12,7 @@ void string_vec_free(StringVec *v);
 NODISCARD bool os_read_file(StringView path, String *out);
 NODISCARD bool os_write_file(StringView path, StringView data);
 bool os_file_exists(StringView path);
+i64 os_file_mtime(StringView path);   // modification time (opaque units), 0 if missing
 bool os_dir_exists(StringView path);
 bool os_make_dirs(StringView path);
 // Lists entry names (not full paths) in `dir`, sorted. Returns false if missing.

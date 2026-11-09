@@ -533,9 +533,6 @@ bool app_init(App *app, const AppOptions *options) {
     json_free(&doc);
     string_free(&path);
 
-    path = path_join(string_sv(&app->assets_dir), SV("data/layout.json"));
-    load_json_layer(string_sv(&path), &app->layout_doc);
-    string_free(&path);
 
     command_registry_init(&app->commands, app);
     command_register_all(&app->commands, APP_COMMANDS, countof(APP_COMMANDS));
@@ -560,7 +557,6 @@ void app_shutdown(App *app) {
     keymap_free(&app->keymap);
     command_registry_free(&app->commands);
     engine_profiles_free(&app->engine_profiles);
-    json_free(&app->layout_doc);
     for (i32 i = 0; i < APP_LOG_LINES; ++i) string_free(&app->log_lines[i]);
     string_free(&app->exe_dir);
     string_free(&app->root_dir);
