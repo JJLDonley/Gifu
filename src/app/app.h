@@ -64,6 +64,13 @@ typedef struct App {
     bool ai_waiting;            // a request_move is outstanding
 
     u32 language_version;       // bumped when UI strings change (UI reloads fonts)
+
+    // Game result (engine final_score), shown as a banner for its position.
+    String result;
+    u64 result_position;
+    bool score_requested;       // final_score sent, waiting for the answer
+    bool score_pending;         // user asked; send once the engine is ready and synced
+    const GameNode *auto_scored_node;   // two passes already handled here
     String status_message;
     f64 status_until;
     bool quit_requested;

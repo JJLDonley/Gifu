@@ -34,6 +34,10 @@ typedef struct KataGoEngine {
     i32 analysis_id;   // id of the kata-analyze command whose output is current
     AnalysisSnapshot snapshot;
 
+    // Scoring.
+    i32 score_id;
+    u64 score_position;
+
     // Move generation.
     i32 genmove_id;
     MoveRequest genmove;
@@ -81,6 +85,15 @@ static StringView kg_name(const Engine *e) { return string_sv(&as_katago_const(e
 static EngineStatus kg_status(const Engine *e) { return as_katago_const(e)->status; }
 static bool kg_is_analyzing(const Engine *e) { return as_katago_const(e)->analyzing; }
 static bool kg_is_thinking(const Engine *e) { return as_katago_const(e)->genmove_id > 0; }
+
+static void kg_request_score(Engine *e, u64 position_id) {
+    KataGoEngine *k = as_katago(e);
+    if (!k->gtp) return;
+    k->analysis_id = -1;
+    k->score_position = position_id;
+    k->score_id = send(k, "final_score");
+    if (k->analyzing) send_analyze(k);   // keep analysing afterwards
+}
 
 static void kg_request_move(Engine *e, const MoveRequest *request) {
     KataGoEngine *k = as_katago(e);
@@ -175,6 +188,12 @@ static bool kg_poll(Engine *e, EngineEvent *out) {
         k->last_event = ev;
         switch (ev.kind) {
             case GTP_EVENT_RESPONSE:
+                if (ev.id == k->score_id && k->score_id > 0) {
+                    k->score_id = 0;
+                    *out = (EngineEvent){ .kind = ev.success ? ENGINE_EVENT_SCORE : ENGINE_EVENT_ERROR, .status = k->status,
+                                          .position_id = k->score_position, .text = sv_trim(string_sv(&ev.text)) };
+                    return true;
+                }
                 if (ev.id == k->genmove_id && k->genmove_id > 0) {
                     k->genmove_id = 0;
                     k->analysis_id = -1;
@@ -253,6 +272,7 @@ static const EngineVTable KATAGO_VTABLE = {
     .is_analyzing = kg_is_analyzing,
     .request_move = kg_request_move,
     .is_thinking = kg_is_thinking,
+    .request_score = kg_request_score,
     .poll = kg_poll,
     .destroy = kg_destroy,
 };

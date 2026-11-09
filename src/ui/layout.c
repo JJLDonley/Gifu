@@ -190,6 +190,33 @@ static void items(Ui *ui, const LayoutItemVec *list, bool ghost) {
 
 // ---- Window ------------------------------------------------------------------------------------
 
+// Floating card over the top of the board when the current position has a score.
+static void result_banner(Ui *ui) {
+    App *app = ui->app;
+    bool show = app->result.len && app->result_position == app->synced_position_id;
+    f32 t = anim_towards(&ui->anim, 0x8E5017u, show ? 1.0f : 0.0f, 12.0f, 0.0f);
+    if (t < 0.01f) return;
+    const ThemeColors *c = &ui->theme->colors;
+    StringView text = string_sv(&app->result);
+    StringView winner = sv_starts_with(text, SV("B")) ? app_tr(app, "label.black", "Black")
+                        : sv_starts_with(text, SV("W")) ? app_tr(app, "label.white", "White")
+                                                        : SV("");
+    CLAY({ .id = CLAY_ID("ResultBanner"),
+           .floating = { .attachTo = CLAY_ATTACH_TO_PARENT, .zIndex = 50,
+                         .attachPoints = { .element = CLAY_ATTACH_POINT_CENTER_TOP, .parent = CLAY_ATTACH_POINT_CENTER_TOP },
+                         .offset = { 0, ui_px(ui, 24) - (1.0f - t) * ui_px(ui, 16) } },
+           .layout = { .padding = { ui_u16(ui, 18), ui_u16(ui, 10), ui_u16(ui, 10), ui_u16(ui, 10) }, .childGap = ui_u16(ui, 12),
+                       .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } },
+           .backgroundColor = color_to_clay(color_with_alpha(c->surface, 0.96f * t)),
+           .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, ui->theme->shape.radius)),
+           .border = { .color = color_to_clay(color_with_alpha(c->border, t)), .width = CLAY_BORDER_OUTSIDE(1) } }) {
+        ui_label(ui, app_tr(app, "label.result", "Result"), FONT_UI, 14, color_with_alpha(c->text_muted, t));
+        CLAY_TEXT(ui_fmt(ui, SV_FMT "%s" SV_FMT, SV_ARG(text), winner.len ? "  " : "", SV_ARG(winner)),
+                  ui_text_style(ui, FONT_UI_BOLD, 18, color_with_alpha(c->text, t)));
+        ui_command_button(ui, SV("game.write_result"), SV(""), BUTTON_NORMAL, 0);
+    }
+}
+
 static Clay_ElementDeclaration bar(Ui *ui, Clay_ElementId id, bool top) {
     const Theme *t = ui->theme;
     Clay_BorderWidth border = { 0 };
@@ -299,6 +326,7 @@ void layout_build(Ui *ui) {
                    .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(0) },
                                .padding = CLAY_PADDING_ALL(ui_u16(ui, ui->theme->shape.gap)) } }) {
                 board_view_element(ui);
+                result_banner(ui);
             }
             if (!spec->sidebar_left) sidebar(ui);
         }

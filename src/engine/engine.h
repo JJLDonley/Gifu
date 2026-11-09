@@ -43,6 +43,7 @@ typedef struct MoveRequest {
 typedef enum EngineEventKind {
     ENGINE_EVENT_STATUS,     // status changed (see engine_status)
     ENGINE_EVENT_MOVE,       // `move` answers a request_move (`resigned` if the engine resigned)
+    ENGINE_EVENT_SCORE,      // `text` answers request_score, e.g. "B+3.5" or "0"
     ENGINE_EVENT_ANALYSIS,   // `analysis` points at the latest snapshot
     ENGINE_EVENT_LOG,        // `text` is one log line
     ENGINE_EVENT_ERROR,      // `text` describes a failed command
@@ -69,6 +70,7 @@ typedef struct EngineVTable {
     bool (*is_analyzing)(const Engine *engine);
     void (*request_move)(Engine *engine, const MoveRequest *request);
     bool (*is_thinking)(const Engine *engine);
+    void (*request_score)(Engine *engine, u64 position_id);
     bool (*poll)(Engine *engine, EngineEvent *out);
     void (*destroy)(Engine *engine);
 } EngineVTable;
@@ -86,6 +88,7 @@ static inline bool engine_is_analyzing(const Engine *e) { return e->vtable->is_a
 static inline bool engine_poll(Engine *e, EngineEvent *out) { return e->vtable->poll(e, out); }
 static inline void engine_request_move(Engine *e, const MoveRequest *r) { e->vtable->request_move(e, r); }
 static inline bool engine_is_thinking(const Engine *e) { return e->vtable->is_thinking(e); }
+static inline void engine_request_score(Engine *e, u64 position_id) { e->vtable->request_score(e, position_id); }
 static inline void engine_destroy(Engine *e) {
     if (e) e->vtable->destroy(e);
 }

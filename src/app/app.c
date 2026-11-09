@@ -80,6 +80,8 @@ static void stop_engine(App *app) {
     app->engine_status = ENGINE_STATUS_STOPPED;
     app->synced_node = NULL;
     app->ai_waiting = false;
+    app->score_requested = false;
+    app->score_pending = false;
     app->analysis_valid = false;
 }
 
@@ -182,6 +184,13 @@ void app_update(App *app) {
                     app->synced_node = NULL;
                 }
                 break;
+            case ENGINE_EVENT_SCORE:
+                app->score_requested = false;
+                string_free(&app->result);
+                app->result = string_from(ev.text);
+                app->result_position = ev.position_id;
+                app_set_status(app, "Result: " SV_FMT, SV_ARG(ev.text));
+                break;
             case ENGINE_EVENT_LOG:
                 app_log(app, ev.text);
                 break;
@@ -202,9 +211,26 @@ void app_update(App *app) {
         free(spec);
     }
 
+    // Two consecutive passes end the game: score it once and stop engine play.
+    const GameNode *cur = app->tree->current;
+    bool two_passes = cur->has_move && point_is_pass(cur->move.point) && cur->parent && cur->parent->has_move &&
+                      point_is_pass(cur->parent->move.point);
+    if (two_passes && app->auto_scored_node != cur && app->synced_node == cur && app->engine_status == ENGINE_STATUS_READY) {
+        app->auto_scored_node = cur;
+        app->ai_plays[STONE_BLACK] = app->ai_plays[STONE_WHITE] = false;
+        app->score_requested = true;
+        engine_request_score(app->engine, app->synced_position_id);
+    }
+
+    if (app->score_pending && app->synced_node == cur && app->engine_status == ENGINE_STATUS_READY) {
+        app->score_pending = false;
+        app->score_requested = true;
+        engine_request_score(app->engine, app->synced_position_id);
+    }
+
     // Engine's turn?
     Stone to_play = app->tree->current->to_play;
-    bool engine_turn = app->ai_plays[to_play] || app->ai_move_once;
+    bool engine_turn = (app->ai_plays[to_play] || app->ai_move_once) && !two_passes;
     if (engine_turn && !app->ai_waiting && app->engine_status == ENGINE_STATUS_READY &&
         app->synced_node == app->tree->current) {
         MoveRequest req = { app->synced_position_id, to_play, app->config.ai_seconds_per_move };
@@ -400,6 +426,20 @@ static void cmd_toggle_candidates(void *c) { APP(c)->config.show_candidates = !A
 static bool shows_candidates(const void *c) { return CAPP(c)->config.show_candidates; }
 static void cmd_restart_engine(void *c) { app_restart_engine(APP(c)); }
 
+static void cmd_score(void *c) { APP(c)->score_pending = true; }
+static bool can_score(const void *c) {
+    const App *app = CAPP(c);
+    return app->engine && app->engine_status != ENGINE_STATUS_FAILED && !app->score_requested && !app->score_pending;
+}
+static void cmd_write_result(void *c) {
+    App *app = APP(c);
+    if (!app->result.len) return;
+    game_node_set_prop(app->tree, app->tree->root, SV("RE"), string_sv(&app->result));
+    app->dirty = true;
+    app_set_status(app, "Result saved to game");
+}
+static bool has_result(const void *c) { return CAPP(c)->result.len > 0 && CAPP(c)->result_position == CAPP(c)->synced_position_id; }
+
 static void cmd_ai_black(void *c) { APP(c)->ai_plays[STONE_BLACK] = !APP(c)->ai_plays[STONE_BLACK]; }
 static void cmd_ai_white(void *c) { APP(c)->ai_plays[STONE_WHITE] = !APP(c)->ai_plays[STONE_WHITE]; }
 static bool ai_black(const void *c) { return CAPP(c)->ai_plays[STONE_BLACK]; }
@@ -430,6 +470,8 @@ static const CommandDef APP_COMMANDS[] = {
     { "game.ai_black", "Engine plays Black", "AI ●", cmd_ai_black, has_engine, ai_black },
     { "game.ai_white", "Engine plays White", "AI ○", cmd_ai_white, has_engine, ai_white },
     { "game.ai_move", "Engine move", "Genmove", cmd_ai_move, can_ai_move, NULL },
+    { "game.score", "Score game", "Score", cmd_score, can_score, NULL },
+    { "game.write_result", "Save result", "Save result", cmd_write_result, has_result, NULL },
 };
 
 // ---- Lifecycle ----------------------------------------------------------------------------
@@ -522,5 +564,6 @@ void app_shutdown(App *app) {
     string_free(&app->sgf_path);
     string_free(&app->engine_error);
     string_free(&app->status_message);
+    string_free(&app->result);
     free(app->analysis);
 }

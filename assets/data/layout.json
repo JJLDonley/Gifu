@@ -43,6 +43,7 @@
     { "command": "nav.prev_variation", "icon": "^" },
     { "command": "nav.next_variation", "icon": "v" },
     { "type": "spacer" },
+    { "command": "game.score" },
     { "command": "move.pass" }
   ]
 }

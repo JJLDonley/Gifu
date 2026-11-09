@@ -32,6 +32,7 @@
     { "key": "Ctrl+R",       "command": "engine.restart" },
     { "key": "N",            "command": "view.move_numbers" },
     { "key": "G",            "command": "game.ai_move" },
+    { "key": "E",            "command": "game.score" },
     { "key": "Ctrl+Comma",   "command": "view.settings" },
     { "key": "Ctrl+Tab",     "command": "view.next_tab" },
     { "key": "F12",          "command": "view.debug" }
