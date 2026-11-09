@@ -17,12 +17,17 @@ struct SgfProperty {
 };
 
 // Compact engine evaluation summary kept per node (for graphs / hawk-eye).
+enum { NODE_EVAL_TOP = 3 };
+
 typedef struct NodeEval {
     bool valid;
     f32 black_winrate;   // 0..1
     f32 black_score;     // score lead from Black's point of view
     i32 visits;
+    i32 top_count;
+    Point top[NODE_EVAL_TOP];   // engine's best moves for the side to play here
 } NodeEval;
+
 
 typedef struct GameNode GameNode;
 struct GameNode {
@@ -51,6 +56,13 @@ typedef struct GameTree {
 } GameTree;
 
 GameTree *game_tree_new(i32 width, i32 height, f64 komi);
+// Evals persist in SGF as CGE[winrate,score,visits,top1 top2 top3] (SGF coords),
+// e.g. CGE[0.4812,-1.3,1200,pd dp qq].
+void game_node_store_eval(GameTree *tree, GameNode *node, const NodeEval *eval);
+bool node_eval_parse(StringView text, i32 width, i32 height, NodeEval *out);
+// Writes CGE[] for every node with a valid eval (call before saving).
+void game_tree_store_evals(GameTree *tree);
+
 
 typedef struct NewGameSpec {
     i32 size;

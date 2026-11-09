@@ -196,6 +196,9 @@ static void compute_node(GameTree *tree, GameNode *node) {
         break;
     }
 
+    StringView cge = game_node_prop(node, SV("CGE"));
+    if (cge.len && !node->eval.valid) node_eval_parse(cge, board->width, board->height, &node->eval);
+
     StringView pl = game_node_prop(node, SV("PL"));
     if (sv_eq(pl, SV("B")) || sv_eq(pl, SV("b"))) node->to_play = STONE_BLACK;
     if (sv_eq(pl, SV("W")) || sv_eq(pl, SV("w"))) node->to_play = STONE_WHITE;
@@ -306,6 +309,55 @@ bool game_tree_delete_node(GameTree *tree, GameNode *node) {
         }
     }
     return true;
+}
+
+bool node_eval_parse(StringView text, i32 width, i32 height, NodeEval *out) {
+    NodeEval e = { 0 };
+    StringView rest = text;
+    f64 wr = 0, score = 0;
+    i64 visits = 0;
+    if (!sv_parse_f64(sv_chop_char(&rest, ','), &wr) || !sv_parse_f64(sv_chop_char(&rest, ','), &score) ||
+        !sv_parse_i64(sv_chop_char(&rest, ','), &visits)) {
+        return false;
+    }
+    e.valid = true;
+    e.black_winrate = (f32)CLAMP(wr, 0.0, 1.0);
+    e.black_score = (f32)score;
+    e.visits = (i32)visits;
+    for (StringView tok = sv_chop_token(&rest); tok.len && e.top_count < NODE_EVAL_TOP; tok = sv_chop_token(&rest)) {
+        Point p;
+        if (point_from_sgf(tok, width, height, &p)) e.top[e.top_count++] = p;
+    }
+    *out = e;
+    return true;
+}
+
+void game_node_store_eval(GameTree *tree, GameNode *node, const NodeEval *eval) {
+    node->eval = *eval;
+    char buffer[96];
+    i32 n = snprintf(buffer, sizeof(buffer), "%.4f,%.2f,%d,", eval->black_winrate, eval->black_score, eval->visits);
+    for (i32 i = 0; i < eval->top_count && n < (i32)sizeof(buffer) - 4; ++i) {
+        char coord[3];
+        point_to_sgf(eval->top[i], coord);
+        n += snprintf(buffer + n, sizeof(buffer) - (usize)n, "%s%s", i ? " " : "", point_is_pass(eval->top[i]) ? "tt" : coord);
+    }
+    game_node_set_prop(tree, node, SV("CGE"), sv(buffer));
+}
+
+void game_tree_store_evals(GameTree *tree) {
+    GameNode *node = tree->root;
+    while (node) {
+        if (node->eval.valid) {
+            NodeEval e = node->eval;
+            game_node_store_eval(tree, node, &e);
+        }
+        if (node->first_child) {
+            node = node->first_child;
+            continue;
+        }
+        while (node && !node->next_sibling) node = node->parent;
+        if (node) node = node->next_sibling;
+    }
 }
 
 bool game_node_winrate_loss(const GameNode *node, f32 *loss) {

@@ -140,12 +140,16 @@ static void store_node_eval(App *app) {
     GameNode *node = app->tree->current;
     const Candidate *best = analysis_best(app->analysis);
     if (!best) return;
-    node->eval = (NodeEval){
+    NodeEval e = {
         .valid = true,
         .black_winrate = analysis_black_winrate(app->analysis, best->winrate),
         .black_score = analysis_black_score(app->analysis, best->score_lead),
         .visits = app->analysis->total_visits,
     };
+    for (i32 i = 0; i < app->analysis->candidate_count && e.top_count < NODE_EVAL_TOP; ++i) {
+        e.top[e.top_count++] = app->analysis->candidates[i].move;
+    }
+    node->eval = e;
 }
 
 void app_update(App *app) {
@@ -300,6 +304,7 @@ bool app_open_sgf(App *app, StringView path) {
 }
 
 bool app_save_sgf(App *app, StringView path) {
+    game_tree_store_evals(app->tree);   // persist analysis as CGE[] properties
     if (!sgf_save_file(app->tree, path)) {
         app_set_status(app, "Cannot save " SV_FMT, SV_ARG(path));
         return false;

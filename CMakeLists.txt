@@ -87,6 +87,7 @@ add_library(catagui_core STATIC
     src/core/board.c
     src/core/game_tree.c
     src/core/sgf.c
+    src/core/game_report.c
     src/engine/process.c
     src/engine/gtp_client.c
     src/engine/kata_analysis.c
