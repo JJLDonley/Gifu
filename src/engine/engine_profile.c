@@ -64,6 +64,7 @@ static void profile_free(EngineProfile *p) {
     string_free(&p->config);
     string_free(&p->working_dir);
     string_free(&p->analysis_config);
+    string_free(&p->human_model);
     string_vec_free(&p->args);
     string_vec_free(&p->launcher);
     string_vec_free(&p->platforms);
@@ -75,7 +76,8 @@ static EngineProfile *profile_for(EngineProfileVec *out, StringView id) {
     }
     vec_push(out, (EngineProfile){ .id = string_from(id), .name = string_from(id), .kind = string_from(SV("katago-gtp")),
                                    .program = string_from(SV("")), .model = string_from(SV("")), .config = string_from(SV("")),
-                                   .working_dir = string_from(SV("")), .analysis_config = string_from(SV("")) });
+                                   .working_dir = string_from(SV("")), .analysis_config = string_from(SV("")),
+                                   .human_model = string_from(SV("")) });
     return &vec_last(out);
 }
 
@@ -98,6 +100,7 @@ void engine_profiles_from_kv(const KvFile *kv, const PathVars *vars, EngineProfi
         else if (sv_eq(field, SV("model"))) set_field(&p->model, path_vars_expand(vars, e->value));
         else if (sv_eq(field, SV("config"))) set_field(&p->config, path_vars_expand(vars, e->value));
         else if (sv_eq(field, SV("analysis_config"))) set_field(&p->analysis_config, path_vars_expand(vars, e->value));
+        else if (sv_eq(field, SV("human_model"))) set_field(&p->human_model, path_vars_expand(vars, e->value));
         else if (sv_eq(field, SV("working_dir"))) set_field(&p->working_dir, path_vars_expand(vars, e->value));
         else if (sv_eq(field, SV("arg"))) vec_push(&p->args, path_vars_expand(vars, e->value));
         else if (sv_eq(field, SV("launcher"))) {
@@ -124,6 +127,8 @@ void engine_profiles_from_kv(const KvFile *kv, const PathVars *vars, EngineProfi
         }
         String model = p->model;
         p->model = resolve_model(model);
+        String human = p->human_model;
+        p->human_model = resolve_model(human);
         // A later profile with the same id (user file) replaces an earlier one.
         bool replaced = false;
         for (isize k = 0; k < out->len && !replaced; ++k) {
@@ -152,14 +157,17 @@ const EngineProfile *engine_profiles_find(const EngineProfileVec *profiles, Stri
 bool engine_profile_available(const EngineProfile *profile) {
     if (profile->launcher.len) return true;   // remote: files live on the other machine
     if (!os_file_exists(string_sv(&profile->program))) return false;
+    if (profile->human_model.len && !os_file_exists(string_sv(&profile->human_model))) return false;
     return profile->model.len == 0 || os_file_exists(string_sv(&profile->model));
 }
 
 // ---- Factory ------------------------------------------------------------------------
 
-typedef Engine *(*EngineConstructor)(const EngineProfile *profile, String *error);
+typedef Engine *(*EngineConstructor)(const EngineProfile *profile, StringView human_profile, String *error);
 
-static Engine *create_katago_gtp(const EngineProfile *p, String *error) {
+static bool is_profile_char(char c) { return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_'; }
+
+static Engine *create_katago_gtp(const EngineProfile *p, StringView human_profile, String *error) {
     StringView extra[16];
     isize n = 0;
     vec_foreach(String, a, &p->args) {
@@ -183,7 +191,19 @@ static Engine *create_katago_gtp(const EngineProfile *p, String *error) {
         .extra_args = extra,
         .extra_arg_count = n,
     };
-    return katago_engine_create(&settings, error);
+    String overrides = { 0 };
+    if (p->human_model.len) {
+        settings.human_model = string_sv(&p->human_model);
+        bool valid = human_profile.len > 0;   // only [a-z0-9_]: it lands inside a config override list
+        for (isize i = 0; i < human_profile.len; ++i) valid &= is_profile_char(human_profile.data[i]);
+        if (valid) {
+            overrides = string_format("humanSLProfile=" SV_FMT, SV_ARG(human_profile));
+            settings.overrides = string_sv(&overrides);
+        }
+    }
+    Engine *engine = katago_engine_create(&settings, error);
+    string_free(&overrides);
+    return engine;
 }
 
 static const struct {
@@ -193,9 +213,9 @@ static const struct {
     { "katago-gtp", create_katago_gtp },
 };
 
-Engine *engine_create(const EngineProfile *profile, String *error) {
+Engine *engine_create(const EngineProfile *profile, StringView human_profile, String *error) {
     for (i32 i = 0; i < (i32)countof(ENGINE_KINDS); ++i) {
-        if (sv_eq(string_sv(&profile->kind), sv(ENGINE_KINDS[i].kind))) return ENGINE_KINDS[i].create(profile, error);
+        if (sv_eq(string_sv(&profile->kind), sv(ENGINE_KINDS[i].kind))) return ENGINE_KINDS[i].create(profile, human_profile, error);
     }
     if (error) *error = string_format("unknown engine kind '" SV_FMT "'", SV_ARG(string_sv(&profile->kind)));
     return NULL;

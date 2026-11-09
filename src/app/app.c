@@ -131,7 +131,7 @@ static void start_engine(App *app) {
         return;
     }
     String err = { 0 };
-    app->main.engine = engine_create(profile, &err);
+    app->main.engine = engine_create(profile, string_sv(&app->config.human_profile), &err);
     if (!app->main.engine) {
         app->main.status = ENGINE_STATUS_FAILED;
         app->main.error = err;
@@ -328,7 +328,7 @@ void app_second_engine(App *app, bool on) {
         return;
     }
     String err = { 0 };
-    s->engine = engine_create(p, &err);
+    s->engine = engine_create(p, string_sv(&app->config.human_profile), &err);
     s->profile = p;
     if (!s->engine) {
         s->status = ENGINE_STATUS_FAILED;
@@ -527,6 +527,9 @@ void app_config_changed(App *app, StringView key) {
         app_restart_engine(app);
     } else if (sv_eq(key, SV("rules"))) {
         app->main.synced_node = NULL;   // resync sends kata-set-rules
+    } else if (sv_eq(key, SV("ai.human_profile"))) {   // humanSLProfile is a launch override
+        if (app->main.profile && app->main.profile->human_model.len) app_restart_engine(app);
+        if (app->second.engine && app->second.profile && app->second.profile->human_model.len) app_second_engine(app, true);
     } else if (sv_eq(key, SV("engine2"))) {
         if (app->second.engine) app_second_engine(app, true);
     } else if (sv_starts_with(key, SV("analysis."))) {

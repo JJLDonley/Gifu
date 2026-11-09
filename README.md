@@ -8,10 +8,15 @@ keymap, themes and engines.
 
 ## Running
 
-1. Put KataGo next to the program in `katago/`, matching `assets/data/engines.kv`:
-   `katago/windows-opencl/katago.exe` (or `linux-opencl/katago`), the cfg files from the
-   KataGo release, and a network in `katago/networks/`.
-2. Start `catagui` (or `catagui.exe`). Open an SGF with Ctrl+O or drag it onto the window.
+1. Start `catagui` (or `catagui.exe`). On first run the **Engine setup** dialog offers to
+   download KataGo (OpenCL, CPU or CUDA build), the strongest network from
+   katagotraining.org and the human SL network into `katago/` next to the program. You can
+   reopen it later from Engine → Download engines…. Without a window:
+   `catagui --install all [--backend opencl|eigenavx2|eigen|cuda12.8-cudnn9.8.0]`.
+   (Downloads use the system `curl`, which ships with Windows 10+ and Linux.)
+2. Open an SGF with Ctrl+O or drag it onto the window.
+3. For human-like play and evaluation, pick the "KataGo · Human style" engine in Settings
+   and choose its strength (20k–9d, Pro).
 
 On Linux, to add CataGui to your application menu, copy `share/applications/catagui.desktop`
 to `~/.local/share/applications/` (set `Exec=` to the full path of `catagui`) and

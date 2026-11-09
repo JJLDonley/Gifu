@@ -15,7 +15,9 @@ typedef struct Config {
     String language;       // "en", "zh_CN", "zh_TW", "ja", "ko"
     f32 ui_scale;
     String engine;         // engine profile id
-    String engine2;        // second engine (comparison / engine-vs-engine); "" = same as main
+    String engine2;
+    String install_backend;
+    String human_profile;     // humanSLProfile for engines with a human network (rank_5k, preaz_1d, proyear_1990...)   // KataGo build the installer downloads (opencl, eigenavx2, ...)        // second engine (comparison / engine-vs-engine); "" = same as main
     String rules;          // KataGo rules name
     bool analyze_on_start;
     i32 analysis_interval_cs;

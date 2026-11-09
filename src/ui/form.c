@@ -221,8 +221,15 @@ void form_render(Ui *ui, const Sexpr *form) {
 
 // ---- Modal shell ------------------------------------------------------------------------------------
 
+static void form_body(Ui *ui, void *user) { form_render(ui, (const Sexpr *)user); }
+
 void ui_modal(Ui *ui, const Sexpr *form, f32 width, ModalSection footer, void *user) {
+    UNUSED(user);
     if (!form) return;
+    ui_modal_shell(ui, title_of(ui, form), width, form_body, footer, (void *)form);
+}
+
+void ui_modal_shell(Ui *ui, StringView title, f32 width, ModalSection body, ModalSection footer, void *user) {
     const ThemeColors *c = &ui->theme->colors;
     const Theme *t = ui->theme;
     f32 sw = (f32)GetScreenWidth(), sh = (f32)GetScreenHeight();
@@ -247,7 +254,7 @@ void ui_modal(Ui *ui, const Sexpr *form, f32 width, ModalSection footer, void *u
                                .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } },
                    .border = { .color = color_to_clay(c->border), .width = { .bottom = 1 } } }) {
                 CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) } } }) {
-                    ui_label(ui, title_of(ui, form), FONT_UI_BOLD, 18, c->text);
+                    ui_label(ui, title, FONT_UI_BOLD, 18, c->text);
                 }
                 if (ui_button(ui, CLAY_ID("ModalClose"), SV("@close"), BUTTON_GHOST, false, true)) ui_close_dialog(ui);
             }
@@ -257,7 +264,7 @@ void ui_modal(Ui *ui, const Sexpr *form, f32 width, ModalSection footer, void *u
                                .padding = { ui_u16(ui, 20), ui_u16(ui, 20), ui_u16(ui, 12), ui_u16(ui, 20) },
                                .childGap = ui_u16(ui, 14) },
                    .clip = { .vertical = true, .childOffset = Clay_GetScrollOffset() } }) {
-                form_render(ui, form);
+                body(ui, user);
             }
             if (footer) {
                 CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 8),
@@ -296,5 +303,6 @@ void ui_dialogs(Ui *ui) {
         case UI_DIALOG_NONE: break;
         case UI_DIALOG_SETTINGS: ui_modal(ui, ui_form(ui, "settings"), 600, NULL, NULL); break;
         case UI_DIALOG_NEW_GAME: ui_modal(ui, ui_form(ui, "new_game"), 520, new_game_footer, NULL); break;
+        case UI_DIALOG_SETUP: engine_setup_dialog(ui); break;
     }
 }

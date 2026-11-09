@@ -29,7 +29,7 @@
     (menu menu.navigate
       nav.first nav.back10 nav.back nav.forward nav.forward10 nav.last - nav.prev_variation nav.next_variation :fallback "Navigate")
     (menu menu.analysis
-      analysis.toggle analysis.play_best analysis.game analysis.region - analysis.candidates analysis.ownership - engine.second engine.restart :fallback "Analysis")
+      analysis.toggle analysis.play_best analysis.game analysis.region - analysis.candidates analysis.ownership - engine.second engine.restart engine.setup :fallback "Analysis")
     (menu menu.view
       view.coordinates view.move_numbers view.next_tab - view.zoom_in view.zoom_out - view.settings :fallback "View"))
 

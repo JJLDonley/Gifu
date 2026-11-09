@@ -307,12 +307,20 @@ Engine *katago_engine_create(const KataGoSettings *settings, String *error) {
         args[argc++] = SV("-config");
         args[argc++] = settings->config;
     }
+    if (settings->human_model.len) {
+        args[argc++] = SV("-human-model");
+        args[argc++] = settings->human_model;
+    }
+    // One -override-config with every override, comma-separated.
+    String overrides = string_from(SV("reportAnalysisWinratesAs=SIDETOMOVE"));
+    if (settings->overrides.len) string_pushf(&overrides, "," SV_FMT, SV_ARG(settings->overrides));
     args[argc++] = SV("-override-config");
-    args[argc++] = SV("reportAnalysisWinratesAs=SIDETOMOVE");
+    args[argc++] = string_sv(&overrides);
     for (isize i = 0; i < settings->extra_arg_count && argc < (isize)countof(args); ++i) args[argc++] = settings->extra_args[i];
 
     ProcessSpec spec = { settings->program, args, argc, settings->working_dir, settings->launcher, settings->launcher_count };
     GtpClient *gtp = gtp_client_start(&spec, error);
+    string_free(&overrides);
     if (!gtp) return NULL;
 
     KataGoEngine *k = calloc(1, sizeof(KataGoEngine));

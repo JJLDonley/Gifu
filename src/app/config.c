@@ -23,6 +23,8 @@ static const ConfigField FIELDS[] = {
     FLOAT("ui_scale", ui_scale, 1.0, 0.5, 3.0),
     STR("engine", engine, ""),
     STR("engine2", engine2, ""),
+    STR("install.backend", install_backend, "opencl"),
+    STR("ai.human_profile", human_profile, "rank_5k"),
     STR("rules", rules, "chinese"),
     STR("last_directory", last_directory, ""),
     BOOL("analysis.on_start", analyze_on_start, 1),

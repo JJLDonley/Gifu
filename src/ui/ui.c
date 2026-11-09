@@ -109,6 +109,10 @@ static void open_dialog(Ui *ui, UiDialog dialog) {
 static void cmd_settings(void *c) { open_dialog(UI(c), UI_DIALOG_SETTINGS); }
 static bool settings_shown(const void *c) { return ((const Ui *)c)->dialog == UI_DIALOG_SETTINGS; }
 static void cmd_new_game(void *c) { open_dialog(UI(c), UI_DIALOG_NEW_GAME); }
+static void cmd_setup(void *c) {
+    UI(c)->setup_init = false;   // re-check what is installed
+    open_dialog(UI(c), UI_DIALOG_SETUP);
+}
 static void cmd_move_numbers(void *c) { UI(c)->app->config.show_move_numbers = !UI(c)->app->config.show_move_numbers; }
 static bool shows_move_numbers(const void *c) { return ((const Ui *)c)->app->config.show_move_numbers; }
 // R: start selecting a region, or clear the current one.
@@ -142,6 +146,7 @@ static void register_ui_commands(Ui *ui) {
         { "view.debug", "Layout debugger", "Debug", cmd_debug, NULL, NULL, ui },
         { "view.settings", "Settings", "Settings", cmd_settings, NULL, settings_shown, ui },
         { "file.new", "New game", "New", cmd_new_game, NULL, NULL, ui },
+        { "engine.setup", "Download engines…", "Setup", cmd_setup, NULL, NULL, ui },
         { "view.next_tab", "Next tab", "Tab", cmd_next_tab, NULL, NULL, ui },
         { "view.menu", "Menu", "Menu", cmd_menu, NULL, NULL, ui },
         { "analysis.region", "Analyze region", "Region", cmd_region, NULL, region_on, ui },
@@ -233,10 +238,19 @@ bool ui_init(Ui *ui, App *app) {
     ui_apply_theme(ui, theme >= 0 ? theme : 0);
     register_ui_commands(ui);
     validate_command_refs(ui);
+
+    // First run: no usable engine -> offer the downloads right away.
+    bool any_engine = false;
+    vec_foreach(EngineProfile, p, &app->engine_profiles) any_engine |= engine_profile_available(p);
+    if (!any_engine && !sv_eq(app->options.engine, SV("none"))) ui->dialog = UI_DIALOG_SETUP;
     return true;
 }
 
 void ui_shutdown(Ui *ui) {
+    if (ui->installer.started) {   // stop a running download cleanly
+        installer_cancel(&ui->installer);
+        installer_finish(&ui->installer);
+    }
     board_view_free(ui);
     background_free(&ui->background);
     if (ui->board_texture.id) UnloadTexture(ui->board_texture);
@@ -380,6 +394,7 @@ void ui_frame(Ui *ui) {
     board_view_handle_input(ui);
     if (ui->mouse_released) ui->active_id = 0;
     board_view_prepare(ui);   // render-texture work must happen outside BeginDrawing
+    engine_setup_poll(ui);
 
     BeginDrawing();
     background_draw(&ui->background, ui->theme, (Rectangle){ 0, 0, (f32)GetScreenWidth(), (f32)GetScreenHeight() });

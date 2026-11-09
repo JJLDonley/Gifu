@@ -4,6 +4,7 @@
 #pragma once
 
 #include "app/app.h"
+#include "app/installer.h"
 #include "base/sexpr.h"
 #include "ui/anim.h"
 #include "ui/background.h"
@@ -53,6 +54,7 @@ typedef enum UiDialog {
     UI_DIALOG_NONE,
     UI_DIALOG_SETTINGS,
     UI_DIALOG_NEW_GAME,
+    UI_DIALOG_SETUP,
 } UiDialog;
 
 typedef struct Ui {
@@ -101,6 +103,11 @@ typedef struct Ui {
     // Win-rate bar animation (holds the last value while new analysis arrives).
     bool eval_known;
     f32 eval_black_winrate, eval_black_score;   // displayed (animated) values
+
+    // Engine setup (downloads).
+    Installer installer;
+    bool setup_init, setup_reloaded;
+    bool setup_engine, setup_network, setup_human;
 
     // Comment editor state.
     TextEdit comment;
@@ -201,6 +208,10 @@ const Sexpr *ui_form(Ui *ui, const char *name);   // (form NAME ...) from forms.
 void form_render(Ui *ui, const Sexpr *form);
 // Modal with title, scrolling form body and an optional footer (buttons).
 void ui_modal(Ui *ui, const Sexpr *form, f32 width, ModalSection footer, void *user);
+// Modal with any body (same header, close button, backdrop and animation).
+void ui_modal_shell(Ui *ui, StringView title, f32 width, ModalSection body, ModalSection footer, void *user);
+void engine_setup_dialog(Ui *ui);   // setup.c
+void engine_setup_poll(Ui *ui);     // reload engines once an install finishes
 void ui_dialogs(Ui *ui);                           // renders the open dialog, if any
 void ui_close_dialog(Ui *ui);
 void panels_render(Ui *ui, StringView name);
