@@ -81,14 +81,14 @@ static void engine_status_widget(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
     const ThemeColors *c = &ui->theme->colors;
     Color dot = c->text_muted;
     StringView text = app_tr(app, "label.no_engine", "No engine");
-    switch (app->engine ? app->engine_status : ENGINE_STATUS_STOPPED) {
+    switch (app->main.engine ? app->main.status : ENGINE_STATUS_STOPPED) {
         case ENGINE_STATUS_STARTING:
             dot = (Color){ 230, 160, 40, 255 };
             text = app_tr(app, "label.engine_starting", "Engine starting…");
             break;
         case ENGINE_STATUS_READY:
             dot = (Color){ 67, 160, 71, 255 };
-            text = string_sv(&app->engine_profile->name);
+            text = string_sv(&app->main.profile->name);
             break;
         case ENGINE_STATUS_FAILED:
             dot = c->danger;
@@ -187,7 +187,7 @@ static void move_counter(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
 // Floating card over the top of the board when the current position has a score.
 static void result_banner(Ui *ui) {
     App *app = ui->app;
-    bool show = app->result.len && app->result_position == app->synced_position_id;
+    bool show = app->result.len && app->result_position == app->main.synced_position_id;
     f32 t = anim_towards(&ui->anim, 0x8E5017u, show ? 1.0f : 0.0f, 12.0f, 0.0f);
     if (t < 0.01f) return;
     const ThemeColors *c = &ui->theme->colors;
@@ -271,7 +271,7 @@ static void tabs(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
                                    .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER } },
                        .backgroundColor = color_to_clay(tab_bg),
                        .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, ui->theme->shape.radius * 0.6f)) }) {
-                    CLAY_TEXT(ui_str(ui, label), CLAY_TEXT_CONFIG({ .fontId = FONT_UI_BOLD, .fontSize = ui_u16(ui, 13),
+                    CLAY_TEXT(ui_str(ui, label), CLAY_TEXT_CONFIG({ .fontId = FONT_UI_BOLD, .fontSize = ui_u16(ui, 12),
                                                                     .textColor = color_to_clay(color_lerp(c->text_muted, c->accent_text, on)),
                                                                     .wrapMode = CLAY_TEXT_WRAP_NONE }));
                 }

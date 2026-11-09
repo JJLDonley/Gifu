@@ -80,11 +80,11 @@ AnalysisRequest app_analysis_request(const App *app) {
 
 static void stop_engine(App *app) {
     app_batch_stop(app);
-    engine_destroy(app->engine);
-    app->engine = NULL;
-    app->engine_status = ENGINE_STATUS_STOPPED;
-    app->synced_node = NULL;
-    app->ai_waiting = false;
+    engine_destroy(app->main.engine);
+    app->main.engine = NULL;
+    app->main.status = ENGINE_STATUS_STOPPED;
+    app->main.synced_node = NULL;
+    app->main.waiting_move = false;
     app->score_requested = false;
     app->score_pending = false;
     app->analysis_valid = false;
@@ -92,7 +92,7 @@ static void stop_engine(App *app) {
 
 static void start_engine(App *app) {
     stop_engine(app);
-    string_free(&app->engine_error);
+    string_free(&app->main.error);
     StringView wanted = app->options.engine.len ? app->options.engine : string_sv(&app->config.engine);
     if (sv_eq(wanted, SV("none"))) return;
     const EngineProfile *profile = wanted.len ? engine_profiles_find(&app->engine_profiles, wanted) : NULL;
@@ -108,23 +108,23 @@ static void start_engine(App *app) {
             }
         }
     }
-    app->engine_profile = profile;
+    app->main.profile = profile;
     if (!profile) {
-        app->engine_error = string_from(SV("no engine found (see assets/data/engines.kv)"));
+        app->main.error = string_from(SV("no engine found (see assets/data/engines.kv)"));
         return;
     }
     String err = { 0 };
-    app->engine = engine_create(profile, &err);
-    if (!app->engine) {
-        app->engine_status = ENGINE_STATUS_FAILED;
-        app->engine_error = err;
+    app->main.engine = engine_create(profile, &err);
+    if (!app->main.engine) {
+        app->main.status = ENGINE_STATUS_FAILED;
+        app->main.error = err;
         log_error("engine: %s", string_cstr(&err));
         return;
     }
-    app->engine_status = ENGINE_STATUS_STARTING;
+    app->main.status = ENGINE_STATUS_STARTING;
     if (app->analysis_enabled) {
         AnalysisRequest req = app_analysis_request(app);
-        engine_start_analysis(app->engine, &req);
+        engine_start_analysis(app->main.engine, &req);
     }
 }
 
@@ -136,12 +136,12 @@ void app_restart_engine(App *app) {
 
 void app_set_analysis(App *app, bool enabled) {
     app->analysis_enabled = enabled;
-    if (!app->engine) return;
+    if (!app->main.engine) return;
     if (enabled) {
         AnalysisRequest req = app_analysis_request(app);
-        engine_start_analysis(app->engine, &req);
+        engine_start_analysis(app->main.engine, &req);
     } else {
-        engine_stop_analysis(app->engine);
+        engine_stop_analysis(app->main.engine);
     }
 }
 
@@ -186,14 +186,14 @@ static void flash_stop(App *app) {
 
 // Whole game in one query to the JSON analyzer. Returns false if unavailable.
 static bool flash_start(App *app) {
-    if (!engine_profile_can_batch(app->engine_profile)) return false;
+    if (!engine_profile_can_batch(app->main.profile)) return false;
     if (app->analyzer && !batch_analyzer_alive(app->analyzer)) {
         batch_analyzer_destroy(app->analyzer);
         app->analyzer = NULL;
     }
     if (!app->analyzer) {
         String err = { 0 };
-        app->analyzer = batch_analyzer_create(app->engine_profile, &err);
+        app->analyzer = batch_analyzer_create(app->main.profile, &err);
         if (!app->analyzer) {
             log_warn("analysis engine: %s (falling back to GTP)", string_cstr(&err));
             string_free(&err);
@@ -243,12 +243,12 @@ void app_batch_stop(App *app) {
     free(app->batch_nodes);
     app->batch_nodes = NULL;
     app->batch_count = app->batch_index = 0;
-    app->synced_node = NULL;   // go back to following the current node
+    app->main.synced_node = NULL;   // go back to following the current node
     if (!app->batch_restore_analysis) app_set_analysis(app, false);
 }
 
 void app_batch_start(App *app) {
-    if (!app->engine) return;
+    if (!app->main.engine) return;
     app_batch_stop(app);
     if (flash_start(app)) return;   // fast path: KataGo JSON analysis
     enum { MAX_LINE = 4096 };
@@ -267,7 +267,7 @@ void app_batch_start(App *app) {
     app->batch_restore_analysis = app->analysis_enabled;
     app->batch_running = true;
     app->ai_plays[STONE_BLACK] = app->ai_plays[STONE_WHITE] = false;
-    app->synced_node = NULL;
+    app->main.synced_node = NULL;
     app_set_analysis(app, true);
     app_set_status(app, "Analyzing game (%td positions, %d visits each)", count, app->config.analysis_game_visits);
 }
@@ -284,37 +284,133 @@ static void batch_advance(App *app) {
     }
 }
 
-void app_update(App *app) {
-    flash_update(app);
-    if (!app->engine) return;
+// ---- Second engine (comparison / engine-vs-engine) ----------------------------------------
+
+static void slot_clear(EngineSlot *slot) {
+    engine_destroy(slot->engine);
+    slot->engine = NULL;
+    slot->status = ENGINE_STATUS_STOPPED;
+    slot->synced_node = NULL;
+    slot->analysis_valid = false;
+    slot->waiting_move = false;
+}
+
+void app_second_engine(App *app, bool on) {
+    EngineSlot *s = &app->second;
+    slot_clear(s);
+    string_free(&s->error);
+    if (!on) {
+        app->match_mode = false;
+        return;
+    }
+    StringView wanted = string_sv(&app->config.engine2);
+    const EngineProfile *p = wanted.len ? engine_profiles_find(&app->engine_profiles, wanted) : app->main.profile;
+    if (!p || !engine_profile_available(p)) {
+        s->error = string_from(SV("second engine profile is not available"));
+        app_set_status(app, "Second engine: profile not available");
+        return;
+    }
+    String err = { 0 };
+    s->engine = engine_create(p, &err);
+    s->profile = p;
+    if (!s->engine) {
+        s->status = ENGINE_STATUS_FAILED;
+        s->error = err;
+        return;
+    }
+    if (!s->analysis) s->analysis = calloc(1, sizeof(AnalysisSnapshot));
+    if (!s->analysis) abort();
+    s->status = ENGINE_STATUS_STARTING;
+    AnalysisRequest req = app_analysis_request(app);
+    engine_start_analysis(s->engine, &req);
+    app_set_status(app, "Second engine: %s", string_cstr(&p->name));
+}
+
+static void second_update(App *app) {
+    EngineSlot *s = &app->second;
+    if (!s->engine) return;
     EngineEvent ev;
-    while (engine_poll(app->engine, &ev)) {
+    while (engine_poll(s->engine, &ev)) {
         switch (ev.kind) {
             case ENGINE_EVENT_STATUS:
-                app->engine_status = ev.status;
-                if (ev.status == ENGINE_STATUS_READY) app_set_status(app, "%s ready", string_cstr(&app->engine_profile->name));
+                s->status = ev.status;
+                if (ev.status == ENGINE_STATUS_FAILED) app->match_mode = false;
+                break;
+            case ENGINE_EVENT_ANALYSIS:
+                if (ev.analysis->position_id == s->synced_position_id) {
+                    memcpy(s->analysis, ev.analysis, sizeof(AnalysisSnapshot));
+                    s->analysis_valid = s->synced_node == app->tree->current;
+                }
+                break;
+            case ENGINE_EVENT_MOVE:
+                s->waiting_move = false;
+                if (ev.position_id != s->synced_position_id || s->synced_node != app->tree->current) {
+                    s->synced_node = NULL;
+                    break;
+                }
+                if (ev.resigned) {
+                    app->match_mode = false;
+                    app_set_status(app, "%s resigns", ev.move.color == STONE_BLACK ? "Black" : "White");
+                } else if (app_play(app, ev.move.point) != MOVE_OK) {
+                    app_set_status(app, "Second engine move rejected");
+                    s->synced_node = NULL;
+                }
+                break;
+            case ENGINE_EVENT_LOG: {
+                String line = string_format("[2] " SV_FMT, SV_ARG(ev.text));
+                app_log(app, string_sv(&line));
+                string_free(&line);
+                break;
+            }
+            case ENGINE_EVENT_ERROR:
+            case ENGINE_EVENT_SCORE:
+                break;
+        }
+    }
+    if (s->synced_node != app->tree->current && s->status != ENGINE_STATUS_FAILED) {
+        PositionSpec *spec = malloc(sizeof(PositionSpec));
+        if (!spec) abort();
+        position_spec_from_node(app->tree, app->tree->current, string_sv(&app->config.rules), spec);
+        engine_set_position(s->engine, spec);
+        s->synced_position_id = spec->id;
+        s->synced_node = app->tree->current;
+        s->analysis_valid = false;
+        free(spec);
+    }
+}
+
+void app_update(App *app) {
+    flash_update(app);
+    second_update(app);
+    if (!app->main.engine) return;
+    EngineEvent ev;
+    while (engine_poll(app->main.engine, &ev)) {
+        switch (ev.kind) {
+            case ENGINE_EVENT_STATUS:
+                app->main.status = ev.status;
+                if (ev.status == ENGINE_STATUS_READY) app_set_status(app, "%s ready", string_cstr(&app->main.profile->name));
                 if (ev.status == ENGINE_STATUS_FAILED) {
-                    string_free(&app->engine_error);
-                    app->engine_error = string_from(SV("engine exited (see engine log)"));
+                    string_free(&app->main.error);
+                    app->main.error = string_from(SV("engine exited (see engine log)"));
                 }
                 break;
             case ENGINE_EVENT_ANALYSIS:
-                if (ev.analysis->position_id != app->synced_position_id || !app->synced_node) break;
-                store_node_eval(app->synced_node, ev.analysis);
-                if (app->synced_node == app->tree->current) {
+                if (ev.analysis->position_id != app->main.synced_position_id || !app->main.synced_node) break;
+                store_node_eval(app->main.synced_node, ev.analysis);
+                if (app->main.synced_node == app->tree->current) {
                     memcpy(app->analysis, ev.analysis, sizeof(AnalysisSnapshot));
                     app->analysis_valid = true;
                 }
                 if (app->batch_running && app->batch_index < app->batch_count &&
-                    app->synced_node == app->batch_nodes[app->batch_index] &&
+                    app->main.synced_node == app->batch_nodes[app->batch_index] &&
                     ev.analysis->total_visits >= app->config.analysis_game_visits) {
                     batch_advance(app);
                 }
                 break;
             case ENGINE_EVENT_MOVE:
-                app->ai_waiting = false;
-                if (ev.position_id != app->synced_position_id) {
-                    app->synced_node = NULL;   // stale answer: engine board must be resynced
+                app->main.waiting_move = false;
+                if (ev.position_id != app->main.synced_position_id) {
+                    app->main.synced_node = NULL;   // stale answer: engine board must be resynced
                     break;
                 }
                 if (ev.resigned) {
@@ -324,7 +420,7 @@ void app_update(App *app) {
                 }
                 if (app_play(app, ev.move.point) != MOVE_OK) {
                     app_set_status(app, "Engine move rejected");
-                    app->synced_node = NULL;
+                    app->main.synced_node = NULL;
                 }
                 break;
             case ENGINE_EVENT_SCORE:
@@ -347,42 +443,45 @@ void app_update(App *app) {
     // whole-game analysis runs.
     GameNode *target = app->batch_running && app->batch_index < app->batch_count ? app->batch_nodes[app->batch_index]
                                                                                    : app->tree->current;
-    if (app->synced_node != target && app->engine_status != ENGINE_STATUS_FAILED) {
+    if (app->main.synced_node != target && app->main.status != ENGINE_STATUS_FAILED) {
         PositionSpec *spec = malloc(sizeof(PositionSpec));
         if (!spec) abort();
         position_spec_from_node(app->tree, target, string_sv(&app->config.rules), spec);
-        engine_set_position(app->engine, spec);
-        app->synced_position_id = spec->id;
-        app->synced_node = target;
+        engine_set_position(app->main.engine, spec);
+        app->main.synced_position_id = spec->id;
+        app->main.synced_node = target;
         free(spec);
     }
-    if (app->synced_node != app->tree->current) app->analysis_valid = false;
+    if (app->main.synced_node != app->tree->current) app->analysis_valid = false;
 
     // Two consecutive passes end the game: score it once and stop engine play.
     const GameNode *cur = app->tree->current;
     bool two_passes = cur->has_move && point_is_pass(cur->move.point) && cur->parent && cur->parent->has_move &&
                       point_is_pass(cur->parent->move.point);
-    if (two_passes && app->auto_scored_node != cur && app->synced_node == cur && app->engine_status == ENGINE_STATUS_READY) {
+    if (two_passes && app->auto_scored_node != cur && app->main.synced_node == cur && app->main.status == ENGINE_STATUS_READY) {
         app->auto_scored_node = cur;
         app->ai_plays[STONE_BLACK] = app->ai_plays[STONE_WHITE] = false;
+        app->match_mode = false;
         app->score_requested = true;
-        engine_request_score(app->engine, app->synced_position_id);
+        engine_request_score(app->main.engine, app->main.synced_position_id);
     }
 
-    if (app->score_pending && app->synced_node == cur && app->engine_status == ENGINE_STATUS_READY) {
+    if (app->score_pending && app->main.synced_node == cur && app->main.status == ENGINE_STATUS_READY) {
         app->score_pending = false;
         app->score_requested = true;
-        engine_request_score(app->engine, app->synced_position_id);
+        engine_request_score(app->main.engine, app->main.synced_position_id);
     }
 
-    // Engine's turn?
+    // Engine's turn? In a match the second engine plays White.
     Stone to_play = app->tree->current->to_play;
-    bool engine_turn = (app->ai_plays[to_play] || app->ai_move_once) && !two_passes;
-    if (engine_turn && !app->ai_waiting && app->engine_status == ENGINE_STATUS_READY &&
-        app->synced_node == app->tree->current) {
-        MoveRequest req = { app->synced_position_id, to_play, app->config.ai_seconds_per_move };
-        engine_request_move(app->engine, &req);
-        app->ai_waiting = true;
+    EngineSlot *slot = app->match_mode && to_play == STONE_WHITE ? &app->second : &app->main;
+    bool engine_turn = (app->ai_plays[to_play] || app->ai_move_once || app->match_mode) && !two_passes;
+    bool anyone_waiting = app->main.waiting_move || app->second.waiting_move;
+    if (engine_turn && slot->engine && !anyone_waiting && slot->status == ENGINE_STATUS_READY &&
+        slot->synced_node == app->tree->current) {
+        MoveRequest req = { slot->synced_position_id, to_play, app->config.ai_seconds_per_move };
+        engine_request_move(slot->engine, &req);
+        slot->waiting_move = true;
         app->ai_move_once = false;
     }
 }
@@ -410,9 +509,15 @@ void app_config_changed(App *app, StringView key) {
     } else if (sv_eq(key, SV("engine"))) {
         app_restart_engine(app);
     } else if (sv_eq(key, SV("rules"))) {
-        app->synced_node = NULL;   // resync sends kata-set-rules
+        app->main.synced_node = NULL;   // resync sends kata-set-rules
+    } else if (sv_eq(key, SV("engine2"))) {
+        if (app->second.engine) app_second_engine(app, true);
     } else if (sv_starts_with(key, SV("analysis."))) {
         if (app->analysis_enabled) app_set_analysis(app, true);
+        if (app->second.engine) {
+            AnalysisRequest req = app_analysis_request(app);
+            engine_start_analysis(app->second.engine, &req);
+        }
     }
 }
 
@@ -420,7 +525,7 @@ static void replace_tree(App *app, GameTree *tree) {
     app_batch_stop(app);
     game_tree_free(app->tree);
     app->tree = tree;
-    app->synced_node = NULL;
+    app->main.synced_node = NULL;
     app->analysis_valid = false;
     app->dirty = false;
 }
@@ -428,7 +533,7 @@ static void replace_tree(App *app, GameTree *tree) {
 void app_start_game(App *app, const NewGameSpec *spec) {
     replace_tree(app, game_tree_new_game(spec));
     string_free(&app->sgf_path);
-    app->ai_waiting = false;
+    app->main.waiting_move = false;
 }
 
 bool app_open_sgf(App *app, StringView path) {
@@ -556,7 +661,7 @@ static void cmd_delete(void *c) {
 
 static void cmd_toggle_analysis(void *c) { app_set_analysis(APP(c), !APP(c)->analysis_enabled); }
 static bool is_analyzing(const void *c) { return CAPP(c)->analysis_enabled; }
-static bool has_engine(const void *c) { return CAPP(c)->engine != NULL; }
+static bool has_engine(const void *c) { return CAPP(c)->main.engine != NULL; }
 
 static void cmd_play_best(void *c) {
     App *app = APP(c);
@@ -578,7 +683,7 @@ static void cmd_restart_engine(void *c) { app_restart_engine(APP(c)); }
 static void cmd_score(void *c) { APP(c)->score_pending = true; }
 static bool can_score(const void *c) {
     const App *app = CAPP(c);
-    return app->engine && app->engine_status != ENGINE_STATUS_FAILED && !app->score_requested && !app->score_pending;
+    return app->main.engine && app->main.status != ENGINE_STATUS_FAILED && !app->score_requested && !app->score_pending;
 }
 static void cmd_write_result(void *c) {
     App *app = APP(c);
@@ -587,7 +692,7 @@ static void cmd_write_result(void *c) {
     app->dirty = true;
     app_set_status(app, "Result saved to game");
 }
-static bool has_result(const void *c) { return CAPP(c)->result.len > 0 && CAPP(c)->result_position == CAPP(c)->synced_position_id; }
+static bool has_result(const void *c) { return CAPP(c)->result.len > 0 && CAPP(c)->result_position == CAPP(c)->main.synced_position_id; }
 
 static void cmd_game_analysis(void *c) {
     App *app = APP(c);
@@ -596,12 +701,26 @@ static void cmd_game_analysis(void *c) {
 }
 static bool batch_running(const void *c) { return app_game_analysis_running(CAPP(c)); }
 
+static void cmd_second_engine(void *c) { app_second_engine(APP(c), APP(c)->second.engine == NULL); }
+static bool second_running(const void *c) { return CAPP(c)->second.engine != NULL; }
+static void cmd_match(void *c) {
+    App *app = APP(c);
+    if (app->match_mode) {
+        app->match_mode = false;
+        return;
+    }
+    if (!app->second.engine) app_second_engine(app, true);
+    app->ai_plays[STONE_BLACK] = app->ai_plays[STONE_WHITE] = false;
+    app->match_mode = app->second.engine != NULL;
+}
+static bool in_match(const void *c) { return CAPP(c)->match_mode; }
+
 static void cmd_ai_black(void *c) { APP(c)->ai_plays[STONE_BLACK] = !APP(c)->ai_plays[STONE_BLACK]; }
 static void cmd_ai_white(void *c) { APP(c)->ai_plays[STONE_WHITE] = !APP(c)->ai_plays[STONE_WHITE]; }
 static bool ai_black(const void *c) { return CAPP(c)->ai_plays[STONE_BLACK]; }
 static bool ai_white(const void *c) { return CAPP(c)->ai_plays[STONE_WHITE]; }
 static void cmd_ai_move(void *c) { APP(c)->ai_move_once = true; }
-static bool can_ai_move(const void *c) { return CAPP(c)->engine_status == ENGINE_STATUS_READY && !CAPP(c)->ai_waiting; }
+static bool can_ai_move(const void *c) { return CAPP(c)->main.status == ENGINE_STATUS_READY && !CAPP(c)->main.waiting_move; }
 
 static const CommandDef APP_COMMANDS[] = {
     { "game.new", "Start game", "Start", cmd_new, NULL, NULL },
@@ -627,6 +746,8 @@ static const CommandDef APP_COMMANDS[] = {
     { "game.ai_white", "Engine plays White", "AI ○", cmd_ai_white, has_engine, ai_white },
     { "game.ai_move", "Engine move", "Genmove", cmd_ai_move, can_ai_move, NULL },
     { "game.score", "Score game", "Score", cmd_score, can_score, NULL },
+    { "engine.second", "Second engine", "Second engine", cmd_second_engine, has_engine, second_running },
+    { "game.match", "Engine vs engine", "Match", cmd_match, has_engine, in_match },
     { "analysis.game", "Analyze game", "Analyze game", cmd_game_analysis, has_engine, batch_running },
     { "game.write_result", "Save result", "Save result", cmd_write_result, has_result, NULL },
 };
@@ -708,6 +829,9 @@ bool app_init(App *app, const AppOptions *options) {
 
 void app_shutdown(App *app) {
     stop_engine(app);
+    slot_clear(&app->second);
+    string_free(&app->second.error);
+    free(app->second.analysis);
     batch_analyzer_destroy(app->analyzer);
     app->analyzer = NULL;
     bool read_only = app->options.screenshot.len > 0 || app->options.headless;   // automated runs never touch user config
@@ -724,7 +848,7 @@ void app_shutdown(App *app) {
     string_free(&app->assets_dir);
     string_free(&app->config_dir);
     string_free(&app->sgf_path);
-    string_free(&app->engine_error);
+    string_free(&app->main.error);
     string_free(&app->status_message);
     string_free(&app->result);
     free(app->analysis);

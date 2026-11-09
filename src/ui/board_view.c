@@ -407,8 +407,8 @@ static void draw_board(void *user, Rectangle bounds) {
     } else {
         // Candidates fade in whenever a new position gets its first analysis.
         enum { CANDIDATE_KEY = 0xCA4D1D47u };
-        if (app->synced_position_id != ui->candidates_position) {
-            ui->candidates_position = app->synced_position_id;
+        if (app->main.synced_position_id != ui->candidates_position) {
+            ui->candidates_position = app->main.synced_position_id;
             anim_set(&ui->anim, CANDIDATE_KEY, 0.0f);
         }
         f32 fade = anim_towards(&ui->anim, CANDIDATE_KEY, analysis ? 1.0f : 0.0f, 10.0f, 0.0f);

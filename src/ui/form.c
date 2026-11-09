@@ -125,7 +125,7 @@ static void choice_field(Ui *ui, const Sexpr *v, const ConfigField *f, u32 index
     StringView current = config_get_string(config, f);
     f64 current_number = config_get_number(config, f);
     // An empty engine id means "first available": highlight what is running.
-    if (sv_eq(sv(f->key), SV("engine")) && current.len == 0 && ui->app->engine_profile) current = string_sv(&ui->app->engine_profile->id);
+    if (sv_eq(sv(f->key), SV("engine")) && current.len == 0 && ui->app->main.profile) current = string_sv(&ui->app->main.profile->id);
 
     CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM,
                        .childGap = ui_u16(ui, 6) } }) {

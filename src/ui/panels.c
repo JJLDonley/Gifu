@@ -121,7 +121,7 @@ static void panel_winrate_summary(Ui *ui) {
         char lead[32] = "—";
         if (known) snprintf(lead, sizeof(lead), "%s+%.1f", score >= 0 ? "B" : "W", score >= 0 ? score : -score);
         row_begin_end_label(ui, tr(ui, "label.score", "Score"), sv(lead));
-        StringView status = !app->engine ? tr(ui, "label.no_engine", "No engine")
+        StringView status = !app->main.engine ? tr(ui, "label.no_engine", "No engine")
                             : app->analysis_enabled ? tr(ui, "label.analyzing", "Analyzing")
                                                     : SV("—");
         if (fresh) {
@@ -205,6 +205,74 @@ static void panel_move_list(Ui *ui) {
             break;
         }
         ui->move_list_scrolled_to = app->tree->current;
+    }
+}
+
+// ---- compare (two engines) -------------------------------------------------------------------------------
+
+static void compare_column(Ui *ui, const EngineSlot *slot, const AnalysisSnapshot *a, bool valid, StringView title, u32 col) {
+    const ThemeColors *c = &ui->theme->colors;
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_PERCENT(0.5f), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                       .childGap = ui_u16(ui, 4) } }) {
+        ui_label(ui, title, FONT_UI, 11, c->text_muted);
+        ui_label(ui, slot->profile ? string_sv(&slot->profile->name) : SV("—"), FONT_UI_BOLD, 13, c->text);
+        const Candidate *best = valid ? analysis_best(a) : NULL;
+        // Note: no early return inside a CLAY body (it would skip closing the element).
+        if (!best) {
+            ui_label(ui, slot->status == ENGINE_STATUS_STARTING ? tr(ui, "label.engine_starting", "Engine starting…")
+                         : tr(ui, "label.analyzing", "Analyzing"),
+                     FONT_UI, 12, c->text_muted);
+        } else {
+        f32 wr = analysis_black_winrate(a, best->winrate), score = analysis_black_score(a, best->score_lead);
+        CLAY_TEXT(ui_fmt(ui, "B %.1f%%  %s+%.1f", wr * 100.0f, score >= 0 ? "B" : "W", fabsf(score)), ui_text_style(ui, FONT_MONO, 13, c->text));
+        CLAY_TEXT(ui_fmt(ui, "%d " SV_FMT, a->total_visits, SV_ARG(tr(ui, "label.visits", "Visits"))), ui_text_style(ui, FONT_UI, 11, c->text_muted));
+        for (i32 i = 0; i < MIN(a->candidate_count, 5); ++i) {
+            const Candidate *cand = &a->candidates[i];
+            char coord[8];
+            point_to_gtp(cand->move, a->width, a->height, coord);
+            CLAY({ .id = CLAY_IDI("CompareRow", col * 8 + (u32)i), .layout = { .childGap = ui_u16(ui, 8) } }) {
+                CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 36)), CLAY_SIZING_FIT(0) } } }) {
+                    ui_label(ui, sv(coord), FONT_MONO, 12, i == 0 ? c->candidate_best : c->text);
+                }
+                CLAY_TEXT(ui_fmt(ui, "%.1f%%", cand->winrate * 100.0f), ui_text_style(ui, FONT_MONO, 12, c->text_muted));
+            }
+        }
+        }
+    }
+}
+
+// Main vs second engine on the current position. The best moves are compared:
+// when the engines disagree, the header says so.
+static void panel_compare(Ui *ui) {
+    App *app = ui->app;
+    const ThemeColors *c = &ui->theme->colors;
+    CLAY(ui_card(ui, CLAY_ID("PanelCompare"))) {
+        ui_card_title(ui, tr(ui, "panel.compare", "Compare engines"));
+        CLAY(ui_scroll_area(ui, CLAY_ID("CompareScroll"), 0)) {
+            if (!app->second.engine) {
+                ui_label(ui, tr(ui, "compare.hint", "Run a second engine to compare its view of each position."), FONT_UI, 13, c->text_muted);
+                CLAY({ .layout = { .padding = { 0, 0, ui_u16(ui, 8), 0 } } }) {
+                    ui_command_button_ex(ui, SV("engine.second"), SV("@play"), true, BUTTON_NORMAL, 0);
+                }
+            } else {
+                const Candidate *a = app->analysis_valid ? analysis_best(app->analysis) : NULL;
+                const Candidate *b = app->second.analysis_valid ? analysis_best(app->second.analysis) : NULL;
+                if (a && b) {
+                    bool agree = point_eq(a->move, b->move);
+                    ui_label(ui, agree ? tr(ui, "compare.agree", "Both engines agree on the best move")
+                                       : tr(ui, "compare.disagree", "The engines disagree"),
+                             FONT_UI_BOLD, 13, agree ? c->candidate_good : c->candidate_bad);
+                }
+                CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 12) } }) {
+                    compare_column(ui, &app->main, app->analysis, app->analysis_valid, tr(ui, "compare.main", "Main"), 0);
+                    compare_column(ui, &app->second, app->second.analysis, app->second.analysis_valid, tr(ui, "compare.second", "Second"), 1);
+                }
+                CLAY({ .layout = { .childGap = ui_u16(ui, 6), .padding = { 0, 0, ui_u16(ui, 8), 0 } } }) {
+                    ui_command_button_ex(ui, SV("game.match"), SV("@play"), true, BUTTON_NORMAL, 0);
+                    ui_command_button_ex(ui, SV("engine.second"), SV("@close"), true, BUTTON_GHOST, 1);
+                }
+            }
+        }
     }
 }
 
@@ -424,6 +492,7 @@ static const struct {
     { "variation_tree", panel_variation_tree },
     { "move_list", panel_move_list },
     { "report", panel_report },
+    { "compare", panel_compare },
     { "engine_log", panel_engine_log },
 };
 

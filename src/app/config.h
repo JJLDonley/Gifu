@@ -15,6 +15,7 @@ typedef struct Config {
     String language;       // "en", "zh_CN", "zh_TW", "ja", "ko"
     f32 ui_scale;
     String engine;         // engine profile id
+    String engine2;        // second engine (comparison / engine-vs-engine); "" = same as main
     String rules;          // KataGo rules name
     bool analyze_on_start;
     i32 analysis_interval_cs;

@@ -34,6 +34,19 @@ typedef struct AppOptions {
 
 enum { APP_LOG_LINES = 200 };
 
+// One running engine and what it currently holds.
+typedef struct EngineSlot {
+    Engine *engine;
+    const EngineProfile *profile;
+    EngineStatus status;
+    String error;
+    GameNode *synced_node;       // node the engine currently holds
+    u64 synced_position_id;
+    AnalysisSnapshot *analysis;  // latest snapshot for synced_node (second slot; main uses App.analysis)
+    bool analysis_valid;
+    bool waiting_move;           // a request_move is outstanding
+} EngineSlot;
+
 typedef struct App {
     AppOptions options;
     String exe_dir;
@@ -51,13 +64,11 @@ typedef struct App {
     String sgf_path;
     bool dirty;
 
-    Engine *engine;
-    const EngineProfile *engine_profile;
-    EngineStatus engine_status;
-    String engine_error;
+    // Engines: `main` drives analysis, the board and the graph; `second` is an
+    // optional extra engine for side-by-side comparison and engine-vs-engine games.
+    EngineSlot main;
+    EngineSlot second;
     bool analysis_enabled;
-    GameNode *synced_node;      // node the engine currently holds
-    u64 synced_position_id;
     AnalysisSnapshot *analysis;   // latest snapshot for the current node
     bool analysis_valid;
 
@@ -80,7 +91,7 @@ typedef struct App {
     // Play vs AI: which colours the engine plays (indexed by Stone).
     bool ai_plays[3];
     bool ai_move_once;          // "engine, play one move now"
-    bool ai_waiting;            // a request_move is outstanding
+    bool match_mode;            // engine vs engine: main plays Black, second plays White
 
     u32 language_version;       // bumped when UI strings change (UI reloads fonts)
 
@@ -110,6 +121,7 @@ bool app_save_sgf(App *app, StringView path);
 MoveError app_play(App *app, Point point);
 void app_goto(App *app, GameNode *node);
 void app_restart_engine(App *app);
+void app_second_engine(App *app, bool on);   // start/stop the comparison engine
 void app_set_analysis(App *app, bool enabled);
 AnalysisRequest app_analysis_request(const App *app);
 void app_reload_language(App *app);

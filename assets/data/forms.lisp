@@ -20,6 +20,7 @@
     (number ui_scale :min 0.75 :max 2.0 :step 0.05 :format "%.2f×" :label settings.ui_scale :fallback "Interface scale"))
   (section settings.engine :fallback Engine
     (choice engine :source engines :columns 1 :label settings.engine_profile :fallback "Engine profile")
+    (choice engine2 :source engines :columns 1 :label settings.engine2 :fallback "Second engine (compare / matches)")
     (choice rules :columns 3 :label label.rules :fallback Rules
       (option chinese Chinese)
       (option japanese Japanese)
