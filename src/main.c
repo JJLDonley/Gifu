@@ -5,6 +5,7 @@
 #include "app/app.h"
 #include "app/headless.h"
 #include "base/log.h"
+#include "base/os.h"
 #include "ui/ui.h"
 
 #include <stdio.h>
@@ -95,6 +96,14 @@ int main(int argc, char **argv) {
         SetWindowSize(w, h);
     }
     SetWindowMinSize(800, 560);
+    // Window / taskbar icon (the Windows exe also embeds it as a resource).
+    String icon_path = path_join(string_sv(&app->assets_dir), SV("icons/catagui.png"));
+    Image icon = LoadImage(string_cstr(&icon_path));
+    if (icon.data) {
+        SetWindowIcon(icon);
+        UnloadImage(icon);
+    }
+    string_free(&icon_path);
     SetExitKey(KEY_NULL);
     // Pace frames to the display (smooth animations on 120/144 Hz monitors).
     i32 refresh = GetMonitorRefreshRate(GetCurrentMonitor());

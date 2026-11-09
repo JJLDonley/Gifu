@@ -13,6 +13,10 @@ keymap, themes and engines.
    KataGo release, and a network in `katago/networks/`.
 2. Start `catagui` (or `catagui.exe`). Open an SGF with Ctrl+O or drag it onto the window.
 
+On Linux, to add CataGui to your application menu, copy `share/applications/catagui.desktop`
+to `~/.local/share/applications/` (set `Exec=` to the full path of `catagui`) and
+`share/icons/hicolor/256x256/apps/catagui.png` to `~/.local/share/icons/hicolor/256x256/apps/`.
+
 Batch analysis without a window:
 
     catagui --analyze games/*.sgf --out analyzed --set analysis.game_visits=200

@@ -138,6 +138,8 @@ add_executable(catagui
 target_link_libraries(catagui PRIVATE catagui_core raylib)
 catagui_warnings(catagui)
 if(WIN32)
+    enable_language(RC)
+    target_sources(catagui PRIVATE packaging/windows/catagui.rc)
     target_link_libraries(catagui PRIVATE comdlg32)
     # GUI subsystem in Release (no console window), console in Debug for logs.
     target_link_options(catagui PRIVATE $<$<CONFIG:Release>:-mwindows>)
@@ -157,6 +159,12 @@ add_dependencies(catagui catagui_assets)
 install(TARGETS catagui RUNTIME DESTINATION .)
 install(DIRECTORY assets/ DESTINATION assets)
 install(FILES LICENSE README.md THIRD_PARTY_NOTICES.md DESTINATION .)
+if(NOT WIN32)
+    # Desktop entry + icon: copy to ~/.local/share/applications and
+    # ~/.local/share/icons/hicolor/256x256/apps (see README).
+    install(FILES packaging/linux/catagui.desktop DESTINATION share/applications)
+    install(FILES assets/icons/catagui.png DESTINATION share/icons/hicolor/256x256/apps)
+endif()
 install(FILES third_party/raylib/LICENSE DESTINATION licenses RENAME raylib-LICENSE.txt)
 install(FILES third_party/clay/LICENSE.md DESTINATION licenses RENAME clay-LICENSE.md)
 install(FILES third_party/yyjson/LICENSE DESTINATION licenses RENAME yyjson-LICENSE.txt)

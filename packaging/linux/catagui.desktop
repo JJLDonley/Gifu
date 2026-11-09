@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=CataGui
+GenericName=Go analysis
+Comment=KataGo GUI for analysing Go games
+Exec=catagui %f
+Icon=catagui
+Terminal=false
+Categories=Game;BoardGame;
+MimeType=application/x-go-sgf;
+Keywords=go;baduk;weiqi;katago;sgf;

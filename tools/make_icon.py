@@ -1,0 +1,86 @@
+#!/usr/bin/env python3
+"""Draws the CataGui icon (kaya board corner with a black and a white stone).
+
+Writes assets/icons/catagui.png (256x256) and packaging/windows/catagui.ico
+(16..256, PNG-compressed entries). Standard library only; 4x supersampled.
+"""
+import math, os, struct, zlib
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+def render(size):
+    ss = 4
+    n = size * ss
+    px = [[(0, 0, 0, 0)] * n for _ in range(n)]
+    radius = n * 0.18                       # rounded board corners
+    board = (224, 185, 120)
+    line = (62, 47, 31)
+    cell = n * 0.2                           # 3x3 cells: lines at 20%..80%
+    origin = n * 0.2
+    def inside_round_rect(x, y):
+        m = n * 0.04
+        cx = min(max(x, m + radius), n - m - radius)
+        cy = min(max(y, m + radius), n - m - radius)
+        return (x - cx) ** 2 + (y - cy) ** 2 <= radius ** 2 and m <= x <= n - m and m <= y <= n - m
+    stones = [(origin + cell * 1, origin + cell * 1, (24, 22, 20), (70, 66, 60)),     # black
+              (origin + cell * 2, origin + cell * 2, (250, 247, 240), (190, 182, 168))]  # white
+    sr = cell * 0.49
+    w = max(1.0, n * 0.012)
+    for y in range(n):
+        for x in range(n):
+            if not inside_round_rect(x, y):
+                continue
+            c = board
+            # grid lines (3x3 visible intersections)
+            for k in range(4):
+                gx = origin + cell * k
+                if abs(x - gx) <= w and origin - w <= y <= origin + cell * 3 + w: c = line
+                if abs(y - gx) <= w and origin - w <= x <= origin + cell * 3 + w: c = line
+            for sx, sy, fill, rim in stones:
+                d = math.hypot(x - sx, y - sy)
+                if d <= sr:
+                    # soft highlight towards the top-left
+                    h = max(0.0, 1.0 - math.hypot(x - (sx - sr * 0.35), y - (sy - sr * 0.35)) / (sr * 0.9))
+                    base = rim if d > sr * 0.92 else fill
+                    c = tuple(min(255, int(base[i] + (255 - base[i]) * h * (0.25 if fill[0] < 128 else 0.1))) for i in range(3))
+            px[y][x] = c + (255,)
+    # downsample
+    out = []
+    for y in range(size):
+        row = []
+        for x in range(size):
+            acc = [0, 0, 0, 0]
+            for dy in range(ss):
+                for dx in range(ss):
+                    p = px[y * ss + dy][x * ss + dx]
+                    a = p[3]
+                    acc[0] += p[0] * a; acc[1] += p[1] * a; acc[2] += p[2] * a; acc[3] += a
+            a = acc[3]
+            row.append((acc[0] // a, acc[1] // a, acc[2] // a, a // (ss * ss)) if a else (0, 0, 0, 0))
+        out.append(row)
+    return out
+
+def png_bytes(img):
+    h, w = len(img), len(img[0])
+    raw = b"".join(b"\x00" + bytes(v for p in row for v in p) for row in img)
+    def chunk(tag, data):
+        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0)) +
+            chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b""))
+
+def ico_bytes(pngs):
+    header = struct.pack("<HHH", 0, 1, len(pngs))
+    entries, data, offset = b"", b"", 6 + 16 * len(pngs)
+    for size, png in pngs:
+        dim = 0 if size >= 256 else size
+        entries += struct.pack("<BBBBHHII", dim, dim, 0, 0, 1, 32, len(png), offset)
+        data += png
+        offset += len(png)
+    return header + entries + data
+
+if __name__ == "__main__":
+    sizes = [16, 24, 32, 48, 64, 128, 256]
+    pngs = [(s, png_bytes(render(s))) for s in sizes]
+    open(os.path.join(ROOT, "assets", "icons", "catagui.png"), "wb").write(pngs[-1][1])
+    open(os.path.join(ROOT, "packaging", "windows", "catagui.ico"), "wb").write(ico_bytes(pngs))
+    print("icons written")
