@@ -31,6 +31,9 @@ typedef struct AppOptions {
     StringView output_dir;           // --out
     bool headless;                   // no window, no interactive engine
     StringView region;               // --region A1:G7 (tsumego focus)
+    StringView install;              // --install engine,network,human (headless)
+    StringView install_backend;      // --backend opencl|eigenavx2|eigen|cuda12.8-cudnn9.8.0
+    StringView install_dir;          // --install-dir (default <root>/katago)
 } AppOptions;
 
 enum { APP_LOG_LINES = 200 };
@@ -126,7 +129,11 @@ void app_goto(App *app, GameNode *node);
 void app_restart_engine(App *app);
 void app_second_engine(App *app, bool on);
 // Restricts (or with region.active=false, frees) analysis to a board rectangle.
-void app_set_region(App *app, BoardRegion region);   // start/stop the comparison engine
+void app_set_region(App *app, BoardRegion region);
+// Where KataGo lives: <root>/katago (created by the installer).
+String app_katago_dir(const App *app);
+// Re-reads engine profiles (e.g. after an install) and restarts the engine.
+void app_reload_engines(App *app);   // start/stop the comparison engine
 void app_set_analysis(App *app, bool enabled);
 AnalysisRequest app_analysis_request(const App *app);
 void app_reload_language(App *app);

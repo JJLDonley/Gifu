@@ -6,3 +6,5 @@
 // Analyses app->options.analyze_files and writes the results into the SGFs.
 // Returns a process exit code.
 int headless_analyze(App *app);
+// --install engine,network,human [--backend ID] [--install-dir DIR]
+int headless_install(App *app);

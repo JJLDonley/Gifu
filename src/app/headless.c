@@ -7,10 +7,12 @@
 
 #include "base/log.h"
 #include "core/game_report.h"
+#include "app/installer.h"
 #include "engine/game_job.h"
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 typedef struct HeadlessGame {
     StringView path;
@@ -138,4 +140,46 @@ int headless_analyze(App *app) {
     free(games);
     printf("%s: %d game(s), %d failure(s)\n", failures ? "DONE WITH ERRORS" : "DONE", o->analyze_count, failures);
     return failures ? 1 : 0;
+}
+
+int headless_install(App *app) {
+    const AppOptions *o = &app->options;
+    StringView what = o->install;
+    bool engine = sv_find(what, SV("engine")) >= 0, network = sv_find(what, SV("network")) >= 0, human = sv_find(what, SV("human")) >= 0;
+    if (sv_eq(what, SV("all"))) engine = network = human = true;
+    const KataGoBackend *backend = katago_backend_find(o->install_backend.len ? o->install_backend : SV("opencl"));
+    if (!backend) {
+        fprintf(stderr, "unknown backend; choose one of:");
+        for (isize i = 0; i < katago_backend_count(); ++i) fprintf(stderr, " %s", katago_backend_at(i)->id);
+        fprintf(stderr, "\n");
+        return 2;
+    }
+    String dir = o->install_dir.len ? string_from(o->install_dir) : app_katago_dir(app);
+    printf("Installing into %s (%s%s%s) with backend %s\n", string_cstr(&dir), engine ? "engine " : "", network ? "network " : "",
+           human ? "human-network" : "", backend->id);
+    Installer *in = calloc(1, sizeof(Installer));
+    if (!in) abort();
+    installer_start(in, string_sv(&dir), backend, engine, network, human);
+    char last_label[192] = "";
+    f64 last_print = 0;
+    for (;;) {
+        InstallState s = installer_state(in);
+        if (strcmp(s.label, last_label) != 0 || os_time_seconds() - last_print > 5.0) {
+            if (s.total > 0) printf("  %s  %.1f / %.1f MB\n", s.label, (f64)s.done / 1048576.0, (f64)s.total / 1048576.0);
+            else printf("  %s\n", s.label);
+            fflush(stdout);
+            snprintf(last_label, sizeof(last_label), "%s", s.label);
+            last_print = os_time_seconds();
+        }
+        if (s.finished) break;
+        os_sleep_ms(100);
+    }
+    InstallState s = installer_state(in);
+    installer_finish(in);
+    free(in);
+    InstallStatus st = installer_detect(string_sv(&dir), backend);
+    printf("%s: engine=%d network=%d human=%d%s%s\n", s.failed ? "FAILED" : "DONE", st.engine, st.network, st.human,
+           s.failed ? " - " : "", s.failed ? s.error : "");
+    string_free(&dir);
+    return s.failed ? 1 : 0;
 }

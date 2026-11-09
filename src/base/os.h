@@ -13,6 +13,10 @@ NODISCARD bool os_read_file(StringView path, String *out);
 NODISCARD bool os_write_file(StringView path, StringView data);
 bool os_file_exists(StringView path);
 i64 os_file_mtime(StringView path);   // modification time (opaque units), 0 if missing
+i64 os_file_size(StringView path);    // bytes, -1 if missing
+bool os_rename(StringView from, StringView to);   // replaces `to`
+bool os_remove(StringView path);
+bool os_set_executable(StringView path);          // chmod +x (no-op on Windows)
 bool os_dir_exists(StringView path);
 bool os_make_dirs(StringView path);
 // Lists entry names (not full paths) in `dir`, sorted. Returns false if missing.

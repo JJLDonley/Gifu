@@ -46,7 +46,8 @@ add_library(third_party_misc STATIC
 target_include_directories(third_party_misc SYSTEM PUBLIC
     third_party/clay
     third_party/yyjson
-    third_party/stb)
+    third_party/stb       # stb_truetype.h (our own copy; raylib compiles its copy static)
+    third_party/sinfl)    # raw deflate for zip extraction (symbols renamed)
 target_compile_options(third_party_misc PRIVATE -w)
 
 # ---------------------------------------------------------------------------
@@ -85,6 +86,7 @@ add_library(catagui_core STATIC
     src/base/text_encoding.c
     src/base/sexpr.c
     src/base/kv.c
+    src/base/zip.c
     src/core/coord.c
     src/core/board.c
     src/core/game_tree.c
@@ -98,11 +100,13 @@ add_library(catagui_core STATIC
     src/engine/katago_engine.c
     src/engine/katago_analyzer.c
     src/engine/game_job.c
+    src/engine/http.c
     src/engine/engine_profile.c
     src/app/commands.c
     src/app/keymap.c
     src/app/config.c
-    src/app/i18n.c)
+    src/app/i18n.c
+    src/app/installer.c)
 target_include_directories(catagui_core PUBLIC src)
 target_link_libraries(catagui_core PUBLIC third_party_misc)
 if(WIN32)
@@ -187,7 +191,8 @@ if(CATAGUI_BUILD_TESTS)
         tests/test_board.c
         tests/test_sgf.c
         tests/test_analysis.c
-        tests/test_data.c)
+        tests/test_data.c
+        tests/test_installer.c)
     target_link_libraries(catagui_tests PRIVATE catagui_core)
     target_compile_definitions(catagui_tests PRIVATE CATAGUI_SOURCE_DIR="${CATAGUI_TEST_SOURCE_DIR}")
     catagui_warnings(catagui_tests)

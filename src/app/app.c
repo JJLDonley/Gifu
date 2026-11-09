@@ -770,6 +770,26 @@ static const CommandDef APP_COMMANDS[] = {
     { "game.write_result", "Save result", "Save result", cmd_write_result, has_result, NULL },
 };
 
+String app_katago_dir(const App *app) { return path_join(string_sv(&app->root_dir), SV("katago")); }
+
+static void load_engine_profiles(App *app) {
+    PathVars vars = { app->root_dir, app->exe_dir };
+    KvFile engines_kv = { 0 };
+    load_kv_layers(app, "engines.kv", &engines_kv);
+    engine_profiles_from_kv(&engines_kv, &vars, &app->engine_profiles);
+    kv_free(&engines_kv);
+}
+
+void app_reload_engines(App *app) {
+    stop_engine(app);
+    slot_clear(&app->second);
+    batch_analyzer_destroy(app->analyzer);
+    app->analyzer = NULL;
+    engine_profiles_free(&app->engine_profiles);
+    load_engine_profiles(app);
+    start_engine(app);
+}
+
 // ---- Lifecycle ----------------------------------------------------------------------------
 
 bool app_init(App *app, const AppOptions *options) {
@@ -820,16 +840,12 @@ bool app_init(App *app, const AppOptions *options) {
     app_reload_language(app);
 
     // Data layers: shipped assets first, user config overrides.
-    PathVars vars = { app->root_dir, app->exe_dir };
     KvFile keymap_kv = { 0 };
     load_kv_layers(app, "keymap.kv", &keymap_kv);
     keymap_load_kv(&app->keymap, &keymap_kv, SV("keymap.kv"));
     kv_free(&keymap_kv);
 
-    KvFile engines_kv = { 0 };
-    load_kv_layers(app, "engines.kv", &engines_kv);
-    engine_profiles_from_kv(&engines_kv, &vars, &app->engine_profiles);
-    kv_free(&engines_kv);
+    load_engine_profiles(app);
 
 
     command_registry_init(&app->commands, app);

@@ -122,6 +122,34 @@ i64 os_file_mtime(StringView path) {
     return ((i64)data.ftLastWriteTime.dwHighDateTime << 32) | (i64)data.ftLastWriteTime.dwLowDateTime;
 }
 
+i64 os_file_size(StringView path) {
+    wchar_t *wpath = os_utf8_to_wide(path);
+    WIN32_FILE_ATTRIBUTE_DATA data;
+    BOOL ok = GetFileAttributesExW(wpath, GetFileExInfoStandard, &data);
+    free(wpath);
+    return ok ? ((i64)data.nFileSizeHigh << 32) | (i64)data.nFileSizeLow : -1;
+}
+
+bool os_rename(StringView from, StringView to) {
+    wchar_t *a = os_utf8_to_wide(from), *b = os_utf8_to_wide(to);
+    BOOL ok = MoveFileExW(a, b, MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED);
+    free(a);
+    free(b);
+    return ok;
+}
+
+bool os_remove(StringView path) {
+    wchar_t *w = os_utf8_to_wide(path);
+    BOOL ok = DeleteFileW(w);
+    free(w);
+    return ok;
+}
+
+bool os_set_executable(StringView path) {
+    UNUSED(path);
+    return true;
+}
+
 bool os_dir_exists(StringView path) {
     wchar_t *wpath = os_utf8_to_wide(path);
     DWORD attrs = GetFileAttributesW(wpath);
@@ -253,6 +281,36 @@ i64 os_file_mtime(StringView path) {
     free(cpath);
     if (rc != 0) return 0;
     return (i64)st.st_mtim.tv_sec * 1000000000LL + (i64)st.st_mtim.tv_nsec;
+}
+
+i64 os_file_size(StringView path) {
+    char *cpath = to_cstr(path);
+    struct stat st;
+    int rc = stat(cpath, &st);
+    free(cpath);
+    return rc == 0 ? (i64)st.st_size : -1;
+}
+
+bool os_rename(StringView from, StringView to) {
+    char *a = to_cstr(from), *b = to_cstr(to);
+    int rc = rename(a, b);
+    free(a);
+    free(b);
+    return rc == 0;
+}
+
+bool os_remove(StringView path) {
+    char *c = to_cstr(path);
+    int rc = remove(c);
+    free(c);
+    return rc == 0;
+}
+
+bool os_set_executable(StringView path) {
+    char *c = to_cstr(path);
+    int rc = chmod(c, 0755);
+    free(c);
+    return rc == 0;
 }
 
 bool os_dir_exists(StringView path) {
