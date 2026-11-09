@@ -167,33 +167,56 @@ typedef Engine *(*EngineConstructor)(const EngineProfile *profile, StringView hu
 
 static bool is_profile_char(char c) { return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_'; }
 
-static Engine *create_katago_gtp(const EngineProfile *p, StringView human_profile, String *error) {
+// KataGoSettings for a profile; `storage` holds the arrays the settings point into.
+typedef struct SettingsStorage {
     StringView extra[16];
-    isize n = 0;
+    StringView launcher[16];
+} SettingsStorage;
+
+static KataGoSettings settings_for(const EngineProfile *p, SettingsStorage *st) {
+    isize n = 0, launcher_count = 0;
     vec_foreach(String, a, &p->args) {
-        if (n < (isize)countof(extra)) extra[n++] = string_sv(a);
+        if (n < (isize)countof(st->extra)) st->extra[n++] = string_sv(a);
+    }
+    vec_foreach(String, l, &p->launcher) {
+        if (launcher_count < (isize)countof(st->launcher)) st->launcher[launcher_count++] = string_sv(l);
     }
     StringView working_dir = string_sv(&p->working_dir);
     if (working_dir.len == 0 && !p->launcher.len) working_dir = path_dirname(string_sv(&p->program));
-    StringView launcher[16];
-    isize launcher_count = 0;
-    vec_foreach(String, l, &p->launcher) {
-        if (launcher_count < (isize)countof(launcher)) launcher[launcher_count++] = string_sv(l);
-    }
-    KataGoSettings settings = {
-        .launcher = launcher,
+    return (KataGoSettings){
+        .launcher = st->launcher,
         .launcher_count = launcher_count,
         .name = string_sv(&p->name),
         .program = string_sv(&p->program),
         .model = string_sv(&p->model),
         .config = string_sv(&p->config),
         .working_dir = working_dir,
-        .extra_args = extra,
+        .human_model = string_sv(&p->human_model),
+        .extra_args = st->extra,
         .extra_arg_count = n,
     };
+}
+
+RankEstimator *rank_estimator_create(const EngineProfile *p, const PositionSpec *game, String *error) {
+    SettingsStorage st;
+    KataGoSettings settings = settings_for(p, &st);
+    return rank_estimator_start(&settings, game, error);
+}
+
+const EngineProfile *engine_profiles_find_human(const EngineProfileVec *profiles, StringView preferred) {
+    const EngineProfile *p = preferred.len ? engine_profiles_find(profiles, preferred) : NULL;
+    if (p && p->human_model.len && engine_profile_available(p)) return p;
+    vec_foreach(EngineProfile, it, profiles) {
+        if (it->human_model.len && engine_profile_available(it)) return it;
+    }
+    return NULL;
+}
+
+static Engine *create_katago_gtp(const EngineProfile *p, StringView human_profile, String *error) {
+    SettingsStorage st;
+    KataGoSettings settings = settings_for(p, &st);
     String overrides = { 0 };
     if (p->human_model.len) {
-        settings.human_model = string_sv(&p->human_model);
         bool valid = human_profile.len > 0;   // only [a-z0-9_]: it lands inside a config override list
         for (isize i = 0; i < human_profile.len; ++i) valid &= is_profile_char(human_profile.data[i]);
         if (valid) {

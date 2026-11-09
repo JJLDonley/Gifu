@@ -183,3 +183,64 @@ int headless_install(App *app) {
     string_free(&dir);
     return s.failed ? 1 : 0;
 }
+
+int headless_rank(App *app) {
+    const AppOptions *o = &app->options;
+    const EngineProfile *profile = engine_profiles_find_human(&app->engine_profiles, o->engine.len ? o->engine : SV(""));
+    if (!profile) {
+        fprintf(stderr, "no engine profile with a human network (catagui --install human)\n");
+        return 2;
+    }
+    i32 failures = 0;
+    for (i32 i = 0; i < o->analyze_count; ++i) {
+        SgfError sgf_err;
+        GameTree *tree = sgf_load_file(o->analyze_files[i], &sgf_err);
+        if (!tree) {
+            fprintf(stderr, SV_FMT ": %s (line %d)\n", SV_ARG(o->analyze_files[i]), sgf_err.message, sgf_err.line);
+            failures++;
+            continue;
+        }
+        game_tree_to_end(tree);
+        PositionSpec *spec = malloc(sizeof(PositionSpec));
+        if (!spec) abort();
+        position_spec_from_node(tree, tree->current, string_sv(&app->config.rules), spec);
+        String err = { 0 };
+        RankEstimator *job = rank_estimator_create(profile, spec, &err);
+        free(spec);
+        if (!job) {
+            fprintf(stderr, "cannot start %s: %s\n", string_cstr(&profile->name), string_cstr(&err));
+            string_free(&err);
+            game_tree_free(tree);
+            return 2;
+        }
+        f64 started = os_time_seconds(), last_print = 0;
+        const RankProgress *p = rank_estimator_progress(job);
+        while (!p->finished) {
+            rank_estimator_update(job);
+            if (os_time_seconds() - last_print > 2.0) {
+                printf("  %d / %d moves\n", p->done, p->total);
+                fflush(stdout);
+                last_print = os_time_seconds();
+            }
+            os_sleep_ms(5);
+        }
+        if (p->failed) {
+            fprintf(stderr, SV_FMT ": %s\n", SV_ARG(o->analyze_files[i]), string_cstr(&p->error));
+            failures++;
+        } else {
+            printf(SV_FMT " (%.1f s):\n", SV_ARG(path_basename(o->analyze_files[i])), os_time_seconds() - started);
+            for (Stone c = STONE_BLACK; c <= STONE_WHITE; ++c) {
+                const RankTally *t = &p->tally[c];
+                f32 post[RANK_COUNT];
+                rank_tally_posterior(t, post);
+                i32 best = rank_tally_best(t);
+                StringView name = game_tree_info(tree, c == STONE_BLACK ? SV("PB") : SV("PW"));
+                printf("  %s %-20.*s ~%-4.*s (%.0f%%, %d moves)\n", c == STONE_BLACK ? "B" : "W", (int)name.len, name.data,
+                       SV_ARG(rank_label(best)), best >= 0 ? post[best] * 100.0f : 0.0f, t->moves);
+            }
+        }
+        rank_estimator_destroy(job);
+        game_tree_free(tree);
+    }
+    return failures ? 1 : 0;
+}

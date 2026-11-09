@@ -30,6 +30,7 @@ typedef struct AppOptions {
     i32 analyze_count;
     StringView output_dir;           // --out
     bool headless;                   // no window, no interactive engine
+    bool rank;                       // --rank: estimate ranks of analyze_files instead
     StringView region;               // --region A1:G7 (tsumego focus)
     StringView install;              // --install engine,network,human (headless)
     StringView install_backend;      // --backend opencl|eigenavx2|eigen|cuda12.8-cudnn9.8.0
@@ -92,6 +93,12 @@ typedef struct App {
     isize batch_count, batch_index;
     BatchAnalyzer *analyzer;       // JSON analyzer (started on first use)
     GameJob flash_job;
+
+    // Human rank estimate (human SL network, own KataGo process).
+    RankEstimator *rank_job;
+    RankTally rank_result[3];   // indexed by Stone
+    bool rank_valid;            // results belong to the current tree
+    bool human_available;       // some available profile has a human network (set when profiles load)
     bool flash_running;
     u32 flash_serial;
 
@@ -137,6 +144,11 @@ void app_set_region(App *app, BoardRegion region);
 String app_katago_dir(const App *app);
 // True when a running engine (main or second) has a human SL network.
 bool app_has_human_engine(const App *app);
+// Starts / stops the rank estimate for the active line.
+void app_rank_start(App *app);
+void app_rank_stop(App *app);
+// Progress of a running estimate (false when idle).
+bool app_rank_progress(const App *app, i32 *done, i32 *total);
 // Re-reads engine profiles (e.g. after an install) and restarts the engine.
 void app_reload_engines(App *app);   // start/stop the comparison engine
 void app_set_analysis(App *app, bool enabled);

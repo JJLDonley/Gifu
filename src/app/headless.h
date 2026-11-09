@@ -8,3 +8,5 @@
 int headless_analyze(App *app);
 // --install engine,network,human [--backend ID] [--install-dir DIR]
 int headless_install(App *app);
+// --rank FILE.sgf...: human-network rank estimate per player.
+int headless_rank(App *app);

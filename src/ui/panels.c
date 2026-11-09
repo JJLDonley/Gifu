@@ -294,6 +294,14 @@ static void report_player(Ui *ui, const PlayerReport *p, Stone color, StringView
             stone_dot(ui, color);
             ui_label(ui, name, FONT_UI_BOLD, 14, c->text);
             CLAY_TEXT(ui_fmt(ui, "· %d %s", p->moves, p->moves == 1 ? "move" : "moves"), ui_text_style(ui, FONT_UI, 12, c->text_muted));
+            i32 rank = ui->app->rank_valid ? rank_tally_best(&ui->app->rank_result[color]) : -1;
+            if (rank >= 0) {   // human-network rank estimate (details further down)
+                CLAY({ .layout = { .padding = { ui_u16(ui, 6), ui_u16(ui, 6), ui_u16(ui, 1), ui_u16(ui, 1) } },
+                       .backgroundColor = color_to_clay(color_with_alpha(ui->theme->colors.human_policy, 0.15f)),
+                       .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 4)) }) {
+                    CLAY_TEXT(ui_fmt(ui, "≈ " SV_FMT, SV_ARG(rank_label(rank))), ui_text_style(ui, FONT_UI_BOLD, 12, c->human_policy));
+                }
+            }
         }
         CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 8) } }) {
             report_stat(ui, tr(ui, "report.accuracy", "Best move"), arena_format(&ui->frame, "%.0f%%", player_accuracy(p) * 100.0f), c->text);
@@ -329,6 +337,69 @@ static void report_player(Ui *ui, const PlayerReport *p, Stone color, StringView
 
 // Per-player summary of the analysed line: agreement with the engine's best /
 // top-3 moves, average win-rate loss, mistakes and blunders, worst moves.
+// Human-network rank estimate: label, confidence and the posterior over ranks as small bars.
+static void report_rank_row(Ui *ui, Stone color, StringView name) {
+    App *app = ui->app;
+    const ThemeColors *c = &ui->theme->colors;
+    const RankTally *t = &app->rank_result[color];
+    i32 best = rank_tally_best(t);
+    f32 post[RANK_COUNT];
+    rank_tally_posterior(t, post);
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 8),
+                       .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
+        stone_dot(ui, color);
+        CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) } } }) { ui_label(ui, name, FONT_UI, 13, c->text); }
+        if (best >= 0) {
+            CLAY_TEXT(ui_fmt(ui, "≈ " SV_FMT, SV_ARG(rank_label(best))), ui_text_style(ui, FONT_UI_BOLD, 14, c->text));
+            CLAY_TEXT(ui_fmt(ui, "%.0f%%", post[best] * 100.0f), ui_text_style(ui, FONT_MONO, 12, c->text_muted));
+        } else {
+            ui_label(ui, SV("—"), FONT_UI, 13, c->text_muted);
+        }
+    }
+    if (best < 0) return;
+    // Posterior bars, 20k (left) .. 9d (right).
+    f32 bar_h = ui_px(ui, 22);
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(bar_h) }, .childGap = ui_u16(ui, 2),
+                       .childAlignment = { .y = CLAY_ALIGN_Y_BOTTOM } } }) {
+        for (i32 r = 0; r < RANK_COUNT; ++r) {
+            f32 h = fmaxf(1.0f, bar_h * fminf(1.0f, post[r] / fmaxf(post[best], 1e-6f)));
+            CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(h) } },
+                   .backgroundColor = color_to_clay(r == best ? c->human_policy : color_with_alpha(c->human_policy, 0.35f)),
+                   .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 2)) }) {}
+        }
+    }
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) } } }) {
+        CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) } } }) { ui_label(ui, rank_label(0), FONT_MONO, 11, c->text_muted); }
+        ui_label(ui, rank_label(RANK_COUNT - 1), FONT_MONO, 11, c->text_muted);
+    }
+}
+
+static void report_ranks(Ui *ui, StringView black, StringView white) {
+    App *app = ui->app;
+    const ThemeColors *c = &ui->theme->colors;
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                       .childGap = ui_u16(ui, 6), .padding = { 0, 0, ui_u16(ui, 6), ui_u16(ui, 4) } },
+           .border = { .color = color_to_clay(c->border), .width = { .top = 1 } } }) {
+        CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 8),
+                           .childAlignment = { .y = CLAY_ALIGN_Y_CENTER }, .padding = { 0, 0, ui_u16(ui, 6), 0 } } }) {
+            CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) } } }) {
+                i32 done = 0, total = 0;
+                if (app_rank_progress(app, &done, &total)) {
+                    CLAY_TEXT(ui_fmt(ui, SV_FMT " %d / %d", SV_ARG(tr(ui, "report.rank_running", "Estimating ranks")), done, total),
+                              ui_text_style(ui, FONT_UI, 13, c->text_muted));
+                } else {
+                    ui_label(ui, tr(ui, "report.rank", "Rank (human network)"), FONT_UI_BOLD, 13, c->text);
+                }
+            }
+            ui_command_button_ex(ui, SV("analysis.rank"), SV(""), true, BUTTON_NORMAL, 0);
+        }
+        if (app->rank_valid) {
+            report_rank_row(ui, STONE_BLACK, black);
+            report_rank_row(ui, STONE_WHITE, white);
+        }
+    }
+}
+
 static void panel_report(Ui *ui) {
     App *app = ui->app;
     const ThemeColors *c = &ui->theme->colors;
@@ -370,6 +441,7 @@ static void panel_report(Ui *ui) {
             StringView black = game_tree_info(app->tree, SV("PB")), white = game_tree_info(app->tree, SV("PW"));
             report_player(ui, &report->player[STONE_BLACK], STONE_BLACK, black.len ? black : tr(ui, "label.black", "Black"));
             report_player(ui, &report->player[STONE_WHITE], STONE_WHITE, white.len ? white : tr(ui, "label.white", "White"));
+            report_ranks(ui, black.len ? black : tr(ui, "label.black", "Black"), white.len ? white : tr(ui, "label.white", "White"));
         }
     }
 }

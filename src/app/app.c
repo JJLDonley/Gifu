@@ -376,6 +376,62 @@ static void human_update(App *app) {
     engine_request_human_policy(s->engine, s->synced_position_id);
 }
 
+void app_rank_stop(App *app) {
+    rank_estimator_destroy(app->rank_job);
+    app->rank_job = NULL;
+}
+
+void app_rank_start(App *app) {
+    app_rank_stop(app);
+    const EngineProfile *profile = engine_profiles_find_human(&app->engine_profiles, string_sv(&app->config.engine));
+    if (!profile) {
+        app_set_status(app, "Rank estimate needs the human SL network (Engine -> Download engines...)");
+        return;
+    }
+    enum { MAX_LINE = 4096 };
+    GameNode **line = malloc(sizeof(GameNode *) * MAX_LINE);
+    PositionSpec *spec = malloc(sizeof(PositionSpec));
+    if (!line || !spec) abort();
+    isize n = MIN(game_tree_active_line(app->tree, line, MAX_LINE), (isize)MAX_LINE);
+    position_spec_from_node(app->tree, line[n - 1], string_sv(&app->config.rules), spec);
+    String err = { 0 };
+    app->rank_job = rank_estimator_create(profile, spec, &err);
+    if (!app->rank_job) {
+        app_set_status(app, "Rank estimate: %s", string_cstr(&err));
+        string_free(&err);
+    } else {
+        app->rank_valid = false;
+        memset(app->rank_result, 0, sizeof(app->rank_result));
+        app_set_status(app, "Estimating ranks with %s", string_cstr(&profile->name));
+    }
+    free(spec);
+    free(line);
+}
+
+bool app_rank_progress(const App *app, i32 *done, i32 *total) {
+    if (!app->rank_job) return false;
+    const RankProgress *p = rank_estimator_progress(app->rank_job);
+    *done = p->done;
+    *total = p->total;
+    return true;
+}
+
+static void rank_update(App *app) {
+    if (!app->rank_job) return;
+    rank_estimator_update(app->rank_job);
+    const RankProgress *p = rank_estimator_progress(app->rank_job);
+    if (!p->finished) return;
+    if (p->failed) {
+        app_set_status(app, "Rank estimate failed: %s", string_cstr(&p->error));
+    } else {
+        memcpy(app->rank_result, p->tally, sizeof(app->rank_result));
+        app->rank_valid = true;
+        app_set_status(app, "Estimated ranks: Black " SV_FMT ", White " SV_FMT, SV_ARG(rank_label(rank_tally_best(&p->tally[STONE_BLACK]))),
+                       SV_ARG(rank_label(rank_tally_best(&p->tally[STONE_WHITE]))));
+    }
+    app_rank_stop(app);
+}
+
 static void second_update(App *app) {
     EngineSlot *s = &app->second;
     if (!s->engine) return;
@@ -434,6 +490,7 @@ static void second_update(App *app) {
 
 void app_update(App *app) {
     flash_update(app);
+    rank_update(app);
     second_update(app);
     if (!app->main.engine) return;
     EngineEvent ev;
@@ -588,6 +645,8 @@ static void replace_tree(App *app, GameTree *tree) {
     game_tree_free(app->tree);
     app->tree = tree;
     app->human_policy_node = NULL;
+    app_rank_stop(app);
+    app->rank_valid = false;
     app->main.synced_node = NULL;
     app->analysis_valid = false;
     app->dirty = false;
@@ -739,6 +798,15 @@ static void cmd_toggle_ownership(void *c) {
     if (app->analysis_enabled) app_set_analysis(app, true);   // re-issue with/without ownership
 }
 static bool shows_ownership(const void *c) { return CAPP(c)->config.show_ownership; }
+static void cmd_rank(void *c) {
+    App *app = c;
+    if (app->rank_job) app_rank_stop(app);
+    else app_rank_start(app);
+}
+static bool rank_running(const void *c) { return CAPP(c)->rank_job != NULL; }
+static bool has_human_profile(const void *c) {
+    return CAPP(c)->human_available && CAPP(c)->tree->root->first_child != NULL;
+}
 static void cmd_toggle_human(void *c) {
     App *app = c;
     app->config.show_human_policy = !app->config.show_human_policy;
@@ -821,6 +889,7 @@ static const CommandDef APP_COMMANDS[] = {
     { "engine.second", "Second engine", "Second engine", cmd_second_engine, has_engine, second_running },
     { "game.match", "Engine vs engine", "Match", cmd_match, has_engine, in_match },
     { "analysis.game", "Analyze game", "Analyze game", cmd_game_analysis, has_engine, batch_running },
+    { "analysis.rank", "Estimate ranks", "Ranks", cmd_rank, has_human_profile, rank_running },
     { "game.write_result", "Save result", "Save result", cmd_write_result, has_result, NULL },
 };
 
@@ -832,6 +901,7 @@ static void load_engine_profiles(App *app) {
     load_kv_layers(app, "engines.kv", &engines_kv);
     engine_profiles_from_kv(&engines_kv, &vars, &app->engine_profiles);
     kv_free(&engines_kv);
+    app->human_available = engine_profiles_find_human(&app->engine_profiles, SV("")) != NULL;
 }
 
 void app_reload_engines(App *app) {
@@ -953,4 +1023,5 @@ void app_shutdown(App *app) {
     string_free(&app->result);
     free(app->analysis);
     free(app->human_policy);
+    app_rank_stop(app);
 }

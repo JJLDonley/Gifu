@@ -101,6 +101,7 @@ add_library(catagui_core STATIC
     src/engine/katago_analyzer.c
     src/engine/game_job.c
     src/engine/http.c
+    src/engine/rank_estimator.c
     src/engine/engine_profile.c
     src/app/commands.c
     src/app/keymap.c

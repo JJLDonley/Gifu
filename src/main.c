@@ -18,6 +18,7 @@ static void usage(void) {
             "               [--move N|-1] [--region A1:G7] [--set KEY=VALUE]... [--run COMMAND_ID]...\n"
             "               [--screenshot out.png [--delay SECONDS]] [--verbose]\n"
             "       catagui --analyze FILE.sgf... [--out DIR] [--engine ID] [--set analysis.game_visits=N]\n"
+            "       catagui --rank FILE.sgf...   (estimate player ranks with the human SL network)\n"
             "       catagui --install engine,network,human|all [--backend opencl|eigenavx2|eigen|cuda12.8-cudnn9.8.0] [--install-dir DIR]\n");
 }
 
@@ -36,7 +37,8 @@ static bool parse_args(int argc, char **argv, AppOptions *opts) {
         else if (sv_eq(a, SV("--install")) && has_value) opts->install = sv(argv[++i]), opts->headless = true;
         else if (sv_eq(a, SV("--backend")) && has_value) opts->install_backend = sv(argv[++i]);
         else if (sv_eq(a, SV("--install-dir")) && has_value) opts->install_dir = sv(argv[++i]);
-        else if (sv_eq(a, SV("--analyze"))) {
+        else if (sv_eq(a, SV("--analyze")) || sv_eq(a, SV("--rank"))) {
+            opts->rank = sv_eq(a, SV("--rank"));
             // All following non-option arguments are SGF files.
             while (i + 1 < argc && argv[i + 1][0] != '-' && opts->analyze_count < (i32)countof(opts->analyze_files)) {
                 opts->analyze_files[opts->analyze_count++] = sv(argv[++i]);
@@ -77,7 +79,7 @@ int main(int argc, char **argv) {
     App *app = calloc(1, sizeof(App));
     if (options.headless) {   // batch analysis from the command line, no window
         if (!app || !app_init(app, &options)) return 1;
-        int code = options.install.len ? headless_install(app) : headless_analyze(app);
+        int code = options.install.len ? headless_install(app) : options.rank ? headless_rank(app) : headless_analyze(app);
         app_shutdown(app);
         free(app);
         return code;

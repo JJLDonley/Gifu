@@ -24,6 +24,7 @@
 #include "base/os.h"
 #include "engine/batch_analyzer.h"
 #include "engine/engine.h"
+#include "engine/rank_estimator.h"
 
 typedef struct EngineProfile {
     String id;
@@ -63,3 +64,7 @@ Engine *engine_create(const EngineProfile *profile, StringView human_profile, St
 // Batch analyzer for the profile (NULL with an error when it has no analysis_config).
 BatchAnalyzer *batch_analyzer_create(const EngineProfile *profile, String *error);
 bool engine_profile_can_batch(const EngineProfile *profile);
+// Rank estimation job for `game` (needs a katago-gtp profile with a human_model).
+RankEstimator *rank_estimator_create(const EngineProfile *profile, const PositionSpec *game, String *error);
+// First available profile with a human network (preferring `preferred`), or NULL.
+const EngineProfile *engine_profiles_find_human(const EngineProfileVec *profiles, StringView preferred);
