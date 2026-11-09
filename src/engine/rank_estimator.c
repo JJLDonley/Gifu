@@ -45,6 +45,56 @@ void rank_tally_posterior(const RankTally *t, f32 out[RANK_COUNT]) {
     for (i32 r = 0; r < RANK_COUNT; ++r) out[r] = (f32)(w[r] / sum);
 }
 
+void rank_probs_format(const f32 p[RANK_COUNT], char *buffer, isize capacity) {
+    isize n = 0;
+    buffer[0] = '\0';
+    for (i32 r = 0; r < RANK_COUNT && n < capacity; ++r) {
+        n += snprintf(buffer + n, (size_t)(capacity - n), r ? ",%.3g" : "%.3g", (f64)p[r]);
+    }
+}
+
+bool rank_probs_parse(StringView text, f32 out[RANK_COUNT]) {
+    StringView rest = sv_trim(text);
+    for (i32 r = 0; r < RANK_COUNT; ++r) {
+        isize comma = sv_find_char(rest, ',');
+        StringView tok = comma >= 0 ? sv_take(rest, comma) : rest;
+        f64 v = 0;
+        if (!sv_parse_f64(sv_trim(tok), &v) || v < 0 || v > 1) return false;
+        out[r] = (f32)v;
+        if (r < RANK_COUNT - 1) {
+            if (comma < 0) return false;
+            rest = sv_drop(rest, comma + 1);
+        } else if (comma >= 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+i32 rank_phase_start(i32 phase, i32 board_points) {
+    f64 scale = (f64)(board_points > 0 ? board_points : 361) / 361.0;
+    if (phase <= RANK_PHASE_OPENING) return 1;
+    if (phase == RANK_PHASE_MIDDLE) return 1 + (i32)lround(50 * scale);
+    return 1 + (i32)lround(150 * scale);
+}
+
+i32 rank_phase(i32 move_number, i32 board_points) {
+    if (move_number >= rank_phase_start(RANK_PHASE_ENDGAME, board_points)) return RANK_PHASE_ENDGAME;
+    if (move_number >= rank_phase_start(RANK_PHASE_MIDDLE, board_points)) return RANK_PHASE_MIDDLE;
+    return RANK_PHASE_OPENING;
+}
+
+StringView rank_phase_name(i32 phase) {
+    static const char *const NAMES[RANK_PHASES] = { "opening", "middle", "endgame" };
+    return phase >= 0 && phase < RANK_PHASES ? sv(NAMES[phase]) : SV("");
+}
+
+void rank_summary_add(RankSummary *s, Stone color, i32 move_number, i32 board_points, const f32 p[RANK_COUNT]) {
+    if (color != STONE_BLACK && color != STONE_WHITE) return;
+    rank_tally_add(&s->total[color], p);
+    rank_tally_add(&s->phase[rank_phase(move_number, board_points)][color], p);
+}
+
 // ---- Job --------------------------------------------------------------------------------------
 
 struct RankEstimator {
@@ -105,6 +155,10 @@ RankEstimator *rank_estimator_start(Engine *engine, const PositionSpec *game, St
     j->engine = engine;
     snprintf(j->restore, sizeof(j->restore), SV_FMT, SV_ARG(restore_profile));
     for (i32 i = 0; i < game->move_count; ++i) j->progress.total += scoreable(game, i);
+    j->progress.move_count = game->move_count;
+    j->progress.move_p = calloc((usize)MAX(game->move_count, 1), sizeof(*j->progress.move_p));
+    j->progress.move_scored = calloc((usize)MAX(game->move_count, 1), sizeof(bool));
+    if (!j->progress.move_p || !j->progress.move_scored) abort();
     engine_stop_analysis(engine);   // the GPU is ours until the job ends
     send_next(j);
     return j;
@@ -122,6 +176,9 @@ void rank_estimator_update(RankEstimator *j) {
                 j->p[r] = h->policy[j->scoring.point.y * h->width + j->scoring.point.x];
                 if (--j->pending == 0) {
                     rank_tally_add(&j->progress.tally[j->scoring.color], j->p);
+                    i32 index = j->next_move - 1;   // send_next advanced past the scored move
+                    memcpy(j->progress.move_p[index], j->p, sizeof(j->p));
+                    j->progress.move_scored[index] = true;
                     j->progress.done++;
                     send_next(j);
                 }
@@ -142,6 +199,8 @@ void rank_estimator_destroy(RankEstimator *j) {
     if (!j) return;
     if (j->restore[0]) engine_set_human_profile(j->engine, sv(j->restore));
     string_free(&j->progress.error);
+    free(j->progress.move_p);
+    free(j->progress.move_scored);
     free(j->game);
     free(j->prefix);
     free(j);

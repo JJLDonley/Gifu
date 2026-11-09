@@ -26,6 +26,34 @@ static bool has_setup_props(const GameNode *node) {
            game_node_find_prop(node, SV("AE"));
 }
 
+// The root..node path (deepest first) and the index of its base node: the last
+// node carrying setup stones (the position starts from its board), else the root.
+static i32 spec_path(const GameNode *node, const GameNode **path, i32 capacity, i32 *base) {
+    i32 depth = 0;
+    for (const GameNode *n = node; n && depth < capacity; n = n->parent) path[depth++] = n;
+    *base = depth - 1;
+    for (i32 i = 0; i < depth; ++i) {
+        if (has_setup_props(path[i])) {
+            *base = i;
+            break;
+        }
+    }
+    return depth;
+}
+
+i32 position_spec_move_nodes(const GameNode *node, const GameNode **out, i32 capacity) {
+    const GameNode *path[1024 + 1];
+    i32 base = 0;
+    i32 depth = spec_path(node, path, (i32)countof(path), &base);
+    i32 n = 0;
+    if (!has_setup_props(path[base]) && path[base]->has_move && n < capacity) out[n++] = path[base];
+    for (i32 i = base - 1; i >= 0 && n < capacity && n < 1024; --i) {
+        if (path[i]->has_move) out[n++] = path[i];
+    }
+    UNUSED(depth);
+    return n;
+}
+
 void position_spec_from_node(const GameTree *tree, const GameNode *node, StringView rules, PositionSpec *out) {
     out->width = game_tree_width(tree);
     out->height = game_tree_height(tree);
@@ -37,17 +65,8 @@ void position_spec_from_node(const GameTree *tree, const GameNode *node, StringV
 
     // Collect the root..node path (deepest first), then walk it forward.
     const GameNode *path[1024 + 1];
-    i32 depth = 0;
-    for (const GameNode *n = node; n && depth < (i32)countof(path); n = n->parent) path[depth++] = n;
-
-    // The last node on the path carrying setup stones becomes the base position.
-    i32 base = depth - 1;   // root
-    for (i32 i = 0; i < depth; ++i) {
-        if (has_setup_props(path[i])) {
-            base = i;
-            break;
-        }
-    }
+    i32 base = 0;
+    spec_path(node, path, (i32)countof(path), &base);
     const GameNode *base_node = path[base];
     if (has_setup_props(base_node)) {
         const Board *b = &base_node->board;

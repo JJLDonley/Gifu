@@ -99,8 +99,10 @@ typedef struct App {
     RankEstimator *rank_job;
     EngineSlot *rank_slot;      // engine lent to the rank job (not polled by the app meanwhile)
     bool rank_pending;          // requested while the engine was starting: runs once it is ready
-    RankTally rank_result[3];   // indexed by Stone
-    bool rank_valid;            // results belong to the current tree
+    GameNode *rank_end;         // last node of the line the job is scoring
+    GameNode *rank_line_end;    // active line `rank` was computed for
+    RankSummary rank;           // from the CGR[] of the active line (app_rank_refresh)
+    bool rank_valid;            // some move on the active line has a rank estimate
     bool human_available;       // some available profile has a human network (set when profiles load)
     bool flash_running;
     u32 flash_serial;
@@ -146,6 +148,8 @@ void app_set_region(App *app, BoardRegion region);
 // Adds a setup node that fills the board around the problem (the selected
 // region, or the stones' bounding box) and limits analysis to the problem.
 bool app_tsumego_frame(App *app);
+// Recomputes app->rank from the CGR[] properties on the active line.
+void app_rank_refresh(App *app);
 // Game info dialog: copies the root SGF properties (players, ranks, komi,
 // result, event, date) into the transient game_info.* settings, and back.
 void app_game_info_load(App *app);

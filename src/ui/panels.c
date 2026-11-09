@@ -294,7 +294,7 @@ static void report_player(Ui *ui, const PlayerReport *p, Stone color, StringView
             stone_dot(ui, color);
             ui_label(ui, name, FONT_UI_BOLD, 14, c->text);
             CLAY_TEXT(ui_fmt(ui, "· %d %s", p->moves, p->moves == 1 ? "move" : "moves"), ui_text_style(ui, FONT_UI, 12, c->text_muted));
-            i32 rank = ui->app->rank_valid ? rank_tally_best(&ui->app->rank_result[color]) : -1;
+            i32 rank = ui->app->rank_valid ? rank_tally_best(&ui->app->rank.total[color]) : -1;
             if (rank >= 0) {   // human-network rank estimate (details further down)
                 CLAY({ .layout = { .padding = { ui_u16(ui, 6), ui_u16(ui, 6), ui_u16(ui, 1), ui_u16(ui, 1) } },
                        .backgroundColor = color_to_clay(color_with_alpha(ui->theme->colors.human_policy, 0.15f)),
@@ -341,7 +341,7 @@ static void report_player(Ui *ui, const PlayerReport *p, Stone color, StringView
 static void report_rank_row(Ui *ui, Stone color, StringView name) {
     App *app = ui->app;
     const ThemeColors *c = &ui->theme->colors;
-    const RankTally *t = &app->rank_result[color];
+    const RankTally *t = &app->rank.total[color];
     i32 best = rank_tally_best(t);
     f32 post[RANK_COUNT];
     rank_tally_posterior(t, post);
@@ -371,6 +371,22 @@ static void report_rank_row(Ui *ui, Stone color, StringView name) {
     CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) } } }) {
         CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) } } }) { ui_label(ui, rank_label(0), FONT_MONO, 11, c->text_muted); }
         ui_label(ui, rank_label(RANK_COUNT - 1), FONT_MONO, 11, c->text_muted);
+    }
+    // Per phase: "Opening 3d (24) · Middle 1d (50) · Endgame 2k (40)".
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 10) } }) {
+        for (i32 ph = 0; ph < RANK_PHASES; ++ph) {
+            const RankTally *pt = &app->rank.phase[ph][color];
+            i32 r = rank_tally_best(pt);
+            if (r < 0) continue;
+            char key[32];
+            snprintf(key, sizeof(key), "report.phase_" SV_FMT, SV_ARG(rank_phase_name(ph)));
+            static const char *const FALLBACK[RANK_PHASES] = { "Opening", "Middle", "Endgame" };
+            CLAY({ .layout = { .childGap = ui_u16(ui, 4), .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
+                ui_label(ui, app_tr(app, key, FALLBACK[ph]), FONT_UI, 12, c->text_muted);
+                CLAY_TEXT(ui_fmt(ui, SV_FMT, SV_ARG(rank_label(r))), ui_text_style(ui, FONT_UI_BOLD, 12, c->text));
+                CLAY_TEXT(ui_fmt(ui, "(%d)", pt->moves), ui_text_style(ui, FONT_MONO, 11, c->text_muted));
+            }
+        }
     }
 }
 

@@ -24,6 +24,25 @@ i32 rank_tally_best(const RankTally *tally);   // -1 without moves
 // Posterior (uniform prior) of each rank; sums to 1.
 void rank_tally_posterior(const RankTally *tally, f32 out[RANK_COUNT]);
 
+// ---- Per move, saved in the SGF ---------------------------------------------------------------
+// CGR[p20k,p15k,...,p9d]: the probability each rank's human network gave the
+// move played at that node.
+#define RANK_SGF_PROP "CGR"
+void rank_probs_format(const f32 p[RANK_COUNT], char *buffer, isize capacity);   // ~110 bytes
+bool rank_probs_parse(StringView text, f32 out[RANK_COUNT]);
+
+// Game phases by move number, scaled to the board (19x19: 1-50, 51-150, 151-).
+enum { RANK_PHASE_OPENING, RANK_PHASE_MIDDLE, RANK_PHASE_ENDGAME, RANK_PHASES };
+i32 rank_phase(i32 move_number, i32 board_points);
+i32 rank_phase_start(i32 phase, i32 board_points);   // first move number of the phase
+StringView rank_phase_name(i32 phase);                // "opening", "middle", "endgame" (i18n keys report.phase_*)
+
+typedef struct RankSummary {
+    RankTally total[3];                // indexed by Stone
+    RankTally phase[RANK_PHASES][3];
+} RankSummary;
+void rank_summary_add(RankSummary *s, Stone color, i32 move_number, i32 board_points, const f32 p[RANK_COUNT]);
+
 // ---- Job on a running engine ----------------------------------------------------------------
 // Borrows an engine that has a human network (no extra KataGo process: a GPU
 // rarely holds more than two). While the job runs the owner must not use the
@@ -33,6 +52,10 @@ typedef struct RankProgress {
     bool finished, failed;
     String error;
     RankTally tally[3];   // indexed by Stone
+    // Per game move (index into the PositionSpec's moves): the probabilities, if scored.
+    i32 move_count;
+    f32 (*move_p)[RANK_COUNT];
+    bool *move_scored;
 } RankProgress;
 
 typedef struct RankEstimator RankEstimator;

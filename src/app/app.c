@@ -449,8 +449,7 @@ void app_rank_start(App *app) {
     slot->waiting_move = false;
     app->rank_job = rank_estimator_start(slot->engine, spec, string_sv(&app->config.human_profile));
     app->rank_slot = slot;
-    app->rank_valid = false;
-    memset(app->rank_result, 0, sizeof(app->rank_result));
+    app->rank_end = line[n - 1];
     app_set_status(app, "Estimating ranks with %s", string_cstr(&slot->profile->name));
     free(spec);
     free(line);
@@ -464,7 +463,50 @@ bool app_rank_progress(const App *app, i32 *done, i32 *total) {
     return true;
 }
 
+static GameNode *active_line_end(const GameTree *tree) {
+    GameNode *end = tree->current;
+    while (end->first_child) end = end->first_child;
+    return end;
+}
+
+void app_rank_refresh(App *app) {
+    app->rank_line_end = active_line_end(app->tree);
+    memset(&app->rank, 0, sizeof(app->rank));
+    app->rank_valid = false;
+    enum { MAX_LINE = 4096 };
+    GameNode **line = malloc(sizeof(GameNode *) * MAX_LINE);
+    if (!line) abort();
+    isize n = MIN(game_tree_active_line(app->tree, line, MAX_LINE), (isize)MAX_LINE);
+    i32 points = game_tree_width(app->tree) * game_tree_height(app->tree);
+    for (isize i = 0; i < n; ++i) {
+        const GameNode *node = line[i];
+        StringView text = node->has_move ? game_node_prop(node, SV(RANK_SGF_PROP)) : SV("");
+        f32 p[RANK_COUNT];
+        if (!text.len || !rank_probs_parse(text, p)) continue;
+        rank_summary_add(&app->rank, node->move.color, node->move_number, points, p);
+        app->rank_valid = true;
+    }
+    free(line);
+}
+
+// Saves the finished job's per-move results as CGR[] on the scored nodes.
+static void rank_store(App *app, const RankProgress *p) {
+    enum { MAX_MOVES = 1024 };
+    const GameNode **nodes = malloc(sizeof(GameNode *) * MAX_MOVES);
+    if (!nodes) abort();
+    i32 n = position_spec_move_nodes(app->rank_end, nodes, MAX_MOVES);
+    for (i32 i = 0; i < n && i < p->move_count; ++i) {
+        if (!p->move_scored[i]) continue;
+        char buffer[160];
+        rank_probs_format(p->move_p[i], buffer, (isize)sizeof(buffer));
+        game_node_set_prop(app->tree, (GameNode *)nodes[i], SV(RANK_SGF_PROP), sv(buffer));
+    }
+    free(nodes);
+    app->dirty = true;   // saved with the game
+}
+
 static void rank_update(App *app) {
+    if (active_line_end(app->tree) != app->rank_line_end) app_rank_refresh(app);   // other variation, edits
     if (app->rank_pending && human_slot(app)) app_rank_start(app);
     if (!app->rank_job) return;
     rank_estimator_update(app->rank_job);
@@ -473,8 +515,8 @@ static void rank_update(App *app) {
     if (p->failed) {
         app_set_status(app, "Rank estimate failed: %s", string_cstr(&p->error));
     } else {
-        memcpy(app->rank_result, p->tally, sizeof(app->rank_result));
-        app->rank_valid = true;
+        rank_store(app, p);
+        app_rank_refresh(app);
         app_set_status(app, "Estimated ranks: Black " SV_FMT ", White " SV_FMT, SV_ARG(rank_label(rank_tally_best(&p->tally[STONE_BLACK]))),
                        SV_ARG(rank_label(rank_tally_best(&p->tally[STONE_WHITE]))));
     }
@@ -699,7 +741,7 @@ static void replace_tree(App *app, GameTree *tree) {
     app->tree = tree;
     app->human_policy_node = NULL;
     app_rank_stop(app);
-    app->rank_valid = false;
+    app_rank_refresh(app);   // CGR[] loaded with the game
     app->main.synced_node = NULL;
     app->analysis_valid = false;
     app->dirty = false;

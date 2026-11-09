@@ -120,3 +120,5 @@ const char *engine_status_name(EngineStatus status);
 
 // Builds the engine-facing description of `node` (root..node path).
 void position_spec_from_node(const GameTree *tree, const GameNode *node, StringView rules, PositionSpec *out);
+// The nodes behind that spec's moves, in the same order (out[i] played moves[i]).
+i32 position_spec_move_nodes(const GameNode *node, const GameNode **out, i32 capacity);
