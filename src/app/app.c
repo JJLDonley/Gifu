@@ -251,9 +251,10 @@ static void replace_tree(App *app, GameTree *tree) {
     app->dirty = false;
 }
 
-void app_new_game(App *app, i32 size, f64 komi) {
-    replace_tree(app, game_tree_new(size, size, komi));
+void app_start_game(App *app, const NewGameSpec *spec) {
+    replace_tree(app, game_tree_new_game(spec));
     string_free(&app->sgf_path);
+    app->ai_waiting = false;
 }
 
 bool app_open_sgf(App *app, StringView path) {
@@ -302,7 +303,19 @@ void app_goto(App *app, GameNode *node) { game_tree_goto(app->tree, node); }
 #define APP(ctx) ((App *)(ctx))
 #define CAPP(ctx) ((const App *)(ctx))
 
-static void cmd_new(void *c) { app_new_game(APP(c), 19, 7.5); }
+// Starts a game from the new_game.* settings (the New Game dialog edits them).
+static void cmd_new(void *c) {
+    App *app = APP(c);
+    NewGameSpec spec = {
+        .size = app->config.new_game_size,
+        .komi = app->config.new_game_komi,
+        .handicap = app->config.new_game_handicap,
+        .black = string_sv(&app->config.new_game_black),
+        .white = string_sv(&app->config.new_game_white),
+        .rules = string_sv(&app->config.rules),
+    };
+    app_start_game(app, &spec);
+}
 
 static void cmd_open(void *c) {
     App *app = APP(c);
@@ -395,7 +408,7 @@ static void cmd_ai_move(void *c) { APP(c)->ai_move_once = true; }
 static bool can_ai_move(const void *c) { return CAPP(c)->engine_status == ENGINE_STATUS_READY && !CAPP(c)->ai_waiting; }
 
 static const CommandDef APP_COMMANDS[] = {
-    { "file.new", "New game", "+", cmd_new, NULL, NULL },
+    { "game.new", "Start game", "Start", cmd_new, NULL, NULL },
     { "file.open", "Open…", "Open", cmd_open, NULL, NULL },
     { "file.save", "Save", "Save", cmd_save, NULL, NULL },
     { "file.save_as", "Save as…", "Save as", cmd_save_as, NULL, NULL },

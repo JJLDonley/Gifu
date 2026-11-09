@@ -77,7 +77,7 @@ StringView app_tr(const App *app, const char *key, const char *fallback);
 void app_set_status(App *app, const char *fmt, ...) PRINTF_LIKE(2, 3);
 void app_log(App *app, StringView line);
 
-void app_new_game(App *app, i32 size, f64 komi);
+void app_start_game(App *app, const NewGameSpec *spec);
 bool app_open_sgf(App *app, StringView path);
 bool app_save_sgf(App *app, StringView path);
 MoveError app_play(App *app, Point point);

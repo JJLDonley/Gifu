@@ -119,7 +119,7 @@ add_executable(catagui
     src/ui/ui.c
     src/ui/widgets.c
     src/ui/text_input.c
-    src/ui/settings.c
+    src/ui/form.c
     src/ui/variation_tree.c
     src/ui/board_view.c
     src/ui/winrate_graph.c

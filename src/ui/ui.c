@@ -100,11 +100,13 @@ static void cmd_zoom_out(void *c) {
     UI(c)->app->config.ui_scale = MAX(UI(c)->app->config.ui_scale - 0.1f, 0.5f);
     Clay_ResetMeasureTextCache();
 }
-static void cmd_settings(void *c) {
-    UI(c)->settings_open = !UI(c)->settings_open;
-    UI(c)->focus_id = 0;
+static void open_dialog(Ui *ui, UiDialog dialog) {
+    ui->dialog = ui->dialog == dialog ? UI_DIALOG_NONE : dialog;
+    ui->focus_id = 0;
 }
-static bool settings_shown(const void *c) { return ((const Ui *)c)->settings_open; }
+static void cmd_settings(void *c) { open_dialog(UI(c), UI_DIALOG_SETTINGS); }
+static bool settings_shown(const void *c) { return ((const Ui *)c)->dialog == UI_DIALOG_SETTINGS; }
+static void cmd_new_game(void *c) { open_dialog(UI(c), UI_DIALOG_NEW_GAME); }
 static void cmd_move_numbers(void *c) { UI(c)->app->config.show_move_numbers = !UI(c)->app->config.show_move_numbers; }
 static bool shows_move_numbers(const void *c) { return ((const Ui *)c)->app->config.show_move_numbers; }
 static void cmd_debug(void *c) {
@@ -120,6 +122,7 @@ static void register_ui_commands(Ui *ui) {
         { "view.zoom_out", "Zoom out", "-", cmd_zoom_out, NULL, NULL, ui },
         { "view.debug", "Layout debugger", "Debug", cmd_debug, NULL, NULL, ui },
         { "view.settings", "Settings", "Settings", cmd_settings, NULL, settings_shown, ui },
+        { "file.new", "New game", "New", cmd_new_game, NULL, NULL, ui },
         { "view.move_numbers", "Move numbers", "123", cmd_move_numbers, NULL, shows_move_numbers, ui },
     };
     command_register_all(&ui->app->commands, defs, countof(defs));
@@ -144,9 +147,9 @@ bool ui_init(Ui *ui, App *app) {
     string_free(&user);
     log_info("loaded %td themes", ui->themes.len);
 
-    String settings_path = path_join(string_sv(&app->assets_dir), SV("data/settings.json"));
+    String settings_path = path_join(string_sv(&app->assets_dir), SV("data/forms.json"));
     String err = { 0 };
-    if (!json_load_file(string_sv(&settings_path), &ui->settings_doc, &err)) {
+    if (!json_load_file(string_sv(&settings_path), &ui->forms_doc, &err)) {
         log_error("%s", string_cstr(&err));
         string_free(&err);
     }
@@ -178,8 +181,9 @@ void ui_shutdown(Ui *ui) {
     font_cache_destroy(ui->fonts);
     themes_free(&ui->themes);
     layout_free(&ui->layout);
-    json_free(&ui->settings_doc);
+    json_free(&ui->forms_doc);
     text_edit_free(&ui->comment);
+    for (i32 i = 0; i < ui->form_edit_count; ++i) text_edit_free(&ui->form_edits[i]);
     arena_free(&ui->frame);
     free(ui->clay_memory);
 }
@@ -198,8 +202,8 @@ static u8 current_mods(void) {
 static void handle_keys(Ui *ui) {
     App *app = ui->app;
     if (ui->focus_id) return;   // a text input owns the keyboard
-    if (ui->settings_open) {
-        if (IsKeyPressed(KEY_ESCAPE)) ui->settings_open = false;
+    if (ui->dialog != UI_DIALOG_NONE) {
+        if (IsKeyPressed(KEY_ESCAPE)) ui_close_dialog(ui);
         return;
     }
     u8 mods = current_mods();

@@ -2,6 +2,7 @@
 // panels appear and in what order.
 #include "ui/ui.h"
 
+#include <math.h>
 #include <stdio.h>
 
 typedef void (*PanelFn)(Ui *ui);
@@ -70,14 +71,31 @@ static void panel_game_info(Ui *ui) {
 
 // ---- winrate_summary -----------------------------------------------------------------------------
 
+// The bar never blanks: while a new position waits for its first analysis the
+// last value is held, and updates ease towards the new value instead of jumping.
+// The card always has the same rows, so nothing below it shifts.
 static void panel_winrate_summary(Ui *ui) {
     App *app = ui->app;
     const ThemeColors *c = &ui->theme->colors;
     const Candidate *best = app->analysis_valid ? analysis_best(app->analysis) : NULL;
     const NodeEval *eval = &app->tree->current->eval;
-    f32 black = best ? analysis_black_winrate(app->analysis, best->winrate) : eval->valid ? eval->black_winrate : 0.5f;
-    f32 score = best ? analysis_black_score(app->analysis, best->score_lead) : eval->valid ? eval->black_score : 0.0f;
-    bool known = best || eval->valid;
+    bool fresh = best || eval->valid;
+    if (fresh) {
+        f32 target_wr = best ? analysis_black_winrate(app->analysis, best->winrate) : eval->black_winrate;
+        f32 target_score = best ? analysis_black_score(app->analysis, best->score_lead) : eval->black_score;
+        if (!ui->eval_known) {
+            ui->eval_black_winrate = target_wr;
+            ui->eval_black_score = target_score;
+            ui->eval_known = true;
+        } else {
+            f32 k = 1.0f - expf(-GetFrameTime() * 12.0f);
+            ui->eval_black_winrate += (target_wr - ui->eval_black_winrate) * k;
+            ui->eval_black_score += (target_score - ui->eval_black_score) * k;
+        }
+    }
+    bool known = ui->eval_known;
+    f32 black = known ? ui->eval_black_winrate : 0.5f;
+    f32 score = ui->eval_black_score;
 
     CLAY(ui_card(ui, CLAY_ID("PanelSummary"))) {
         ui_card_title(ui, tr(ui, "panel.winrate_summary", "Evaluation"));
@@ -98,17 +116,17 @@ static void panel_winrate_summary(Ui *ui) {
                 if (known && black < 0.85f) CLAY_TEXT(ui_fmt(ui, "%.1f%%", (1.0f - black) * 100.0f), ui_text_style(ui, FONT_UI_BOLD, 13, c->winrate_black));
             }
         }
-        if (known) {
-            char lead[32];
-            snprintf(lead, sizeof(lead), "%s+%.1f", score >= 0 ? "B" : "W", score >= 0 ? score : -score);
-            row_begin_end_label(ui, tr(ui, "label.score", "Score"), sv(lead));
+        char lead[32] = "—";
+        if (known) snprintf(lead, sizeof(lead), "%s+%.1f", score >= 0 ? "B" : "W", score >= 0 ? score : -score);
+        row_begin_end_label(ui, tr(ui, "label.score", "Score"), sv(lead));
+        StringView status = !app->engine ? tr(ui, "label.no_engine", "No engine")
+                            : app->analysis_enabled ? tr(ui, "label.analyzing", "Analyzing")
+                                                    : SV("—");
+        if (fresh) {
             i32 visits = best ? app->analysis->total_visits : eval->visits;
             CLAY_TEXT(ui_fmt(ui, SV_FMT " %d", SV_ARG(tr(ui, "label.visits", "Visits")), visits), ui_text_style(ui, FONT_UI, 12, c->text_muted));
         } else {
-            StringView hint = !app->engine ? tr(ui, "label.no_engine", "No engine")
-                              : app->analysis_enabled ? tr(ui, "label.analyzing", "Analyzing")
-                                                      : SV("—");
-            ui_label(ui, hint, FONT_UI, 13, c->text_muted);
+            ui_label(ui, status, FONT_UI, 12, c->text_muted);
         }
     }
 }

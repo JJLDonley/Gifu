@@ -18,7 +18,6 @@
     { "command": "game.ai_white", "icon": "AI ○" },
     { "type": "spacer" },
     { "type": "engine_status" },
-    { "type": "theme_picker" },
     { "command": "view.settings" }
   ],
   "sidebar": {

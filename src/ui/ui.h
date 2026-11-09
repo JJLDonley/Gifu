@@ -70,6 +70,12 @@ void text_edit_free(TextEdit *edit);
 
 // ---- Ui --------------------------------------------------------------------------------------
 
+typedef enum UiDialog {
+    UI_DIALOG_NONE,
+    UI_DIALOG_SETTINGS,
+    UI_DIALOG_NEW_GAME,
+} UiDialog;
+
 typedef struct Ui {
     App *app;
     FontCache *fonts;
@@ -96,12 +102,17 @@ typedef struct Ui {
     bool text_dragging;
     bool theme_menu_open;
     bool pointer_over_menu;
-    bool modal_open;      // settings dialog: blocks board / shortcuts
-
-    // Settings dialog (assets/data/settings.json).
-    bool settings_open;
-    JsonDoc settings_doc;
+    // Modal dialogs, built from assets/data/forms.json.
+    UiDialog dialog;
+    JsonDoc forms_doc;
+    TextEdit form_edits[8];                     // text fields, keyed by config field
+    const struct ConfigField *form_edit_fields[8];
+    i32 form_edit_count;
     u32 language_version;
+
+    // Win-rate bar animation (holds the last value while new analysis arrives).
+    bool eval_known;
+    f32 eval_black_winrate, eval_black_score;   // displayed (animated) values
 
     // Comment editor state.
     TextEdit comment;
@@ -155,7 +166,15 @@ void board_view_element(Ui *ui);
 void board_view_handle_input(Ui *ui);
 void winrate_graph_element(Ui *ui, f32 height);
 void variation_tree_element(Ui *ui, f32 height);
-void settings_dialog(Ui *ui);
+
+// ---- Forms & dialogs (form.c) -------------------------------------------------------------------
+typedef void (*ModalSection)(Ui *ui, void *user);
+JsonValue ui_form(Ui *ui, const char *name);       // a form from forms.json
+void form_render(Ui *ui, JsonValue form);
+// Modal with title, scrolling form body and an optional footer (buttons).
+void ui_modal(Ui *ui, JsonValue form, f32 width, ModalSection footer, void *user);
+void ui_dialogs(Ui *ui);                           // renders the open dialog, if any
+void ui_close_dialog(Ui *ui);
 void panels_render(Ui *ui, StringView name);
 void layout_parse(LayoutSpec *spec, JsonValue root, f32 default_sidebar);
 void layout_free(LayoutSpec *spec);

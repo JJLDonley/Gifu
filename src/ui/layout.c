@@ -227,6 +227,6 @@ void layout_build(Ui *ui) {
                 ui_label(ui, string_sv(&app->status_message), FONT_UI, 13, ui->theme->colors.text_muted);
             }
         }
-        if (ui->settings_open) settings_dialog(ui);
+        ui_dialogs(ui);
     }
 }

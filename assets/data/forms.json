@@ -1,10 +1,13 @@
-// Settings dialog. Each field binds to a config key (see the field table in
-// src/app/config.c). Types:
-//   bool                      on/off switch
-//   number  {min,max,step,format}   stepper; range defaults to the config field's
+// Data-driven forms (settings dialog, new-game dialog). Each field binds to a
+// config key (see the field table in src/app/config.c). Field types:
+//   bool                                   on/off switch
+//   number  {min,max,step,format}          stepper; range defaults to the config field's
 //   choice  {options:[{value,label}] | source:"themes"|"engines", columns}
-// "label" is an i18n key; "fallback" is shown when it has no translation.
+//   text    {placeholder}                  single-line text input
+// "label"/"title" are i18n keys; "fallback" is shown when there is no translation.
 {
+  "settings": {
+  "title": "command.view.settings", "fallback": "Settings",
   "sections": [
     {
       "title": "settings.appearance", "fallback": "Appearance",
@@ -62,5 +65,37 @@
         { "key": "board.show_move_numbers", "type": "bool", "label": "command.view.move_numbers", "fallback": "Move numbers" }
       ]
     }
-  ]
+  ],
+  },
+  "new_game": {
+    "title": "command.file.new", "fallback": "New game",
+    "sections": [
+      {
+        "title": "settings.board", "fallback": "Board",
+        "fields": [
+          { "key": "new_game.size", "type": "choice", "columns": 4, "label": "new_game.size", "fallback": "Board size",
+            "options": [
+              { "value": 9, "label": "9 × 9" }, { "value": 13, "label": "13 × 13" },
+              { "value": 19, "label": "19 × 19" }, { "value": 25, "label": "25 × 25" }
+            ] },
+          { "key": "new_game.size", "type": "number", "step": 1, "format": "%.0f", "label": "new_game.custom_size", "fallback": "Custom size" },
+          { "key": "new_game.handicap", "type": "number", "step": 1, "format": "%.0f", "label": "new_game.handicap", "fallback": "Handicap" },
+          { "key": "new_game.komi", "type": "number", "step": 0.5, "format": "%.1f", "label": "label.komi", "fallback": "Komi" },
+          { "key": "rules", "type": "choice", "columns": 3, "label": "label.rules", "fallback": "Rules",
+            "options": [
+              { "value": "chinese", "label": "Chinese" }, { "value": "japanese", "label": "Japanese" },
+              { "value": "korean", "label": "Korean" }, { "value": "aga", "label": "AGA" },
+              { "value": "new-zealand", "label": "New Zealand" }, { "value": "tromp-taylor", "label": "Tromp-Taylor" }
+            ] }
+        ]
+      },
+      {
+        "title": "new_game.players", "fallback": "Players",
+        "fields": [
+          { "key": "new_game.black", "type": "text", "label": "label.black", "fallback": "Black", "placeholder": "Black" },
+          { "key": "new_game.white", "type": "text", "label": "label.white", "fallback": "White", "placeholder": "White" }
+        ]
+      }
+    ]
+  }
 }

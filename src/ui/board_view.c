@@ -306,7 +306,7 @@ void board_view_handle_input(Ui *ui) {
     Clay_ElementData data = Clay_GetElementData(CLAY_ID("Board"));
     ui->hover_point = POINT_PASS;
     ui->hover_candidate = -1;
-    if (!data.found || ui->pointer_over_menu || ui->settings_open) return;
+    if (!data.found || ui->pointer_over_menu || ui->dialog != UI_DIALOG_NONE) return;
     const Board *board = &app->tree->current->board;
     Rectangle bounds = { data.boundingBox.x, data.boundingBox.y, data.boundingBox.width, data.boundingBox.height };
     BoardGeometry g = compute_geometry(bounds, board->width, board->height, app->config.show_coordinates);
