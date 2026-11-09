@@ -1,6 +1,7 @@
 // Builds the window from LayoutSpec (parsed from assets/data/layout.json).
 #include "ui/ui.h"
 
+#include <math.h>
 #include <stdio.h>
 
 // ---- Parsing ---------------------------------------------------------------------------
@@ -210,7 +211,10 @@ static void tab_group(Ui *ui, const SidebarEntry *entry, i32 group) {
     const ThemeColors *c = &ui->theme->colors;
     i32 *selected = &ui->tab_selected[MIN(group, (i32)countof(ui->tab_selected) - 1)];
     *selected = CLAMP(*selected, 0, entry->tab_count - 1);
-    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM,
+    // The group fills the rest of the sidebar; its content box has a fixed size
+    // (overflow hidden) and each panel scrolls inside it, so switching tabs or
+    // long content never moves anything else.
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(ui_px(ui, 160)) }, .layoutDirection = CLAY_TOP_TO_BOTTOM,
                        .childGap = ui_u16(ui, 6) } }) {
         CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 2),
                            .padding = CLAY_PADDING_ALL(ui_u16(ui, 3)) },
@@ -239,24 +243,42 @@ static void tab_group(Ui *ui, const SidebarEntry *entry, i32 group) {
                 if (over && ui->mouse_pressed && !ui->pointer_over_menu) *selected = t;
             }
         }
-        ui->in_tab = true;
-        panels_render(ui, ui->layout.tab_panels.items[entry->tab_start + *selected]);
-        ui->in_tab = false;
+        CLAY({ .id = CLAY_IDI("TabContent", (u32)group),
+               // No clip here: clip containers stop Clay from compressing their
+               // children, so only the panel's own scroll area clips.
+               .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM } }) {
+            ui->in_tab = true;
+            panels_render(ui, ui->layout.tab_panels.items[entry->tab_start + *selected]);
+            ui->in_tab = false;
+        }
     }
 }
 
+// The sidebar is a scrolling viewport around a column. The column is exactly
+// the viewport height when the window is tall enough (so a tab group can fill
+// the remaining space with a fixed-size, internally scrolling box), and never
+// shorter than its minimum, in which case the whole sidebar scrolls instead of
+// pushing the navbar off-screen.
 static void sidebar(Ui *ui) {
     const LayoutSpec *spec = &ui->layout;
-    CLAY({ .id = CLAY_ID("Sidebar"),
-           .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, spec->sidebar_width)), CLAY_SIZING_GROW(0) },
-                       .padding = CLAY_PADDING_ALL(ui_u16(ui, ui->theme->shape.gap)),
-                       .childGap = ui_u16(ui, ui->theme->shape.gap),
-                       .layoutDirection = CLAY_TOP_TO_BOTTOM },
+    Clay_ElementId viewport = CLAY_ID("Sidebar");
+    Clay_ElementData last = Clay_GetElementData(viewport);   // previous frame's size
+    f32 available = last.found ? last.boundingBox.height : (f32)GetScreenHeight();
+    f32 column_h = fmaxf(available, ui_px(ui, 640));
+    f32 gap = ui_px(ui, ui->theme->shape.gap);
+    CLAY({ .id = viewport,
+           .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, spec->sidebar_width)), CLAY_SIZING_GROW(0) } },
            .clip = { .vertical = true, .childOffset = Clay_GetScrollOffset() } }) {
-        for (isize i = 0; i < spec->panels.len; ++i) {
-            const SidebarEntry *e = &spec->panels.items[i];
-            if (e->tab_count == 0) panels_render(ui, e->panel);
-            else tab_group(ui, e, (i32)i);
+        CLAY({ .id = CLAY_ID("SidebarColumn"),
+               .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(column_h) },
+                           .padding = CLAY_PADDING_ALL((u16)gap),
+                           .childGap = (u16)gap,
+                           .layoutDirection = CLAY_TOP_TO_BOTTOM } }) {
+            for (isize i = 0; i < spec->panels.len; ++i) {
+                const SidebarEntry *e = &spec->panels.items[i];
+                if (e->tab_count == 0) panels_render(ui, e->panel);
+                else tab_group(ui, e, (i32)i);
+            }
         }
     }
 }

@@ -109,7 +109,7 @@ void variation_tree_element(Ui *ui, f32 height) {
     f32 width = view->spacing * (f32)view->cols, content_h = view->spacing * (f32)view->rows;
     f32 visible_h = fminf(ui_px(ui, height), content_h + ui_px(ui, 4));
     CLAY({ .id = clip_id,
-           .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(visible_h) } },
+           .layout = { .sizing = { CLAY_SIZING_GROW(0), ui->in_tab ? CLAY_SIZING_GROW(0) : CLAY_SIZING_FIXED(visible_h) } },
            .backgroundColor = color_to_clay(color_with_alpha(ui->theme->colors.surface_alt, 0.6f)),
            .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 4)),
            .clip = { .horizontal = true, .vertical = true, .childOffset = Clay_GetScrollOffset() } }) {

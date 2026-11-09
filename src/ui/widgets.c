@@ -96,13 +96,22 @@ Clay_ElementDeclaration ui_card(Ui *ui, Clay_ElementId id) {
     const Theme *t = ui->theme;
     return (Clay_ElementDeclaration){
         .id = id,
-        .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) },
+        .layout = { .sizing = { CLAY_SIZING_GROW(0), ui->in_tab ? CLAY_SIZING_GROW(0) : CLAY_SIZING_FIT(0) },
                     .padding = CLAY_PADDING_ALL(ui_u16(ui, t->shape.padding)),
                     .childGap = ui_u16(ui, 8),
                     .layoutDirection = CLAY_TOP_TO_BOTTOM },
         .backgroundColor = color_to_clay(t->colors.surface),
         .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, t->shape.radius)),
         .border = { .color = color_to_clay(t->colors.border), .width = CLAY_BORDER_OUTSIDE((u16)t->shape.border_width) },
+    };
+}
+
+Clay_ElementDeclaration ui_scroll_area(Ui *ui, Clay_ElementId id, f32 height) {
+    Clay_SizingAxis h = ui->in_tab ? CLAY_SIZING_GROW(0) : height > 0 ? CLAY_SIZING_FIXED(ui_px(ui, height)) : CLAY_SIZING_FIT(0);
+    return (Clay_ElementDeclaration){
+        .id = id,
+        .layout = { .sizing = { CLAY_SIZING_GROW(0), h }, .layoutDirection = CLAY_TOP_TO_BOTTOM },
+        .clip = { .vertical = true, .childOffset = Clay_GetScrollOffset() },
     };
 }
 

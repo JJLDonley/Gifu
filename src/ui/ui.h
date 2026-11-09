@@ -170,6 +170,11 @@ bool ui_toggle(Ui *ui, Clay_ElementId id, bool on);
 // Button bound to a registered command (label from i18n "command.<id>").
 void ui_command_button(Ui *ui, StringView command_id, StringView icon, ButtonStyle style, u32 index);
 Clay_ElementDeclaration ui_card(Ui *ui, Clay_ElementId id);
+// Vertically scrolling area. Inside a tab group it grows to fill the (fixed
+// size) tab box; elsewhere it is `height` px tall (or fits its content when
+// height <= 0). Must be evaluated inside CLAY(...) so the scroll offset is
+// read for the element being opened.
+Clay_ElementDeclaration ui_scroll_area(Ui *ui, Clay_ElementId id, f32 height);
 void ui_card_title(Ui *ui, StringView title);
 
 // ---- Pieces (board_view.c, winrate_graph.c, panels.c, layout.c) ----------------------------------

@@ -154,9 +154,7 @@ static void panel_move_list(Ui *ui) {
     f32 row_h = ui_px(ui, 22);
     CLAY(ui_card(ui, CLAY_ID("PanelMoveList"))) {
         ui_card_title(ui, tr(ui, "panel.move_list", "Moves"));
-        CLAY({ .id = clip,
-               .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(ui_px(ui, 180)) }, .layoutDirection = CLAY_TOP_TO_BOTTOM },
-               .clip = { .vertical = true, .childOffset = Clay_GetScrollOffset() } }) {
+        CLAY(ui_scroll_area(ui, clip, 180)) {
             for (isize i = 1; i < count; ++i) {
                 GameNode *n = line[i];
                 Clay_ElementId id = CLAY_IDI("MoveRow", (u32)i);
@@ -220,7 +218,8 @@ static void panel_candidates(Ui *ui) {
             ui_label(ui, SV("—"), FONT_UI, 13, c->text_muted);
         } else {
             const AnalysisSnapshot *a = app->analysis;
-            i32 rows = MIN(a->candidate_count, 8);
+            i32 rows = ui->in_tab ? a->candidate_count : MIN(a->candidate_count, 8);
+            CLAY(ui_scroll_area(ui, CLAY_ID("CandidateScroll"), 0))
             for (i32 i = 0; i < rows; ++i) {
                 const Candidate *cand = &a->candidates[i];
                 char coord[8];
@@ -278,9 +277,11 @@ static void panel_comment(Ui *ui) {
     }
     CLAY(ui_card(ui, CLAY_ID("PanelComment"))) {
         ui_card_title(ui, tr(ui, "panel.comment", "Comment"));
-        TextInputResult r = ui_text_input(ui, CLAY_ID("CommentEditor"), &ui->comment, 14, 3, tr(ui, "label.no_comment", "No comment"));
-        if (r == TEXT_INPUT_COMMITTED) commit_comment(ui);
-        if (r == TEXT_INPUT_CANCELLED) text_edit_set(&ui->comment, game_node_prop(current, SV("C")));
+        CLAY(ui_scroll_area(ui, CLAY_ID("CommentScroll"), 0)) {
+            TextInputResult r = ui_text_input(ui, CLAY_ID("CommentEditor"), &ui->comment, 14, 3, tr(ui, "label.no_comment", "No comment"));
+            if (r == TEXT_INPUT_COMMITTED) commit_comment(ui);
+            if (r == TEXT_INPUT_CANCELLED) text_edit_set(&ui->comment, game_node_prop(current, SV("C")));
+        }
     }
 }
 
@@ -297,15 +298,14 @@ static void panel_variation_tree(Ui *ui) {
 
 static void panel_engine_log(Ui *ui) {
     App *app = ui->app;
-    Clay_ElementDeclaration card = ui_card(ui, CLAY_ID("PanelEngineLog"));
-    card.layout.sizing.height = CLAY_SIZING_GROW(ui_px(ui, 100));
-    card.clip = (Clay_ClipElementConfig){ .vertical = true, .childOffset = Clay_GetScrollOffset() };
-    CLAY(card) {
+    CLAY(ui_card(ui, CLAY_ID("PanelEngineLog"))) {
         ui_card_title(ui, tr(ui, "panel.engine_log", "Engine log"));
-        i32 start = MAX(0, app->log_count - 40);
-        for (i32 i = start; i < app->log_count; ++i) {
-            const String *line = &app->log_lines[(app->log_head + i) % APP_LOG_LINES];
-            ui_label(ui, string_sv(line), FONT_MONO, 11, ui->theme->colors.text_muted);
+        CLAY(ui_scroll_area(ui, CLAY_ID("EngineLogScroll"), 160)) {
+            i32 start = MAX(0, app->log_count - 80);
+            for (i32 i = start; i < app->log_count; ++i) {
+                const String *line = &app->log_lines[(app->log_head + i) % APP_LOG_LINES];
+                ui_label(ui, string_sv(line), FONT_MONO, 11, ui->theme->colors.text_muted);
+            }
         }
     }
 }
