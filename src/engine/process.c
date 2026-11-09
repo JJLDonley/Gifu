@@ -64,7 +64,25 @@ static void append_quoted(String *cmd, StringView arg) {
     string_push_char(cmd, '"');
 }
 
+// Every engine runs in one job object that dies with CataGui: a crash or a killed
+// GUI must not leave KataGo processes holding the GPU (KataGo's analysis mode
+// keeps working through its queued queries after stdin closes).
+static HANDLE g_job;
+static INIT_ONCE g_job_once = INIT_ONCE_STATIC_INIT;
+
+static BOOL CALLBACK create_job(PINIT_ONCE once, PVOID param, PVOID *context) {
+    (void)once, (void)param, (void)context;
+    g_job = CreateJobObjectW(NULL, NULL);
+    if (g_job) {
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits = { 0 };
+        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        SetInformationJobObject(g_job, JobObjectExtendedLimitInformation, &limits, sizeof(limits));
+    }
+    return TRUE;
+}
+
 Process *process_spawn(const ProcessSpec *original, String *error) {
+    InitOnceExecuteOnce(&g_job_once, create_job, NULL, NULL);
     StringView storage[64];
     ProcessSpec flat = apply_launcher(original, storage, countof(storage));
     const ProcessSpec *spec = &flat;
@@ -97,8 +115,13 @@ Process *process_spawn(const ProcessSpec *original, String *error) {
 
     Process *proc = calloc(1, sizeof(Process));
     if (!proc) abort();
-    BOOL ok = CreateProcessW(NULL, wcmd, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, wdir, &si, &proc->info);
+    // Suspended until it is in the job, so its own children (e.g. ssh) are covered too.
+    BOOL ok = CreateProcessW(NULL, wcmd, NULL, NULL, TRUE, CREATE_NO_WINDOW | CREATE_SUSPENDED, NULL, wdir, &si, &proc->info);
     DWORD last_error = GetLastError();
+    if (ok) {
+        if (g_job) AssignProcessToJobObject(g_job, proc->info.hProcess);
+        ResumeThread(proc->info.hThread);
+    }
     free(wcmd);
     free(wdir);
     CloseHandle(in_r);
