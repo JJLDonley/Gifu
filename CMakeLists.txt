@@ -91,6 +91,7 @@ add_library(catagui_core STATIC
     src/core/sgf.c
     src/core/game_report.c
     src/engine/process.c
+    src/engine/line_channel.c
     src/engine/gtp_client.c
     src/engine/kata_analysis.c
     src/engine/position.c
