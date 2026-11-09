@@ -68,7 +68,17 @@
       (option tromp-taylor Tromp-Taylor)))
   (section new_game.players :fallback Players
     (text new_game.black :placeholder Black :label label.black :fallback Black)
-    (text new_game.white :placeholder White :label label.white :fallback White)))
+    (text new_game.white :placeholder White :label label.white :fallback White))
+  (section new_game.opponent_section :fallback Opponent
+    (choice new_game.opponent :columns 3 :label new_game.opponent :fallback "Engine plays"
+      (option none "Nobody")
+      (option white "White")
+      (option black "Black"))
+    (bool ai.human_style :label settings.human_style :fallback "AI plays like a human (needs the human network)")
+    (choice ai.human_profile :columns 5 :label new_game.opponent_rank :fallback "Opponent strength (human style)"
+      (option rank_20k 20k) (option rank_15k 15k) (option rank_10k 10k) (option rank_7k 7k) (option rank_5k 5k)
+      (option rank_3k 3k) (option rank_1k 1k) (option rank_1d 1d) (option rank_3d 3d) (option rank_5d 5d)
+      (option rank_7d 7d) (option rank_9d 9d) (option proyear_2023 "Pro 2023"))))
 
 ;; Game info: edits the SGF root (PB PW BR WR KM RE EV DT); Apply writes it back.
 ;; A Fox-style komi (375 = 3.75 zi) typed here is converted like on load.

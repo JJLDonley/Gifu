@@ -879,15 +879,34 @@ bool app_tsumego_frame(App *app) {
 // Starts a game from the new_game.* settings (the New Game dialog edits them).
 static void cmd_new(void *c) {
     App *app = APP(c);
+    StringView opponent = string_sv(&app->config.new_game_opponent);
+    Stone engine_color = sv_eq(opponent, SV("black")) ? STONE_BLACK : sv_eq(opponent, SV("white")) ? STONE_WHITE : STONE_EMPTY;
+    // The engine's name goes into PB/PW when that player has none.
+    char engine_name[64] = "";
+    if (engine_color != STONE_EMPTY) {
+        StringView profile = app->config.human_profile.len && sv_starts_with(string_sv(&app->config.human_profile), SV("rank_"))
+                                 ? sv_drop(string_sv(&app->config.human_profile), 5)
+                                 : string_sv(&app->config.human_profile);
+        if (app->config.ai_human_style) snprintf(engine_name, sizeof(engine_name), "KataGo (human " SV_FMT ")", SV_ARG(profile));
+        else snprintf(engine_name, sizeof(engine_name), "KataGo");
+    }
+    StringView black = string_sv(&app->config.new_game_black), white = string_sv(&app->config.new_game_white);
+    if (engine_color == STONE_BLACK && black.len == 0) black = sv(engine_name);
+    if (engine_color == STONE_WHITE && white.len == 0) white = sv(engine_name);
     NewGameSpec spec = {
         .size = app->config.new_game_size,
         .komi = app->config.new_game_komi,
         .handicap = app->config.new_game_handicap,
-        .black = string_sv(&app->config.new_game_black),
-        .white = string_sv(&app->config.new_game_white),
+        .black = black,
+        .white = white,
         .rules = string_sv(&app->config.rules),
     };
     app_start_game(app, &spec);
+    app->ai_plays[STONE_BLACK] = engine_color == STONE_BLACK;
+    app->ai_plays[STONE_WHITE] = engine_color == STONE_WHITE;
+    if (engine_color != STONE_EMPTY && app->config.ai_human_style && !app->human_available) {
+        app_set_status(app, "Human-style play needs the human SL network (Engine -> Download engines...); the engine plays normally");
+    }
 }
 
 static void cmd_open(void *c) {

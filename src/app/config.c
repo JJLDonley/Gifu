@@ -46,6 +46,7 @@ static const ConfigField FIELDS[] = {
     INT("new_game.handicap", new_game_handicap, 0, 0, 9),
     STR("new_game.black", new_game_black, ""),
     STR("new_game.white", new_game_white, ""),
+    STR("new_game.opponent", new_game_opponent, "none"),
     TSTR("game_info.black", game_info_black),
     TSTR("game_info.white", game_info_white),
     TSTR("game_info.black_rank", game_info_black_rank),

@@ -36,6 +36,7 @@ typedef struct Config {
     i32 new_game_handicap;
     String new_game_black;
     String new_game_white;
+    String new_game_opponent;   // "none", "black" or "white": the colour the engine plays in a new game
     // Game info dialog (transient: copied from / to the SGF root).
     String game_info_black, game_info_white, game_info_black_rank, game_info_white_rank;
     String game_info_result, game_info_event, game_info_date;
