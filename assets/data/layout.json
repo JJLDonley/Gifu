@@ -9,6 +9,19 @@
 // comment (editable), engine_log. An entry {"tabs": [...]} shows several
 // panels as tabs (one visible at a time).
 {
+  // Menu bar: command ids, "-" = separator. Shortcuts come from the keymap.
+  "menus": [
+    { "title": "menu.file", "fallback": "File",
+      "items": ["file.new", "file.open", "file.save", "file.save_as"] },
+    { "title": "menu.game", "fallback": "Game",
+      "items": ["move.pass", "move.delete", "-", "game.ai_black", "game.ai_white", "game.ai_move", "-", "game.score", "game.write_result"] },
+    { "title": "menu.navigate", "fallback": "Navigate",
+      "items": ["nav.first", "nav.back10", "nav.back", "nav.forward", "nav.forward10", "nav.last", "-", "nav.prev_variation", "nav.next_variation"] },
+    { "title": "menu.analysis", "fallback": "Analysis",
+      "items": ["analysis.toggle", "analysis.play_best", "-", "analysis.candidates", "analysis.ownership", "-", "engine.restart"] },
+    { "title": "menu.view", "fallback": "View",
+      "items": ["view.coordinates", "view.move_numbers", "view.next_tab", "-", "view.zoom_in", "view.zoom_out", "-", "view.settings"] }
+  ],
   "toolbar": [
     { "command": "file.new", "icon": "@plus", "label": true },
     { "command": "file.open", "icon": "@folder", "label": true },

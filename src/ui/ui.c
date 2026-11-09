@@ -111,6 +111,8 @@ static bool settings_shown(const void *c) { return ((const Ui *)c)->dialog == UI
 static void cmd_new_game(void *c) { open_dialog(UI(c), UI_DIALOG_NEW_GAME); }
 static void cmd_move_numbers(void *c) { UI(c)->app->config.show_move_numbers = !UI(c)->app->config.show_move_numbers; }
 static bool shows_move_numbers(const void *c) { return ((const Ui *)c)->app->config.show_move_numbers; }
+static void cmd_menu(void *c) { UI(c)->open_menu = UI(c)->open_menu >= 0 ? -1 : 0; }
+
 // Cycles the first tab group in the sidebar.
 static void cmd_next_tab(void *c) {
     Ui *ui = UI(c);
@@ -136,6 +138,7 @@ static void register_ui_commands(Ui *ui) {
         { "view.settings", "Settings", "Settings", cmd_settings, NULL, settings_shown, ui },
         { "file.new", "New game", "New", cmd_new_game, NULL, NULL, ui },
         { "view.next_tab", "Next tab", "Tab", cmd_next_tab, NULL, NULL, ui },
+        { "view.menu", "Menu", "Menu", cmd_menu, NULL, NULL, ui },
         { "view.move_numbers", "Move numbers", "123", cmd_move_numbers, NULL, shows_move_numbers, ui },
     };
     command_register_all(&ui->app->commands, defs, countof(defs));
@@ -147,8 +150,31 @@ static void clay_error(Clay_ErrorData error) {
     log_warn("clay: %.*s", (int)error.errorText.length, error.errorText.chars);
 }
 
+// Warns about command ids referenced by data that nothing registered.
+static void validate_command_refs(Ui *ui) {
+    CommandRegistry *reg = &ui->app->commands;
+    i32 missing = 0;
+    for (isize i = 0; i < ui->layout.menu_items.len; ++i) {
+        StringView id = ui->layout.menu_items.items[i];
+        if (!sv_eq(id, SV("-")) && !command_find(reg, id)) log_warn("layout.json menus: unknown command '" SV_FMT "'", SV_ARG(id)), missing++;
+    }
+    const LayoutItemVec *bars[] = { &ui->layout.toolbar, &ui->layout.navbar };
+    for (i32 b = 0; b < 2; ++b) {
+        vec_foreach(LayoutItem, it, bars[b]) {
+            if (it->kind == LAYOUT_ITEM_COMMAND && !command_find(reg, it->command)) {
+                log_warn("layout.json: unknown command '" SV_FMT "'", SV_ARG(it->command));
+                missing++;
+            }
+        }
+    }
+    vec_foreach(KeyBinding, kb, &ui->app->keymap.bindings) {
+        if (!command_find(reg, string_sv(&kb->command))) log_warn("keymap: unknown command '%s'", string_cstr(&kb->command)), missing++;
+    }
+    if (missing == 0) log_info("data: all command references resolve");
+}
+
 bool ui_init(Ui *ui, App *app) {
-    *ui = (Ui){ .app = app, .hover_candidate = -1, .hover_list_candidate = -1 };
+    *ui = (Ui){ .app = app, .hover_candidate = -1, .hover_list_candidate = -1, .open_menu = -1 };
     ui->frame.default_block_size = 512 * 1024;
     ui->fonts = font_cache_create();
 
@@ -187,6 +213,7 @@ bool ui_init(Ui *ui, App *app) {
     isize theme = themes_find(&ui->themes, string_sv(&app->config.theme));
     ui_apply_theme(ui, theme >= 0 ? theme : 0);
     register_ui_commands(ui);
+    validate_command_refs(ui);
     return true;
 }
 
@@ -228,7 +255,10 @@ static void handle_keys(Ui *ui) {
         if (b->chord.mods != mods) continue;
         if (IsKeyPressed(b->chord.key) || IsKeyPressedRepeat(b->chord.key)) command_execute(&app->commands, string_sv(&b->command));
     }
-    if (IsKeyPressed(KEY_ESCAPE)) ui->theme_menu_open = false;
+    if (IsKeyPressed(KEY_ESCAPE)) {
+        ui->theme_menu_open = false;
+        ui->open_menu = -1;
+    }
 }
 
 static void handle_drops(Ui *ui) {

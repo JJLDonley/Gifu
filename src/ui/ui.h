@@ -40,7 +40,16 @@ typedef struct SidebarEntry {
 } SidebarEntry;
 typedef Vec(SidebarEntry) SidebarEntryVec;
 
+typedef struct MenuSpec {
+    StringView title;      // i18n key
+    StringView fallback;
+    i32 item_start, item_count;   // into LayoutSpec.menu_items ("-" = separator)
+} MenuSpec;
+typedef Vec(MenuSpec) MenuSpecVec;
+
 typedef struct LayoutSpec {
+    MenuSpecVec menus;
+    StringViewVec menu_items;
     LayoutItemVec toolbar;
     LayoutItemVec navbar;
     SidebarEntryVec panels;
@@ -118,6 +127,7 @@ typedef struct Ui {
     bool focus_claimed;   // a focused input was laid out this frame
     bool text_dragging;
     bool theme_menu_open;
+    i32 open_menu;        // index into layout.menus, -1 = closed
     bool pointer_over_menu;
     // Modal dialogs, built from assets/data/forms.json.
     UiDialog dialog;

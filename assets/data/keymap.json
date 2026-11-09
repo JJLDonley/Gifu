@@ -35,6 +35,7 @@
     { "key": "E",            "command": "game.score" },
     { "key": "Ctrl+Comma",   "command": "view.settings" },
     { "key": "Ctrl+Tab",     "command": "view.next_tab" },
+    { "key": "F10",          "command": "view.menu" },
     { "key": "F12",          "command": "view.debug" }
   ]
 }

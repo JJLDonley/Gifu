@@ -35,6 +35,17 @@ static void parse_items(JsonValue array, LayoutItemVec *out) {
 // StringViews point into the JSON document, which the App keeps alive.
 void layout_parse(LayoutSpec *spec, JsonValue root, f32 default_sidebar) {
     layout_free(spec);
+    JsonValue menus = json_get(root, "menus");
+    for (isize i = 0; i < json_array_len(menus); ++i) {
+        JsonValue m = json_array_at(menus, i);
+        MenuSpec menu = { .title = json_string(json_get(m, "title"), SV("")),
+                          .fallback = json_string(json_get(m, "fallback"), SV("?")),
+                          .item_start = (i32)spec->menu_items.len };
+        JsonValue items = json_get(m, "items");
+        for (isize k = 0; k < json_array_len(items); ++k) vec_push(&spec->menu_items, json_string(json_array_at(items, k), SV("-")));
+        menu.item_count = (i32)spec->menu_items.len - menu.item_start;
+        vec_push(&spec->menus, menu);
+    }
     parse_items(json_get(root, "toolbar"), &spec->toolbar);
     parse_items(json_get(root, "navbar"), &spec->navbar);
     JsonValue sidebar = json_get(root, "sidebar");
@@ -60,6 +71,8 @@ void layout_free(LayoutSpec *spec) {
     vec_free(&spec->navbar);
     vec_free(&spec->panels);
     vec_free(&spec->tab_panels);
+    vec_free(&spec->menus);
+    vec_free(&spec->menu_items);
 }
 
 // ---- Toolbar widgets -----------------------------------------------------------------------
@@ -219,6 +232,94 @@ static void result_banner(Ui *ui) {
     }
 }
 
+// ---- Menu bar -------------------------------------------------------------------------------------
+
+static void menu_dropdown(Ui *ui, const MenuSpec *menu, i32 menu_index) {
+    App *app = ui->app;
+    const ThemeColors *c = &ui->theme->colors;
+    Clay_ElementId panel = CLAY_IDI("MenuPanel", (u32)menu_index);
+    CLAY({ .id = panel,
+           .floating = { .attachTo = CLAY_ATTACH_TO_PARENT, .zIndex = 150,
+                         .attachPoints = { .element = CLAY_ATTACH_POINT_LEFT_TOP, .parent = CLAY_ATTACH_POINT_LEFT_BOTTOM },
+                         .offset = { 0, ui_px(ui, 2) } },
+           .layout = { .sizing = { CLAY_SIZING_FIT(ui_px(ui, 240)), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                       .padding = CLAY_PADDING_ALL(ui_u16(ui, 5)) },
+           .backgroundColor = color_to_clay(color_with_alpha(c->surface, 1.0f)),
+           .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, ui->theme->shape.radius * 0.8f)),
+           .border = { .color = color_to_clay(c->border), .width = CLAY_BORDER_OUTSIDE(1) } }) {
+        if (Clay_PointerOver(panel)) ui->pointer_over_menu = true;
+        for (i32 k = 0; k < menu->item_count; ++k) {
+            StringView id_text = ui->layout.menu_items.items[menu->item_start + k];
+            if (sv_eq(id_text, SV("-"))) {
+                CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(1) } },
+                       .backgroundColor = color_to_clay(c->border) }) {}
+                continue;
+            }
+            const CommandDef *cmd = command_find(&app->commands, id_text);
+            if (!cmd) continue;
+            bool enabled = command_is_enabled(&app->commands, cmd);
+            bool checked = command_is_checked(&app->commands, cmd);
+            char key[128];
+            snprintf(key, sizeof(key), "command.%s", cmd->id);
+            char shortcut[48] = "";
+            const KeyBinding *binding = keymap_find_command(&app->keymap, id_text);
+            if (binding) key_chord_format(binding->chord, shortcut, sizeof(shortcut));
+            Clay_ElementId item = CLAY_IDI("MenuItem", (u32)(menu_index * 64 + k));
+            bool over = Clay_PointerOver(item) && enabled;
+            f32 hover = anim_towards(&ui->anim, item.id, over ? 1.0f : 0.0f, 20.0f, 0.0f);
+            Color fg = enabled ? color_lerp(c->text, c->accent_text, hover) : color_with_alpha(c->text_muted, 0.5f);
+            CLAY({ .id = item,
+                   .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 8),
+                               .padding = { ui_u16(ui, 6), ui_u16(ui, 10), ui_u16(ui, 5), ui_u16(ui, 5) },
+                               .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } },
+                   .backgroundColor = color_to_clay(color_with_alpha(c->accent, hover * c->accent.a / 255.0f)),
+                   .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 4)) }) {
+                CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 16)), CLAY_SIZING_FIXED(ui_px(ui, 16)) } } }) {
+                    if (checked) ui_icon(ui, icon_find(SV("check")), 16, fg);
+                }
+                CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) } } }) {
+                    ui_label(ui, app_tr(app, key, cmd->label), FONT_UI, 14, fg);
+                }
+                if (shortcut[0]) ui_label(ui, sv(shortcut), FONT_UI, 12, enabled ? color_with_alpha(fg, 0.7f) : fg);
+            }
+            if (over && ui->mouse_released) {
+                ui->open_menu = -1;
+                command_execute(&app->commands, id_text);
+            }
+        }
+    }
+}
+
+static void menu_bar(Ui *ui) {
+    const LayoutSpec *spec = &ui->layout;
+    if (spec->menus.len == 0) return;
+    const ThemeColors *c = &ui->theme->colors;
+    CLAY({ .id = CLAY_ID("MenuBar"),
+           .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 2),
+                       .padding = { ui_u16(ui, 8), ui_u16(ui, 8), ui_u16(ui, 3), ui_u16(ui, 3) } },
+           .backgroundColor = color_to_clay(c->surface) }) {
+        bool any_title_hovered = false;
+        for (isize i = 0; i < spec->menus.len; ++i) {
+            const MenuSpec *menu = &spec->menus.items[i];
+            Clay_ElementId id = CLAY_IDI("MenuTitle", (u32)i);
+            bool open = ui->open_menu == (i32)i, over = Clay_PointerOver(id);
+            any_title_hovered |= over;
+            f32 t = anim_towards(&ui->anim, id.id, open ? 1.0f : over ? 0.6f : 0.0f, 20.0f, 0.0f);
+            CLAY({ .id = id,
+                   .layout = { .padding = { ui_u16(ui, 10), ui_u16(ui, 10), ui_u16(ui, 4), ui_u16(ui, 4) } },
+                   .backgroundColor = color_to_clay(color_with_alpha(c->hover, t * 2.0f * c->hover.a / 255.0f)),
+                   .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 4)) }) {
+                ui_label(ui, i18n_get(&ui->app->i18n, menu->title, menu->fallback), FONT_UI, 14, c->text);
+                if (open) menu_dropdown(ui, menu, (i32)i);
+            }
+            if (over && ui->mouse_pressed) ui->open_menu = open ? -1 : (i32)i;
+            if (over && ui->open_menu >= 0 && !open) ui->open_menu = (i32)i;   // slide between menus
+        }
+        if (ui->open_menu >= 0) ui->pointer_over_menu |= any_title_hovered;
+        if (ui->open_menu >= 0 && ui->mouse_pressed && !ui->pointer_over_menu) ui->open_menu = -1;
+    }
+}
+
 static Clay_ElementDeclaration bar(Ui *ui, Clay_ElementId id, bool top) {
     const Theme *t = ui->theme;
     Clay_BorderWidth border = { 0 };
@@ -321,6 +422,7 @@ void layout_build(Ui *ui) {
     ui->pointer_over_menu = false;
     CLAY({ .id = CLAY_ID("Root"),
            .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM } }) {
+        menu_bar(ui);
         CLAY(bar(ui, CLAY_ID("Toolbar"), true)) { items(ui, &spec->toolbar, false); }
         CLAY({ .id = CLAY_ID("Main"), .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(0) } } }) {
             if (spec->sidebar_left) sidebar(ui);
