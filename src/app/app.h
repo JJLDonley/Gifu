@@ -30,6 +30,7 @@ typedef struct AppOptions {
     i32 analyze_count;
     StringView output_dir;           // --out
     bool headless;                   // no window, no interactive engine
+    StringView region;               // --region A1:G7 (tsumego focus)
 } AppOptions;
 
 enum { APP_LOG_LINES = 200 };
@@ -88,6 +89,8 @@ typedef struct App {
     bool flash_running;
     u32 flash_serial;
 
+    BoardRegion region;         // tsumego: analysis restricted to this rectangle
+
     // Play vs AI: which colours the engine plays (indexed by Stone).
     bool ai_plays[3];
     bool ai_move_once;          // "engine, play one move now"
@@ -121,7 +124,9 @@ bool app_save_sgf(App *app, StringView path);
 MoveError app_play(App *app, Point point);
 void app_goto(App *app, GameNode *node);
 void app_restart_engine(App *app);
-void app_second_engine(App *app, bool on);   // start/stop the comparison engine
+void app_second_engine(App *app, bool on);
+// Restricts (or with region.active=false, frees) analysis to a board rectangle.
+void app_set_region(App *app, BoardRegion region);   // start/stop the comparison engine
 void app_set_analysis(App *app, bool enabled);
 AnalysisRequest app_analysis_request(const App *app);
 void app_reload_language(App *app);

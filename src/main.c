@@ -14,7 +14,7 @@
 static void usage(void) {
     fprintf(stderr,
             "usage: catagui [file.sgf] [--theme ID] [--engine ID|none] [--portable] [--size WxH]\n"
-            "               [--move N|-1] [--set KEY=VALUE]... [--run COMMAND_ID]...\n"
+            "               [--move N|-1] [--region A1:G7] [--set KEY=VALUE]... [--run COMMAND_ID]...\n"
             "               [--screenshot out.png [--delay SECONDS]] [--verbose]\n"
             "       catagui --analyze FILE.sgf... [--out DIR] [--engine ID] [--set analysis.game_visits=N]\n");
 }
@@ -30,6 +30,7 @@ static bool parse_args(int argc, char **argv, AppOptions *opts) {
         else if (sv_eq(a, SV("--portable"))) opts->portable = true;
         else if (sv_eq(a, SV("--move")) && has_value) opts->start_move = atoi(argv[++i]);
         else if (sv_eq(a, SV("--out")) && has_value) opts->output_dir = sv(argv[++i]);
+        else if (sv_eq(a, SV("--region")) && has_value) opts->region = sv(argv[++i]);
         else if (sv_eq(a, SV("--analyze"))) {
             // All following non-option arguments are SGF files.
             while (i + 1 < argc && argv[i + 1][0] != '-' && opts->analyze_count < (i32)countof(opts->analyze_files)) {

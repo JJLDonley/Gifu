@@ -64,12 +64,29 @@ static void send_play(KataGoEngine *k, Move m) {
     send(k, "play %s %s", m.color == STONE_BLACK ? "B" : "W", coord);
 }
 
+// " allow B C3,D3,... 60 allow W C3,D3,... 60": KataGo searches only these
+// vertices (plus pass) for both players, for the whole search depth.
+static void push_region_allow(String *cmd, const BoardRegion *r, i32 width, i32 height) {
+    String vertices = string_from(SV("pass"));
+    for (i32 y = r->y0; y <= r->y1; ++y) {
+        for (i32 x = r->x0; x <= r->x1; ++x) {
+            char coord[8];
+            point_to_gtp((Point){ (i8)x, (i8)y }, width, height, coord);
+            string_pushf(&vertices, ",%s", coord);
+        }
+    }
+    string_pushf(cmd, " allow B %s 60 allow W %s 60", string_cstr(&vertices), string_cstr(&vertices));
+    string_free(&vertices);
+}
+
 static void send_analyze(KataGoEngine *k) {
-    char extra[64] = "";
-    if (k->request.max_candidates > 0) snprintf(extra, sizeof(extra), " maxmoves %d", k->request.max_candidates);
-    k->analysis_id = send(k, "kata-analyze %s interval %d%s%s", k->to_play == STONE_WHITE ? "W" : "B",
-                          MAX(k->request.interval_centiseconds, 5), k->request.include_ownership ? " ownership true" : "",
-                          extra);
+    String cmd = string_format("kata-analyze %s interval %d", k->to_play == STONE_WHITE ? "W" : "B",
+                               MAX(k->request.interval_centiseconds, 5));
+    if (k->request.include_ownership) string_push(&cmd, SV(" ownership true"));
+    if (k->request.max_candidates > 0) string_pushf(&cmd, " maxmoves %d", k->request.max_candidates);
+    if (k->request.region.active) push_region_allow(&cmd, &k->request.region, k->width, k->height);
+    k->analysis_id = gtp_client_send(k->gtp, string_sv(&cmd));
+    string_free(&cmd);
 }
 
 static bool same_moves(const Move *a, const Move *b, i32 n) {

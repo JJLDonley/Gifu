@@ -111,6 +111,19 @@ static bool settings_shown(const void *c) { return ((const Ui *)c)->dialog == UI
 static void cmd_new_game(void *c) { open_dialog(UI(c), UI_DIALOG_NEW_GAME); }
 static void cmd_move_numbers(void *c) { UI(c)->app->config.show_move_numbers = !UI(c)->app->config.show_move_numbers; }
 static bool shows_move_numbers(const void *c) { return ((const Ui *)c)->app->config.show_move_numbers; }
+// R: start selecting a region, or clear the current one.
+static void cmd_region(void *c) {
+    Ui *ui = UI(c);
+    if (ui->app->region.active || ui->region_select) {
+        ui->region_select = ui->region_dragging = false;
+        if (ui->app->region.active) app_set_region(ui->app, (BoardRegion){ 0 });
+        return;
+    }
+    ui->region_select = true;
+    app_set_status(ui->app, "Drag a rectangle on the board to limit analysis to it");
+}
+static bool region_on(const void *c) { return ((const Ui *)c)->app->region.active || ((const Ui *)c)->region_select; }
+
 static void cmd_menu(void *c) { UI(c)->open_menu = UI(c)->open_menu >= 0 ? -1 : 0; }
 
 // Cycles the first tabs component in the layout.
@@ -131,6 +144,7 @@ static void register_ui_commands(Ui *ui) {
         { "file.new", "New game", "New", cmd_new_game, NULL, NULL, ui },
         { "view.next_tab", "Next tab", "Tab", cmd_next_tab, NULL, NULL, ui },
         { "view.menu", "Menu", "Menu", cmd_menu, NULL, NULL, ui },
+        { "analysis.region", "Analyze region", "Region", cmd_region, NULL, region_on, ui },
         { "view.move_numbers", "Move numbers", "123", cmd_move_numbers, NULL, shows_move_numbers, ui },
     };
     command_register_all(&ui->app->commands, defs, countof(defs));
@@ -263,6 +277,7 @@ static void handle_keys(Ui *ui) {
     if (IsKeyPressed(KEY_ESCAPE)) {
         ui->theme_menu_open = false;
         ui->open_menu = -1;
+        ui->region_select = ui->region_dragging = false;
     }
 }
 

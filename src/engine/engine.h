@@ -28,10 +28,17 @@ typedef struct PositionSpec {
     Move moves[1024];
 } PositionSpec;
 
+// Inclusive board rectangle (x0 <= x1, y0 <= y1).
+typedef struct BoardRegion {
+    bool active;
+    i8 x0, y0, x1, y1;
+} BoardRegion;
+
 typedef struct AnalysisRequest {
     i32 interval_centiseconds;
     bool include_ownership;
     i32 max_candidates;   // 0 = engine default
+    BoardRegion region;   // when active, only moves inside it are searched (tsumego)
 } AnalysisRequest;
 
 typedef struct MoveRequest {

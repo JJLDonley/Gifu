@@ -29,6 +29,13 @@ static Vector2 point_center(const BoardGeometry *g, Point p) {
     return (Vector2){ g->origin.x + g->cell * (f32)p.x, g->origin.y + g->cell * (f32)p.y };
 }
 
+// Nearest point, clamped to the board (for drags that leave the grid).
+static Point point_at_clamped(const BoardGeometry *g, Vector2 pos) {
+    i32 x = (i32)floorf((pos.x - g->origin.x) / g->cell + 0.5f);
+    i32 y = (i32)floorf((pos.y - g->origin.y) / g->cell + 0.5f);
+    return (Point){ (i8)CLAMP(x, 0, g->width - 1), (i8)CLAMP(y, 0, g->height - 1) };
+}
+
 static Point point_at(const BoardGeometry *g, Vector2 pos) {
     if (!g->valid) return POINT_PASS;
     i32 x = (i32)floorf((pos.x - g->origin.x) / g->cell + 0.5f);
@@ -240,6 +247,8 @@ static void draw_pv(Ui *ui, const BoardGeometry *g, const Candidate *cand, Stone
     }
 }
 
+static void draw_region(Ui *ui, const BoardGeometry *g, Point a, Point b, bool final);
+
 // ---- Draw callback ----------------------------------------------------------------------------------
 
 // ---- Cached static layer ------------------------------------------------------------------------
@@ -422,6 +431,25 @@ static void draw_board(void *user, Rectangle bounds) {
             if (a > 0.01f && board->cells[i] == STONE_EMPTY) draw_stone(ui->theme, point_center(&g, p), r, node->to_play, a);
         }
     }
+    if (ui->region_dragging) draw_region(ui, &g, ui->region_start, ui->region_end, false);
+    else if (app->region.active) {
+        draw_region(ui, &g, (Point){ app->region.x0, app->region.y0 }, (Point){ app->region.x1, app->region.y1 }, true);
+    }
+}
+
+// Washes out everything outside the region and outlines it.
+static void draw_region(Ui *ui, const BoardGeometry *g, Point a, Point b, bool final) {
+    const ThemeColors *c = &ui->theme->colors;
+    i32 x0 = MIN(a.x, b.x), x1 = MAX(a.x, b.x), y0 = MIN(a.y, b.y), y1 = MAX(a.y, b.y);
+    Rectangle r = { g->origin.x + g->cell * ((f32)x0 - 0.5f), g->origin.y + g->cell * ((f32)y0 - 0.5f),
+                    g->cell * (f32)(x1 - x0 + 1), g->cell * (f32)(y1 - y0 + 1) };
+    Rectangle bd = g->board;
+    Color wash = color_with_alpha(c->surface, final ? 0.55f : 0.35f);
+    DrawRectangleRec((Rectangle){ bd.x, bd.y, bd.width, r.y - bd.y }, wash);                                      // above
+    DrawRectangleRec((Rectangle){ bd.x, r.y + r.height, bd.width, bd.y + bd.height - r.y - r.height }, wash);     // below
+    DrawRectangleRec((Rectangle){ bd.x, r.y, r.x - bd.x, r.height }, wash);                                       // left
+    DrawRectangleRec((Rectangle){ r.x + r.width, r.y, bd.x + bd.width - r.x - r.width, r.height }, wash);         // right
+    DrawRectangleLinesEx(r, final ? 2.0f : 1.5f, c->accent);
 }
 
 void board_view_element(Ui *ui) {
@@ -441,7 +469,24 @@ void board_view_handle_input(Ui *ui) {
     const Board *board = &app->tree->current->board;
     Rectangle bounds = { data.boundingBox.x, data.boundingBox.y, data.boundingBox.width, data.boundingBox.height };
     BoardGeometry g = compute_geometry(bounds, board->width, board->height, app->config.show_coordinates);
-    if (!g.valid || !CheckCollisionPointRec(ui->mouse, g.board)) return;
+    if (!g.valid) return;
+    // Region selection: drag a rectangle (may leave the board; clamped).
+    if (ui->region_select) {
+        if (ui->mouse_pressed && CheckCollisionPointRec(ui->mouse, g.board)) {
+            ui->region_dragging = true;
+            ui->region_start = ui->region_end = point_at_clamped(&g, ui->mouse);
+        }
+        if (ui->region_dragging) {
+            ui->region_end = point_at_clamped(&g, ui->mouse);
+            if (ui->mouse_released) {
+                ui->region_dragging = ui->region_select = false;
+                app_set_region(app, (BoardRegion){ true, ui->region_start.x, ui->region_start.y, ui->region_end.x, ui->region_end.y });
+            }
+        }
+        SetMouseCursor(MOUSE_CURSOR_CROSSHAIR);
+        return;
+    }
+    if (!CheckCollisionPointRec(ui->mouse, g.board)) return;
     ui->board_geo = g;
     Point p = point_at(&g, ui->mouse);
     ui->hover_point = p;

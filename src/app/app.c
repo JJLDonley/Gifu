@@ -75,7 +75,24 @@ AnalysisRequest app_analysis_request(const App *app) {
         .interval_centiseconds = app->config.analysis_interval_cs,
         .include_ownership = app->config.show_ownership,
         .max_candidates = app->config.max_candidates,
+        .region = app->region,
     };
+}
+
+void app_set_region(App *app, BoardRegion region) {
+    if (region.active) {   // normalise to x0 <= x1, y0 <= y1
+        i8 x0 = MIN(region.x0, region.x1), x1 = MAX(region.x0, region.x1);
+        i8 y0 = MIN(region.y0, region.y1), y1 = MAX(region.y0, region.y1);
+        region = (BoardRegion){ true, x0, y0, x1, y1 };
+    }
+    app->region = region;
+    app->analysis_valid = false;
+    if (app->analysis_enabled) app_set_analysis(app, true);   // re-issue kata-analyze with/without allow
+    if (app->second.engine) {
+        AnalysisRequest req = app_analysis_request(app);
+        engine_start_analysis(app->second.engine, &req);
+    }
+    if (region.active) app_set_status(app, "Analysis limited to the selected region");
 }
 
 static void stop_engine(App *app) {
@@ -523,6 +540,7 @@ void app_config_changed(App *app, StringView key) {
 
 static void replace_tree(App *app, GameTree *tree) {
     app_batch_stop(app);
+    app->region = (BoardRegion){ 0 };   // board size may change
     game_tree_free(app->tree);
     app->tree = tree;
     app->main.synced_node = NULL;
@@ -819,6 +837,17 @@ bool app_init(App *app, const AppOptions *options) {
 
     app->tree = game_tree_new(19, 19, 7.5);
     if (options->sgf_path.len) app_open_sgf(app, options->sgf_path);
+    if (options->region.len) {   // --region A1:G7
+        StringView rest = options->region;
+        StringView a = sv_chop_char(&rest, ':');
+        Point p0, p1;
+        i32 w = game_tree_width(app->tree), h = game_tree_height(app->tree);
+        if (point_from_gtp(a, w, h, &p0) && point_from_gtp(rest, w, h, &p1) && !point_is_pass(p0) && !point_is_pass(p1)) {
+            app->region = (BoardRegion){ true, MIN(p0.x, p1.x), MIN(p0.y, p1.y), MAX(p0.x, p1.x), MAX(p0.y, p1.y) };
+        } else {
+            log_warn("--region: expected e.g. A1:G7");
+        }
+    }
     if (options->start_move < 0) game_tree_to_end(app->tree);
     for (i32 i = 0; i < options->start_move; ++i) game_tree_forward(app->tree);
 

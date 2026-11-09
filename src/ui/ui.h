@@ -136,6 +136,10 @@ typedef struct Ui {
     Point hover_point;
     i32 hover_candidate;  // index into app->analysis or -1
     i32 hover_list_candidate;   // hovered in the candidates panel
+    // Region (tsumego) selection: the next drag on the board defines it.
+    bool region_select;
+    bool region_dragging;
+    Point region_start, region_end;
     GameNode *graph_hover;
 } Ui;
 
