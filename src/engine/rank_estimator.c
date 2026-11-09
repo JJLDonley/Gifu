@@ -195,6 +195,22 @@ void rank_estimator_update(RankEstimator *j) {
 
 const RankProgress *rank_estimator_progress(const RankEstimator *j) { return &j->progress; }
 
+i32 rank_progress_store(const RankProgress *p, GameTree *tree, const GameNode *end) {
+    enum { MAX_MOVES = 1024 };
+    const GameNode **nodes = malloc(sizeof(GameNode *) * MAX_MOVES);
+    if (!nodes) abort();
+    i32 n = position_spec_move_nodes(end, nodes, MAX_MOVES), stored = 0;
+    for (i32 i = 0; i < n && i < p->move_count; ++i) {
+        if (!p->move_scored[i]) continue;
+        char buffer[160];
+        rank_probs_format(p->move_p[i], buffer, (isize)sizeof(buffer));
+        game_node_set_prop(tree, (GameNode *)nodes[i], SV(RANK_SGF_PROP), sv(buffer));
+        stored++;
+    }
+    free(nodes);
+    return stored;
+}
+
 void rank_estimator_destroy(RankEstimator *j) {
     if (!j) return;
     if (j->restore[0]) engine_set_human_profile(j->engine, sv(j->restore));

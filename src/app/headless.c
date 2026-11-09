@@ -261,6 +261,18 @@ int headless_rank(App *app) {
                 printf("  %s %-20.*s ~%-4.*s (%.0f%%, %d moves)\n", c == STONE_BLACK ? "B" : "W", (int)name.len, name.data,
                        SV_ARG(rank_label(best)), best >= 0 ? post[best] * 100.0f : 0.0f, t->moves);
             }
+            if (o->output_dir.len) {   // with --out: save the per-move estimates as CGR[]
+                rank_progress_store(p, tree, tree->current);
+                String out = path_join(o->output_dir, path_basename(o->analyze_files[i]));
+                os_make_dirs(o->output_dir);
+                if (sgf_save_file(tree, string_sv(&out))) {
+                    printf("  -> %s\n", string_cstr(&out));
+                } else {
+                    fprintf(stderr, "cannot write %s\n", string_cstr(&out));
+                    failures++;
+                }
+                string_free(&out);
+            }
         }
         rank_estimator_destroy(job);
         game_tree_free(tree);

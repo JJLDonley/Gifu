@@ -65,4 +65,7 @@ RankEstimator *rank_estimator_start(Engine *engine, const PositionSpec *game, St
 // Polls the engine and sends the next queries (call every frame).
 void rank_estimator_update(RankEstimator *job);
 const RankProgress *rank_estimator_progress(const RankEstimator *job);
+// Writes the scored moves as CGR[] onto the nodes of the line ending at `end`
+// (the node the job's PositionSpec was built from). Returns the count.
+i32 rank_progress_store(const RankProgress *progress, GameTree *tree, const GameNode *end);
 void rank_estimator_destroy(RankEstimator *job);

@@ -489,22 +489,6 @@ void app_rank_refresh(App *app) {
     free(line);
 }
 
-// Saves the finished job's per-move results as CGR[] on the scored nodes.
-static void rank_store(App *app, const RankProgress *p) {
-    enum { MAX_MOVES = 1024 };
-    const GameNode **nodes = malloc(sizeof(GameNode *) * MAX_MOVES);
-    if (!nodes) abort();
-    i32 n = position_spec_move_nodes(app->rank_end, nodes, MAX_MOVES);
-    for (i32 i = 0; i < n && i < p->move_count; ++i) {
-        if (!p->move_scored[i]) continue;
-        char buffer[160];
-        rank_probs_format(p->move_p[i], buffer, (isize)sizeof(buffer));
-        game_node_set_prop(app->tree, (GameNode *)nodes[i], SV(RANK_SGF_PROP), sv(buffer));
-    }
-    free(nodes);
-    app->dirty = true;   // saved with the game
-}
-
 static void rank_update(App *app) {
     if (active_line_end(app->tree) != app->rank_line_end) app_rank_refresh(app);   // other variation, edits
     if (app->rank_pending && human_slot(app)) app_rank_start(app);
@@ -515,7 +499,7 @@ static void rank_update(App *app) {
     if (p->failed) {
         app_set_status(app, "Rank estimate failed: %s", string_cstr(&p->error));
     } else {
-        rank_store(app, p);
+        if (rank_progress_store(p, app->tree, app->rank_end) > 0) app->dirty = true;   // saved with the game
         app_rank_refresh(app);
         app_set_status(app, "Estimated ranks: Black " SV_FMT ", White " SV_FMT, SV_ARG(rank_label(rank_tally_best(&p->tally[STONE_BLACK]))),
                        SV_ARG(rank_label(rank_tally_best(&p->tally[STONE_WHITE]))));
