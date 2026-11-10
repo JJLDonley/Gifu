@@ -280,6 +280,7 @@ bool ui_init(Ui *ui, App *app) {
 void ui_shutdown(Ui *ui) {
     theme_editor_cancel(ui);
     layout_editor_close(ui);
+    text_edit_free(&ui->layout_editor.preset_name);
     text_edit_free(&ui->theme_editor.name);
     text_edit_free(&ui->theme_editor.hex);
     if (ui->installer.started) {   // stop a running download cleanly

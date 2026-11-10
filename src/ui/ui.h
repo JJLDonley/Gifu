@@ -82,6 +82,7 @@ typedef struct LayoutEditor {
     String source;          // text the model's positions refer to (the active layout file)
     bool had_user_file;     // <config_dir>/layout.lisp existed when the dialog opened
     String original_user;   // ...and its contents (Undo changes)
+    TextEdit preset_name;   // "Save as preset"
 } LayoutEditor;
 
 typedef struct Ui {

@@ -84,6 +84,92 @@ static void reset_default(Ui *ui) {
     app_set_status(ui->app, "Layout reset to the default");
 }
 
+// ---- Presets ----------------------------------------------------------------------------------------
+// Built-in presets are assets/data/layouts/*.lisp; the user's own are
+// <config_dir>/layouts/*.lisp. Applying one makes it the user layout.lisp.
+
+static String preset_dir(const Ui *ui, bool user) {
+    return user ? path_join(string_sv(&ui->app->config_dir), SV("layouts")) : path_join(string_sv(&ui->app->assets_dir), SV("data/layouts"));
+}
+
+static void apply_preset(Ui *ui, StringView file) {
+    String text = { 0 };
+    if (!os_read_file(file, &text)) {
+        app_set_status(ui->app, "Cannot read " SV_FMT, SV_ARG(file));
+        return;
+    }
+    String path = user_layout_path(ui);
+    os_make_dirs(string_sv(&ui->app->config_dir));
+    if (os_write_file(string_sv(&path), string_sv(&text))) app_set_status(ui->app, "Layout: " SV_FMT, SV_ARG(path_basename(file)));
+    string_free(&path);
+    string_free(&text);
+    layout_load(ui);
+    load_model(ui);
+}
+
+static void save_preset(Ui *ui) {
+    LayoutEditor *e = &ui->layout_editor;
+    StringView name = sv_trim(string_sv(&e->preset_name.text));
+    char stem[64];
+    isize n = 0;
+    for (isize i = 0; i < name.len && n < (isize)sizeof(stem) - 1; ++i) {
+        char ch = name.data[i];
+        if (ch >= 'A' && ch <= 'Z') ch = (char)(ch - 'A' + 'a');
+        stem[n++] = ((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9')) ? ch : '-';
+    }
+    stem[n] = '\0';
+    if (n == 0) {
+        app_set_status(ui->app, "Give the preset a name first");
+        return;
+    }
+    String dir = preset_dir(ui, true);
+    os_make_dirs(string_sv(&dir));
+    String file = string_format(SV_FMT "/%s.lisp", SV_ARG(string_sv(&dir)), stem);
+    if (os_write_file(string_sv(&file), string_sv(&e->source))) app_set_status(ui->app, "Preset saved: %s", string_cstr(&file));
+    else app_set_status(ui->app, "Could not write %s", string_cstr(&file));
+    string_free(&file);
+    string_free(&dir);
+}
+
+static void preset_row(Ui *ui) {
+    const ThemeColors *c = &ui->theme->colors;
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 6),
+                       .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
+        ui_label(ui, tr(ui, "layout_editor.presets", "Presets"), FONT_UI, 14, c->text_muted);
+        u32 id = 0;
+        for (i32 user = 0; user < 2; ++user) {
+            String dir = preset_dir(ui, user == 1);
+            StringVec names = { 0 };
+            os_list_dir(string_sv(&dir), &names);
+            vec_foreach(String, fn, &names) {
+                StringView f = string_sv(fn);
+                if (!sv_ends_with(f, SV(".lisp"))) continue;
+                StringView stem = sv_take(f, f.len - 5);
+                char key[96];
+                snprintf(key, sizeof(key), "layout_preset." SV_FMT, SV_ARG(stem));
+                String fallback = string_from(stem);
+                StringView label = arena_format(&ui->frame, SV_FMT, SV_ARG(app_tr(ui->app, key, string_cstr(&fallback))));
+                string_free(&fallback);
+                String file = path_join(string_sv(&dir), f);
+                if (ui_button(ui, CLAY_IDI("LayPreset", id), label, user ? BUTTON_GHOST : BUTTON_NORMAL, false, true)) apply_preset(ui, string_sv(&file));
+                if (user && ui_button(ui, CLAY_IDI("LayPresetDel", id), SV("@close"), BUTTON_GHOST, false, true)) {
+                    os_remove(string_sv(&file));
+                    app_set_status(ui->app, "Preset deleted: " SV_FMT, SV_ARG(stem));
+                }
+                string_free(&file);
+                id++;
+            }
+            string_vec_free(&names);
+            string_free(&dir);
+        }
+        CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) } } }) {}
+        CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 180)), CLAY_SIZING_FIT(0) } } }) {
+            ui_text_input(ui, CLAY_ID("LayPresetName"), &ui->layout_editor.preset_name, 13, 1, tr(ui, "layout_editor.preset_name", "Preset name"));
+        }
+        if (ui_button(ui, CLAY_ID("LayPresetSave"), tr(ui, "layout_editor.save_preset", "Save as preset"), BUTTON_NORMAL, false, true)) save_preset(ui);
+    }
+}
+
 // ---- Widgets ---------------------------------------------------------------------------------------
 
 static StringView panel_label(Ui *ui, StringView name) {
@@ -156,6 +242,7 @@ static void body(Ui *ui, void *user) {
     const ThemeColors *c = &ui->theme->colors;
     bool changed = false;
 
+    preset_row(ui);
     // Sidebar side and width.
     CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 8),
                        .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
