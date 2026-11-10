@@ -390,6 +390,25 @@ static void update_title(Ui *ui) {
     }
 }
 
+// Board sync needs the whole desktop (every monitor) for its picker, and asks
+// for the window to get out of the way while the user picks.
+static void sync_window(Ui *ui) {
+    App *app = ui->app;
+    i32 x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+    for (i32 m = 0; m < GetMonitorCount(); ++m) {
+        Vector2 p = GetMonitorPosition(m);
+        i32 mx = (i32)p.x, my = (i32)p.y, mw = GetMonitorWidth(m), mh = GetMonitorHeight(m);
+        if (m == 0 || mx < x0) x0 = mx;
+        if (m == 0 || my < y0) y0 = my;
+        if (m == 0 || mx + mw > x1) x1 = mx + mw;
+        if (m == 0 || my + mh > y1) y1 = my + mh;
+    }
+    app->desktop = (ScreenRect){ x0, y0, x1 - x0, y1 - y0 };
+    if (app->window_request == APP_WINDOW_MINIMIZE) MinimizeWindow();
+    if (app->window_request == APP_WINDOW_RESTORE) RestoreWindow();
+    app->window_request = APP_WINDOW_NONE;
+}
+
 void ui_frame(Ui *ui) {
     arena_reset(&ui->frame);
     anim_begin_frame(&ui->anim, GetFrameTime());
@@ -420,6 +439,7 @@ void ui_frame(Ui *ui) {
 
     handle_drops(ui);
     handle_keys(ui);
+    sync_window(ui);
 
     Clay_SetLayoutDimensions((Clay_Dimensions){ (f32)GetScreenWidth(), (f32)GetScreenHeight() });
     Clay_SetPointerState((Clay_Vector2){ ui->mouse.x, ui->mouse.y }, ui->mouse_down);

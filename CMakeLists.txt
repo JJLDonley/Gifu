@@ -114,13 +114,15 @@ add_library(catagui_core STATIC
     src/app/config.c
     src/app/i18n.c
     src/app/installer.c
-    src/app/screen_capture.c)
+    src/app/screen_capture.c
+    src/app/board_sync.c
+    src/app/app_sync.c)
 target_include_directories(catagui_core PUBLIC src)
 target_link_libraries(catagui_core PUBLIC third_party_misc)
 if(WIN32)
-    target_link_libraries(catagui_core PUBLIC shell32 ole32 uuid)
+    target_link_libraries(catagui_core PUBLIC shell32 ole32 uuid gdi32 user32)   # gdi32: screen capture
 else()
-    target_link_libraries(catagui_core PUBLIC m pthread)
+    target_link_libraries(catagui_core PUBLIC m pthread X11)   # X11: screen capture
 endif()
 catagui_warnings(catagui_core)
 
@@ -153,6 +155,7 @@ add_executable(catagui
     src/ui/layout_model.c
     src/ui/layout_editor.c
     src/ui/layout_drag.c
+    src/ui/area_select.c
     src/ui/layout.c)
 target_link_libraries(catagui PRIVATE catagui_core raylib)
 catagui_warnings(catagui)

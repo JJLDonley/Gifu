@@ -22,6 +22,8 @@ typedef struct BoardGrid {
     f32 x0, y0;             // first intersection (pixels)
     f32 step_x, step_y;     // distance between lines
     f32 score;              // fit quality (0..1, higher is better)
+    bool light_lines;       // light lines on a dark board
+    f32 strength;           // share of line pixels along the grid's lines when detected
 } BoardGrid;
 
 // size 0 = try 19, 13 and 9 and keep the best. False if no grid fits.
@@ -34,3 +36,7 @@ typedef struct BoardReading {
 } BoardReading;
 
 void board_read_stones(const RgbaImage *image, const BoardGrid *grid, BoardReading *out);
+
+// Share of line pixels along the grid's lines in this picture (compare with
+// grid->strength): near 0 when the board is covered, minimized or not drawn yet.
+f32 board_grid_strength(const RgbaImage *image, const BoardGrid *grid);

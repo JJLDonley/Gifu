@@ -58,6 +58,7 @@ static const ConfigField FIELDS[] = {
     STR("sync.capture", sync_capture, "auto"),
     STR("sync.capture_command", sync_capture_command, ""),
     INT("sync.interval_ms", sync_interval_ms, 400, 100, 10000),
+    STR("sync.area", sync_area, ""),
     INT("tsumego.margin", tsumego_margin, 2, 1, 5),
     INT("report.compare_rank", report_compare_rank, 11, 0, 11),
     INT("engine.max_processes", engine_max_processes, 1, 1, 4),

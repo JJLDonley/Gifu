@@ -7,6 +7,7 @@
 #include "base/log.h"
 #include "base/os.h"
 #include "ui/ui.h"
+#include "ui/area_select.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -80,7 +81,26 @@ static bool parse_args(int argc, char **argv, AppOptions *opts) {
     return true;
 }
 
+// --select-area X,Y,W,H [--select-hint TEXT]: the on-screen board picker (run by the app as a helper).
+static int select_area_main(int argc, char **argv) {
+    i64 v[4] = { 0 };
+    const char *hint = "Drag a box around the board  -  Esc cancels";
+    for (int i = 1; i + 1 < argc; ++i) {
+        if (strcmp(argv[i], "--select-hint") == 0) hint = argv[i + 1];
+        if (strcmp(argv[i], "--select-area") != 0) continue;
+        StringView rest = sv(argv[i + 1]);
+        for (int k = 0; k < 4; ++k) {
+            if (!sv_parse_i64(sv_trim(sv_chop_char(&rest, ',')), &v[k])) return 2;
+        }
+    }
+    if (v[2] <= 0 || v[3] <= 0) return 2;
+    return area_select_run((i32)v[0], (i32)v[1], (i32)v[2], (i32)v[3], hint);
+}
+
 int main(int argc, char **argv) {
+    for (int i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--select-area") == 0) return select_area_main(argc, argv);
+    }
     AppOptions options = { .screenshot_delay = 1.0 };
     if (!parse_args(argc, argv, &options)) {
         usage();

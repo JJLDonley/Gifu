@@ -118,12 +118,30 @@ bool board_grid_detect(const RgbaImage *im, i32 size, BoardGrid *out) {
             if (g.score > best) {
                 refine_axis(px, w, g.size, &g.x0, &g.step_x);
                 refine_axis(py, h, g.size, &g.y0, &g.step_y);
+                g.light_lines = light;
+                g.strength = 0;
+                for (i32 k = 0; k < g.size; ++k) g.strength += at(px, w, g.x0 + (f32)k * g.step_x, 1.0f) + at(py, h, g.y0 + (f32)k * g.step_y, 1.0f);
+                g.strength /= (f32)(2 * g.size);
                 best = g.score, *out = g;
             }
         }
     }
     free(lum), free(px), free(py);
     return out->size > 0;
+}
+
+f32 board_grid_strength(const RgbaImage *im, const BoardGrid *g) {
+    i32 w = im->width, h = im->height;
+    if (w < 2 * LINE_REACH + 1 || h < 2 * LINE_REACH + 1 || g->size <= 0) return 0;
+    f32 *lum = malloc(sizeof(f32) * (usize)w * (usize)h), *px = malloc(sizeof(f32) * (usize)w), *py = malloc(sizeof(f32) * (usize)h);
+    if (!lum || !px || !py) abort();
+    for (isize i = 0; i < (isize)w * h; ++i) lum[i] = luma(im->pixels + i * 4);
+    line_profile(im, lum, true, g->light_lines, px);
+    line_profile(im, lum, false, g->light_lines, py);
+    f32 sum = 0;
+    for (i32 k = 0; k < g->size; ++k) sum += at(px, w, g->x0 + (f32)k * g->step_x, 1.0f) + at(py, h, g->y0 + (f32)k * g->step_y, 1.0f);
+    free(lum), free(px), free(py);
+    return sum / (f32)(2 * g->size);
 }
 
 // ---- Stones -----------------------------------------------------------------------------------------

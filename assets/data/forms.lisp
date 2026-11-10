@@ -84,7 +84,18 @@
       (option none "Nobody")
       (option attacker "Attacker")
       (option defender "Defender")
-      (option both "Both"))))
+      (option both "Both")))
+  ;; Game -> Sync board from screen: follows a board shown by another program.
+  (section settings.sync :fallback "Board sync"
+    (choice sync.capture :columns 3 :label settings.sync_capture :fallback "Screen capture"
+      (option auto "Automatic")
+      (option gdi "Windows")
+      (option x11 "X11")
+      (option portal "Wayland portal")
+      (option grim "grim (wlroots)")
+      (option command "Command"))
+    (text sync.capture_command :placeholder "grim -  /  spectacle -b -n -o %f" :label settings.sync_command :fallback "Capture command (PNG to stdout, or to %f)")
+    (number sync.interval_ms :min 100 :max 5000 :step 100 :format "%.0f ms" :label settings.sync_interval :fallback "Time between captures")))
 
 (form new_game :title command.file.new :fallback "New game"
   (section settings.board :fallback Board

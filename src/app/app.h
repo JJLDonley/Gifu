@@ -13,6 +13,7 @@
 #include "engine/engine_profile.h"
 #include "engine/game_job.h"
 #include "engine/rank_estimator.h"
+#include "app/board_sync.h"
 
 typedef struct AppOptions {
     StringView sgf_path;
@@ -127,6 +128,13 @@ typedef struct App {
 
     BoardRegion region;         // tsumego: analysis restricted to this rectangle
 
+    // Board sync from the screen (app_sync.c).
+    BoardSync *board_sync;
+    BoardSyncState board_sync_state;
+    struct LineChannel *area_picker;   // `catagui --select-area` helper while picking
+    ScreenRect desktop;                // every monitor (filled by the UI each frame)
+    i32 window_request;                // APP_WINDOW_*: the UI minimizes / restores the window
+
     // Play vs AI: which colours the engine plays (indexed by Stone).
     bool ai_plays[3];
     bool ai_move_once;          // "engine, play one move now"
@@ -199,6 +207,14 @@ void app_reload_language(App *app);
 // applies side effects such as restarting the engine or reloading strings.
 void app_config_changed(App *app, StringView key);
 void app_batch_start(App *app);   // analyse the active line from the start
+
+// Board sync (app_sync.c): pick the board area on screen, then follow it.
+enum { APP_WINDOW_NONE, APP_WINDOW_MINIMIZE, APP_WINDOW_RESTORE };
+void app_sync_select(App *app);    // runs the on-screen picker, then starts syncing
+void app_sync_toggle(App *app);    // start with the saved area (or pick one) / stop
+void app_sync_stop(App *app);
+bool app_sync_running(const App *app);
+void app_sync_update(App *app);    // every frame
 void app_batch_stop(App *app);
 bool app_game_analysis_running(const App *app);
 // Progress of the running whole-game analysis (positions done / total).

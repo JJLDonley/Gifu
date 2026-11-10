@@ -696,6 +696,7 @@ static void autosave_update(App *app);
 
 void app_update(App *app) {
     autosave_update(app);
+    app_sync_update(app);
     analyzer_update(app);
     rank_update(app);
     second_update(app);
@@ -1285,6 +1286,10 @@ static bool ai_white(const void *c) { return CAPP(c)->ai_plays[STONE_WHITE]; }
 static void cmd_ai_move(void *c) { APP(c)->ai_move_once = true; }
 static bool can_ai_move(const void *c) { return CAPP(c)->main.status == ENGINE_STATUS_READY && !CAPP(c)->main.waiting_move; }
 
+static void cmd_sync_select(void *c) { app_sync_select(APP(c)); }
+static void cmd_sync_toggle(void *c) { app_sync_toggle(APP(c)); }
+static bool sync_on(const void *c) { return app_sync_running(CAPP(c)); }
+
 static const CommandDef APP_COMMANDS[] = {
     { "game.new", "Start game", "Start", cmd_new, NULL, NULL },
     { "file.open", "Open…", "Open", cmd_open, NULL, NULL },
@@ -1316,6 +1321,8 @@ static const CommandDef APP_COMMANDS[] = {
     { "analysis.rank", "Estimate ranks", "Ranks", cmd_rank, has_human_profile, rank_running },
     { "analysis.tsumego_frame", "Tsumego frame", "Frame", cmd_tsumego_frame, has_stones, NULL },
     { "game.write_result", "Save result", "Save result", cmd_write_result, has_result, NULL },
+    { "sync.select", "Sync board from screen…", "Sync", cmd_sync_select, NULL, NULL },
+    { "sync.toggle", "Board sync", "Sync", cmd_sync_toggle, NULL, sync_on },
 };
 
 String app_katago_dir(const App *app) { return path_join(string_sv(&app->root_dir), SV("katago")); }
@@ -1439,6 +1446,7 @@ bool app_init(App *app, const AppOptions *options) {
 }
 
 void app_shutdown(App *app) {
+    app_sync_stop(app);
     bool headless_run = app->options.screenshot.len > 0 || app->options.headless;
     if (app->config.sgf_autosave && !headless_run && app->tree->revision != app->autosaved_revision &&
         (app->tree->root->first_child || app->dirty)) {
