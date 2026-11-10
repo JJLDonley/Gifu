@@ -288,6 +288,23 @@ static void report_stat(Ui *ui, StringView label, StringView value, Color color)
 
 // One compact block per player: name, the four stats on one row, and the worst
 // moves as clickable chips (all of it fits the tab without scrolling).
+// Rank estimate chip shown after the player's name: "≈ 3d 82%".
+static void rank_chip(Ui *ui, Stone color) {
+    const ThemeColors *c = &ui->theme->colors;
+    const RankTally *t = &ui->app->rank.total[color];
+    i32 best = rank_tally_best(t);
+    if (best < 0) return;
+    f32 post[RANK_COUNT];
+    rank_tally_posterior(t, post);
+    CLAY({ .layout = { .childGap = ui_u16(ui, 4), .childAlignment = { .y = CLAY_ALIGN_Y_CENTER },
+                       .padding = { ui_u16(ui, 6), ui_u16(ui, 6), ui_u16(ui, 2), ui_u16(ui, 2) } },
+           .backgroundColor = color_to_clay(color_with_alpha(c->human_policy, 0.14f)),
+           .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 4)) }) {
+        CLAY_TEXT(ui_fmt(ui, "≈ " SV_FMT, SV_ARG(rank_label(best))), ui_text_style(ui, FONT_UI_BOLD, 12, c->human_policy));
+        CLAY_TEXT(ui_fmt(ui, "%.0f%%", post[best] * 100.0f), ui_text_style(ui, FONT_MONO, 10, c->text_muted));
+    }
+}
+
 static void report_player(Ui *ui, const PlayerReport *p, Stone color, StringView name) {
     const ThemeColors *c = &ui->theme->colors;
     CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM,
@@ -296,6 +313,7 @@ static void report_player(Ui *ui, const PlayerReport *p, Stone color, StringView
             ui_stone_dot(ui, color);
             ui_label(ui, name, FONT_UI_BOLD, 13, c->text);
             CLAY_TEXT(ui_fmt(ui, "· %d %s", p->moves, p->moves == 1 ? "move" : "moves"), ui_text_style(ui, FONT_UI, 11, c->text_muted));
+            if (ui->app->rank_valid && !ui->app->rank_job) rank_chip(ui, color);   // human-network rank estimate
         }
         CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 8) } }) {
             report_stat(ui, tr(ui, "report.accuracy", "Best move"), arena_format(&ui->frame, "%.0f%%", player_accuracy(p) * 100.0f), c->text);
@@ -330,24 +348,6 @@ static void report_player(Ui *ui, const PlayerReport *p, Stone color, StringView
     }
 }
 
-// Rank estimate chip for the header: "● ≈3d" (hover shows the confidence).
-static void rank_chip(Ui *ui, Stone color) {
-    const ThemeColors *c = &ui->theme->colors;
-    const RankTally *t = &ui->app->rank.total[color];
-    i32 best = rank_tally_best(t);
-    if (best < 0) return;
-    f32 post[RANK_COUNT];
-    rank_tally_posterior(t, post);
-    CLAY({ .layout = { .childGap = ui_u16(ui, 4), .childAlignment = { .y = CLAY_ALIGN_Y_CENTER },
-                       .padding = { ui_u16(ui, 6), ui_u16(ui, 6), ui_u16(ui, 2), ui_u16(ui, 2) } },
-           .backgroundColor = color_to_clay(color_with_alpha(c->human_policy, 0.14f)),
-           .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 4)) }) {
-        ui_stone_dot(ui, color);
-        CLAY_TEXT(ui_fmt(ui, "≈ " SV_FMT, SV_ARG(rank_label(best))), ui_text_style(ui, FONT_UI_BOLD, 12, c->human_policy));
-        CLAY_TEXT(ui_fmt(ui, "%.0f%%", post[best] * 100.0f), ui_text_style(ui, FONT_MONO, 10, c->text_muted));
-    }
-}
-
 static void panel_report(Ui *ui) {
     App *app = ui->app;
     const ThemeColors *c = &ui->theme->colors;
@@ -375,13 +375,9 @@ static void panel_report(Ui *ui) {
                     CLAY_TEXT(ui_fmt(ui, "%d / %d", report->analysed_nodes, (i32)count), ui_text_style(ui, FONT_UI, 12, c->text_muted));
                 }
             }
-            if (app->rank_valid && !app->rank_job) {
-                rank_chip(ui, STONE_BLACK);
-                rank_chip(ui, STONE_WHITE);
-            }
             ui_command_button_ex(ui, SV("analysis.rank"), SV("@rank"), false, BUTTON_NORMAL, 0);
             ui_command_button(ui, SV("analysis.game"), SV("@chart"), BUTTON_NORMAL, 0);
-            ui_command_button_ex(ui, SV("analysis.report"), SV(""), true, BUTTON_PRIMARY, 2);
+            ui_command_button_ex(ui, SV("analysis.report"), SV("@clipboard"), false, BUTTON_NORMAL, 2);
             ui_help_button(ui, SV("report"));
         }
         if (app_game_analysis_running(app) || app->rank_job) {

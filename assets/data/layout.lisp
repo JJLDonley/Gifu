@@ -14,7 +14,7 @@
 ;;          status board panel
 ;;   (button COMMAND :icon @name :label :style primary|ghost)
 ;;     icons: first prev next last prev2 next2 up down close plus stone_black
-;;            stone_white gear folder save play pause chart menu check
+;;            stone_white gear folder save play pause chart menu check help rank clipboard
 ;;   (panel NAME)  game_info winrate_summary winrate_graph variation_tree
 ;;                 candidates move_list report compare comment engine_log
 ;;   (tabs NAME... :grow)  one panel at a time in a fixed box

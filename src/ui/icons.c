@@ -68,6 +68,20 @@ static void icon_rank(Rectangle r, Color c, f32 w) {   // rising bars
     line(r, 0.5f, 0.74f, 0.5f, 0.44f, w, c);
     line(r, 0.72f, 0.74f, 0.72f, 0.28f, w, c);
 }
+static void icon_clipboard(Rectangle r, Color c, f32 w) {   // board with a clip and text lines
+    line(r, 0.26f, 0.24f, 0.26f, 0.84f, w, c);
+    line(r, 0.74f, 0.24f, 0.74f, 0.84f, w, c);
+    line(r, 0.26f, 0.84f, 0.74f, 0.84f, w, c);
+    line(r, 0.26f, 0.24f, 0.38f, 0.24f, w, c);
+    line(r, 0.62f, 0.24f, 0.74f, 0.24f, w, c);
+    line(r, 0.38f, 0.17f, 0.62f, 0.17f, w, c);   // clip
+    line(r, 0.38f, 0.17f, 0.38f, 0.29f, w, c);
+    line(r, 0.62f, 0.17f, 0.62f, 0.29f, w, c);
+    line(r, 0.38f, 0.29f, 0.62f, 0.29f, w, c);
+    line(r, 0.36f, 0.46f, 0.64f, 0.46f, w, c);   // lines of text
+    line(r, 0.36f, 0.59f, 0.64f, 0.59f, w, c);
+    line(r, 0.36f, 0.72f, 0.54f, 0.72f, w, c);
+}
 static void icon_gear(Rectangle r, Color c, f32 w) {
     Vector2 o = at(r, 0.5f, 0.5f);
     f32 R = r.width * 0.30f;
@@ -127,7 +141,7 @@ static const struct {
     { "close", icon_close }, { "plus", icon_plus }, { "stone_black", icon_stone_black },
     { "stone_white", icon_stone_white }, { "gear", icon_gear }, { "folder", icon_folder }, { "save", icon_save },
     { "play", icon_play }, { "pause", icon_pause }, { "chart", icon_chart }, { "menu", icon_menu },
-    { "check", icon_check }, { "chevron_down", icon_down }, { "help", icon_help }, { "rank", icon_rank },
+    { "check", icon_check }, { "chevron_down", icon_down }, { "help", icon_help }, { "rank", icon_rank }, { "clipboard", icon_clipboard },
 };
 
 i32 icon_find(StringView name) {
