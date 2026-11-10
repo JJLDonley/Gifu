@@ -194,6 +194,8 @@ void app_game_info_apply(App *app);
 String app_katago_dir(const App *app);
 // True when a running engine (main or second) has a human SL network.
 bool app_has_human_engine(const App *app);
+// Playing the engine without "Show evaluation": no win rate, score, graph, candidates, territory...
+bool app_eval_hidden(const App *app);
 // Starts / stops the rank estimate for the active line.
 void app_rank_start(App *app);
 void app_rank_stop(App *app);

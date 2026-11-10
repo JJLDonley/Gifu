@@ -367,7 +367,8 @@ static void draw_board(void *user, Rectangle bounds) {
         draw_grid(ui, &g, app->config.show_coordinates);
     }
 
-    const AnalysisSnapshot *analysis = app->analysis_valid ? app->analysis : NULL;
+    // Playing the engine with the evaluation hidden: no candidates, territory or previews.
+    const AnalysisSnapshot *analysis = app->analysis_valid && !app_eval_hidden(app) ? app->analysis : NULL;
     if (analysis && app->config.show_ownership && analysis->has_ownership) draw_ownership(ui, &g, analysis, board);
 
     // Stones: newly placed ones ease in (slight overshoot), removed ones fade out.
@@ -420,14 +421,13 @@ static void draw_board(void *user, Rectangle bounds) {
         }
         f32 fade = anim_towards(&ui->anim, CANDIDATE_KEY, analysis ? 1.0f : 0.0f, 10.0f, 0.0f);
         if (analysis && app->config.show_candidates && fade > 0.01f) draw_candidates(ui, &g, analysis, board, fade);
-        if (app->config.show_human_policy && app_human_policy_for(app, node)) draw_human_policy(ui, &g, app->human_policy, analysis, board);
-        // Ghost stone under the cursor, fading in/out per point.
-        for (i32 i = 0; i < board->width * board->height; ++i) {
-            Point p = board_point(board, i);
-            bool hovered = point_eq(p, ui->hover_point) && board->cells[i] == STONE_EMPTY &&
-                           board_check(board, (Move){ node->to_play, p }, app->tree->rules) == MOVE_OK;
-            f32 a = anim_towards(&ui->anim, 0x60000000u + (u32)i, hovered ? 0.45f : 0.0f, 18.0f, 0.0f);
-            if (a > 0.01f && board->cells[i] == STONE_EMPTY) draw_stone(ui->theme, point_center(&g, p), r, node->to_play, a);
+        if (app->config.show_human_policy && !app_eval_hidden(app) && app_human_policy_for(app, node)) draw_human_policy(ui, &g, app->human_policy, analysis, board);
+        // Ghost stone under the cursor: appears and disappears at once (a fade leaves
+        // a trail of half-visible stones behind the moving cursor).
+        Point hp = ui->hover_point;
+        if (hp.x >= 0 && hp.y >= 0 && hp.x < board->width && hp.y < board->height && board_at(board, hp) == STONE_EMPTY &&
+            board_check(board, (Move){ node->to_play, hp }, app->tree->rules) == MOVE_OK) {
+            draw_stone(ui->theme, point_center(&g, hp), r, node->to_play, 0.45f);
         }
     }
     if (ui->region_dragging) draw_region(ui, &g, ui->region_start, ui->region_end, false);
@@ -490,7 +490,7 @@ void board_view_handle_input(Ui *ui) {
     Point p = point_at(&g, ui->mouse);
     ui->hover_point = p;
 
-    if (app->analysis_valid && !point_is_pass(p) && app->config.show_candidates) {
+    if (app->analysis_valid && !app_eval_hidden(app) && !point_is_pass(p) && app->config.show_candidates) {
         for (i32 i = 0; i < app->analysis->candidate_count && i < app->config.max_candidates; ++i) {
             if (point_eq(app->analysis->candidates[i].move, p)) ui->hover_candidate = i;
         }

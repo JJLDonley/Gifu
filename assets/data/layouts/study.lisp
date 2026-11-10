@@ -6,7 +6,7 @@
     (menu menu.file
       file.new file.open file.save file.save_as :fallback "File")
     (menu menu.game
-      game.info - move.pass move.delete - game.ai_black game.ai_white game.ai_move game.match - game.score game.write_result - sync.select sync.toggle :fallback "Game")
+      game.info - move.pass move.delete - game.ai_black game.ai_white game.ai_move game.match game.show_eval - game.score game.write_result - sync.select sync.toggle :fallback "Game")
     (menu menu.navigate
       nav.first nav.back10 nav.back nav.forward nav.forward10 nav.last - nav.prev_variation nav.next_variation :fallback "Navigate")
     (menu menu.analysis

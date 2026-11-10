@@ -1279,6 +1279,14 @@ static void cmd_match(void *c) {
 }
 static bool in_match(const void *c) { return CAPP(c)->match_mode; }
 
+bool app_eval_hidden(const App *app) { return (app->ai_plays[STONE_BLACK] || app->ai_plays[STONE_WHITE]) && !app->config.ai_show_eval; }
+
+static void cmd_show_eval(void *c) {
+    App *app = APP(c);
+    app->config.ai_show_eval = !app->config.ai_show_eval;
+}
+static bool showing_eval(const void *c) { return CAPP(c)->config.ai_show_eval; }
+
 static void cmd_ai_black(void *c) { APP(c)->ai_plays[STONE_BLACK] = !APP(c)->ai_plays[STONE_BLACK]; }
 static void cmd_ai_white(void *c) { APP(c)->ai_plays[STONE_WHITE] = !APP(c)->ai_plays[STONE_WHITE]; }
 static bool ai_black(const void *c) { return CAPP(c)->ai_plays[STONE_BLACK]; }
@@ -1327,6 +1335,7 @@ static const CommandDef APP_COMMANDS[] = {
     { "analysis.rank", "Estimate ranks", "Ranks", cmd_rank, has_human_profile, rank_running },
     { "analysis.tsumego_frame", "Tsumego frame", "Frame", cmd_tsumego_frame, has_stones, NULL },
     { "game.write_result", "Save result", "Save result", cmd_write_result, has_result, NULL },
+    { "game.show_eval", "Show evaluation", "Eval", cmd_show_eval, NULL, showing_eval },
     { "sync.select", "Sync board from screen…", "Sync", cmd_sync_select, NULL, NULL },
     { "sync.toggle", "Board sync", "Sync", cmd_sync_toggle, NULL, sync_on },
     { "sync.screen", "Sync board", "Sync", cmd_sync_screen, NULL, sync_on },

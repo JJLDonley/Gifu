@@ -31,6 +31,7 @@ typedef struct Config {
     bool show_move_numbers;
     f32 ai_seconds_per_move;
     bool ai_human_style;      // engine moves come from the human network at ai.human_profile
+    bool ai_show_eval;          // win rate, score, graph, candidates... while playing the engine (hidden by default)
     i32 engine_max_processes;
     i32 report_compare_rank;
     bool sgf_autosave;         // save the game (with its analysis) automatically

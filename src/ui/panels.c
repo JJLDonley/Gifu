@@ -163,7 +163,8 @@ static void panel_move_list(Ui *ui) {
                 bool current = n == app->tree->current;
                 bool hovered = Clay_PointerOver(id);
                 f32 loss = 0;
-                bool has_loss = game_node_winrate_loss(n, &loss);
+                bool hide_eval = app_eval_hidden(app);
+                bool has_loss = !hide_eval && game_node_winrate_loss(n, &loss);
                 Color tint = has_loss && loss > 0.10f ? c->candidate_bad : has_loss && loss > 0.05f ? color_lerp(c->candidate_bad, c->candidate_good, 0.5f) : (Color){ 0 };
                 Color bg = current ? color_with_alpha(c->accent, 0.18f) : hovered ? c->hover : tint.a ? color_with_alpha(tint, 0.14f) : (Color){ 0 };
                 CLAY({ .id = id,
@@ -181,7 +182,7 @@ static void panel_move_list(Ui *ui) {
                         ui_label(ui, sv(coord), FONT_MONO, 13, c->text);
                     }
                     CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 56)), CLAY_SIZING_FIT(0) } } }) {
-                        if (n->eval.valid) CLAY_TEXT(ui_fmt(ui, "%.1f%%", n->eval.black_winrate * 100.0f), ui_text_style(ui, FONT_MONO, 12, c->text_muted));
+                        if (n->eval.valid && !hide_eval) CLAY_TEXT(ui_fmt(ui, "%.1f%%", n->eval.black_winrate * 100.0f), ui_text_style(ui, FONT_MONO, 12, c->text_muted));
                     }
                     CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childAlignment = { .x = CLAY_ALIGN_X_RIGHT } } }) {
                         if (has_loss && fabsf(loss) >= 0.005f) {
@@ -524,7 +525,33 @@ static const struct {
     { "engine_log", panel_engine_log },
 };
 
+// Panels that would show the engine's opinion while the user plays it.
+static bool shows_evaluation(StringView name) {
+    static const char *const EVAL_PANELS[] = { "winrate_summary", "winrate_graph", "candidates", "compare", "report" };
+    for (i32 i = 0; i < (i32)countof(EVAL_PANELS); ++i) {
+        if (sv_eq(name, sv(EVAL_PANELS[i]))) return true;
+    }
+    return false;
+}
+
+static void panel_hidden(Ui *ui, StringView name) {
+    const ThemeColors *c = &ui->theme->colors;
+    char key[96];
+    snprintf(key, sizeof(key), "panel." SV_FMT, SV_ARG(name));
+    u32 index = 0;   // one card (and button) per panel name: element ids must differ
+    for (isize i = 0; i < name.len; ++i) index = index * 31u + (u8)name.data[i];
+    CLAY(ui_card(ui, CLAY_IDI("PanelHidden", index))) {
+        ui_card_title(ui, app_tr(ui->app, key, key + 6));
+        ui_label(ui, tr(ui, "label.eval_hidden", "Hidden while you play the engine"), FONT_UI, 12, c->text_muted);
+        ui_command_button(ui, SV("game.show_eval"), SV(""), BUTTON_NORMAL, 100 + (index % 1000));
+    }
+}
+
 void panels_render(Ui *ui, StringView name) {
+    if (app_eval_hidden(ui->app) && shows_evaluation(name)) {
+        panel_hidden(ui, name);
+        return;
+    }
     for (i32 i = 0; i < (i32)countof(PANELS); ++i) {
         if (sv_eq(name, sv(PANELS[i].name))) {
             PANELS[i].render(ui);

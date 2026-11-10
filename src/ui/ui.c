@@ -126,6 +126,7 @@ static bool layout_editor_shown(const void *c) { return ((const Ui *)c)->dialog 
 static bool theme_editor_shown(const void *c) { return ((const Ui *)c)->dialog == UI_DIALOG_THEME_EDITOR; }
 static void cmd_deep_report(void *c) { open_dialog(UI(c), UI_DIALOG_REPORT); }
 static bool deep_report_shown(const void *c) { return ((const Ui *)c)->dialog == UI_DIALOG_REPORT; }
+static bool deep_report_allowed(const void *c) { return !app_eval_hidden(((const Ui *)c)->app); }
 static void cmd_game_info(void *c) {
     if (UI(c)->dialog != UI_DIALOG_GAME_INFO) app_game_info_load(UI(c)->app);   // fresh copy of the SGF root
     open_dialog(UI(c), UI_DIALOG_GAME_INFO);
@@ -170,7 +171,7 @@ static void register_ui_commands(Ui *ui) {
         { "game.info", "Game info…", "Info", cmd_game_info, NULL, NULL, ui },
         { "view.theme_editor", "Edit theme…", "Theme", cmd_theme_editor, NULL, theme_editor_shown, ui },
         { "view.layout_editor", "Customize layout…", "Layout", cmd_layout_editor, NULL, layout_editor_shown, ui },
-        { "analysis.report", "Deep report", "Deep report", cmd_deep_report, NULL, deep_report_shown, ui },
+        { "analysis.report", "Deep report", "Deep report", cmd_deep_report, deep_report_allowed, deep_report_shown, ui },
         { "engine.setup", "Download engines…", "Setup", cmd_setup, NULL, NULL, ui },
         { "view.next_tab", "Next tab", "Tab", cmd_next_tab, NULL, NULL, ui },
         { "view.menu", "Menu", "Menu", cmd_menu, NULL, NULL, ui },
