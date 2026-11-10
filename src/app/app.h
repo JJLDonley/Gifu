@@ -105,6 +105,7 @@ typedef struct App {
     // Human rank estimate (human SL network, own KataGo process).
     RankEstimator *rank_job;
     EngineSlot *rank_slot;      // engine lent to the rank job (not polled by the app meanwhile)
+    char human_profile_effective[48];   // app_human_profile's buffer
     bool rank_pending;          // requested while the engine was starting: runs once it is ready
     bool restart_main_pending, restart_second_pending;   // engine settings changed, not applied yet
     GameNode *rank_end;         // last node of the line the job is scoring
@@ -166,6 +167,8 @@ bool app_engine_settings_pending(const App *app);
 void app_mark_edited(App *app);
 // True if app->human_policy is the policy of `node` at the current human profile.
 bool app_human_policy_for(const App *app, const GameNode *node);
+// Effective humanSLProfile (ai.human_profile + ai.human_white_rank).
+StringView app_human_profile(App *app);
 // The user's KataGo settings (Settings -> KataGo) for engine_create / batch_analyzer_create.
 KataGoTuning app_katago_tuning(const App *app);
 // Game info dialog: copies the root SGF properties (players, ranks, komi,

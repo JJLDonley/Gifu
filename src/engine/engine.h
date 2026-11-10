@@ -112,6 +112,9 @@ static inline void engine_set_human_profile(Engine *e, StringView profile) {
 }
 // True for "rank_5k", "preaz_1d", "proyear_1990", "rank_3k_1d"... (safe to put in a config override).
 bool human_profile_valid(StringView profile);
+// `base` ("rank_5k", "preaz_1d", "proyear_1990") with White at `white_rank` ("1d";
+// empty = same) -> "rank_5k_1d". Profiles without ranks are returned unchanged.
+void human_profile_combine(StringView base, StringView white_rank, char *out, isize capacity);
 static inline void engine_destroy(Engine *e) {
     if (e) e->vtable->destroy(e);
 }

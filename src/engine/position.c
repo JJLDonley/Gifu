@@ -1,5 +1,7 @@
 #include "engine/engine.h"
 
+#include <stdio.h>
+
 #include <string.h>
 
 const char *engine_status_name(EngineStatus status) {
@@ -19,6 +21,15 @@ bool human_profile_valid(StringView profile) {
         if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_')) return false;
     }
     return true;
+}
+
+void human_profile_combine(StringView base, StringView white_rank, char *out, isize capacity) {
+    // KataGo: preaz_{BRANK}_{WRANK} / rank_{BRANK}_{WRANK} imitate Black and White at different ranks.
+    StringView prefix = sv_starts_with(base, SV("rank_")) ? SV("rank_") : sv_starts_with(base, SV("preaz_")) ? SV("preaz_") : SV("");
+    StringView black_rank = sv_drop(base, prefix.len);
+    bool split = prefix.len && white_rank.len && !sv_eq(white_rank, black_rank) && sv_find_char(black_rank, '_') < 0;
+    if (split) snprintf(out, (size_t)capacity, SV_FMT SV_FMT "_" SV_FMT, SV_ARG(prefix), SV_ARG(black_rank), SV_ARG(white_rank));
+    else snprintf(out, (size_t)capacity, SV_FMT, SV_ARG(base));
 }
 
 static bool has_setup_props(const GameNode *node) {

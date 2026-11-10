@@ -107,6 +107,14 @@ void app_set_region(App *app, BoardRegion region) {
     if (region.active) app_set_status(app, "Analysis limited to the selected region");
 }
 
+// The humanSLProfile everything uses (engines, overlay cache key, AI play, rank
+// estimates): ai.human_profile, with White at ai.human_white_rank when set.
+StringView app_human_profile(App *app) {
+    human_profile_combine(string_sv(&app->config.human_profile), string_sv(&app->config.human_white_rank), app->human_profile_effective,
+                          (isize)sizeof(app->human_profile_effective));
+    return sv(app->human_profile_effective);
+}
+
 KataGoTuning app_katago_tuning(const App *app) {
     const Config *c = &app->config;
     return (KataGoTuning){
@@ -160,7 +168,7 @@ static void start_engine(App *app) {
     }
     String err = { 0 };
     KataGoTuning tuning = app_katago_tuning(app);
-    app->main.engine = engine_create(profile, string_sv(&app->config.human_profile), &tuning, &err);
+    app->main.engine = engine_create(profile, app_human_profile(app), &tuning, &err);
     if (!app->main.engine) {
         app->main.status = ENGINE_STATUS_FAILED;
         app->main.error = err;
@@ -380,7 +388,7 @@ void app_second_engine(App *app, bool on) {
     }
     String err = { 0 };
     KataGoTuning tuning = app_katago_tuning(app);
-    s->engine = engine_create(p, string_sv(&app->config.human_profile), &tuning, &err);
+    s->engine = engine_create(p, app_human_profile(app), &tuning, &err);
     s->profile = p;
     if (!s->engine) {
         s->status = ENGINE_STATUS_FAILED;
@@ -418,13 +426,15 @@ static void on_human_policy(App *app, EngineSlot *s, const EngineEvent *ev) {
 // The overlay's policy belongs to a (position, human profile) pair: a different
 // strength simply makes it not match, nothing has to clear it.
 bool app_human_policy_for(const App *app, const GameNode *node) {
-    return app->human_policy_node == node && sv_eq(sv(app->human_policy_profile), string_sv(&app->config.human_profile));
+    char profile[48];
+    human_profile_combine(string_sv(&app->config.human_profile), string_sv(&app->config.human_white_rank), profile, (isize)sizeof(profile));
+    return app->human_policy_node == node && sv_eq(sv(app->human_policy_profile), sv(profile));
 }
 
 static void human_update(App *app) {
     EngineSlot *s = app->config.show_human_policy && !app->rank_job ? human_slot(app) : NULL;
     if (!s || s->synced_node != app->tree->current || app_human_policy_for(app, app->tree->current)) return;
-    StringView profile = string_sv(&app->config.human_profile);
+    StringView profile = app_human_profile(app);
     if (s->human_requested == s->synced_position_id && sv_eq(sv(s->human_requested_profile), profile)) return;   // asked already
     s->human_requested = s->synced_position_id;
     snprintf(s->human_requested_profile, sizeof(s->human_requested_profile), SV_FMT, SV_ARG(profile));
@@ -441,7 +451,7 @@ void app_rank_stop(App *app) {
     if (!slot || !slot->engine) return;
     slot->synced_node = NULL;
     slot->human_requested = 0;
-    engine_set_human_profile(slot->engine, string_sv(&app->config.human_profile));   // in case it changed meanwhile
+    engine_set_human_profile(slot->engine, app_human_profile(app));   // in case it changed meanwhile
     if (slot == &app->main) {
         if (app->analysis_enabled) app_set_analysis(app, true);
     } else {
@@ -474,7 +484,7 @@ void app_rank_start(App *app) {
     position_spec_from_node(app->tree, line[n - 1], string_sv(&app->config.rules), spec);
     app_batch_stop(app);
     slot->waiting_move = false;
-    app->rank_job = rank_estimator_start(slot->engine, spec, string_sv(&app->config.human_profile));
+    app->rank_job = rank_estimator_start(slot->engine, spec, app_human_profile(app));
     app->rank_slot = slot;
     app->rank_end = line[n - 1];
     app->rank_stored = 0;
@@ -765,10 +775,10 @@ void app_config_changed(App *app, StringView key) {
         app->restart_main_pending = true;
     } else if (sv_eq(key, SV("rules"))) {
         app->main.synced_node = NULL;   // resync sends kata-set-rules
-    } else if (sv_eq(key, SV("ai.human_profile"))) {   // switched in place (kata-set-param)
+    } else if (sv_eq(key, SV("ai.human_profile")) || sv_eq(key, SV("ai.human_white_rank"))) {   // switched in place (kata-set-param)
         if (!app->rank_job) {   // a running rank job restores the new value when it ends
-            if (app->main.engine) engine_set_human_profile(app->main.engine, string_sv(&app->config.human_profile));
-            if (app->second.engine) engine_set_human_profile(app->second.engine, string_sv(&app->config.human_profile));
+            if (app->main.engine) engine_set_human_profile(app->main.engine, app_human_profile(app));
+            if (app->second.engine) engine_set_human_profile(app->second.engine, app_human_profile(app));
         }
     } else if (sv_starts_with(key, SV("katago."))) {   // launch overrides: restart what is running (on Apply)
         if (app->main.engine) app->restart_main_pending = true;
@@ -1012,9 +1022,7 @@ static void cmd_new(void *c) {
     // The engine's name goes into PB/PW when that player has none.
     char engine_name[64] = "";
     if (engine_color != STONE_EMPTY) {
-        StringView profile = app->config.human_profile.len && sv_starts_with(string_sv(&app->config.human_profile), SV("rank_"))
-                                 ? sv_drop(string_sv(&app->config.human_profile), 5)
-                                 : string_sv(&app->config.human_profile);
+        StringView profile = sv_starts_with(app_human_profile(app), SV("rank_")) ? sv_drop(app_human_profile(app), 5) : app_human_profile(app);
         if (app->config.ai_human_style) snprintf(engine_name, sizeof(engine_name), "KataGo (human " SV_FMT ")", SV_ARG(profile));
         else snprintf(engine_name, sizeof(engine_name), "KataGo");
     }

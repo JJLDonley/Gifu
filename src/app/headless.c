@@ -223,7 +223,7 @@ int headless_rank(App *app) {
         return 2;
     }
     KataGoTuning tuning = app_katago_tuning(app);
-    Engine *engine = start_ready_engine(profile, string_sv(&app->config.human_profile), &tuning);
+    Engine *engine = start_ready_engine(profile, app_human_profile(app), &tuning);
     if (!engine) return 2;
     printf("Estimating ranks with %s\n", string_cstr(&profile->name));
     i32 failures = 0;
@@ -239,7 +239,7 @@ int headless_rank(App *app) {
         PositionSpec *spec = malloc(sizeof(PositionSpec));
         if (!spec) abort();
         position_spec_from_node(tree, tree->current, string_sv(&app->config.rules), spec);
-        RankEstimator *job = rank_estimator_start(engine, spec, string_sv(&app->config.human_profile));
+        RankEstimator *job = rank_estimator_start(engine, spec, app_human_profile(app));
         free(spec);
         f64 started = os_time_seconds(), last_print = 0;
         const RankProgress *p = rank_estimator_progress(job);

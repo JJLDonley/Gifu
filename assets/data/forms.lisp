@@ -55,7 +55,11 @@
       (option rank_1d 1d) (option rank_3d 3d) (option rank_5d 5d) (option rank_9d 9d) (option proyear_2023 "Pro 2023")
       ; Pre-AlphaZero style (human play before 2016) and professionals of a given year.
       (option preaz_15k "Pre-AZ 15k") (option preaz_5k "Pre-AZ 5k") (option preaz_1d "Pre-AZ 1d") (option preaz_5d "Pre-AZ 5d") (option preaz_9d "Pre-AZ 9d")
-      (option proyear_1800 "Pro 1800") (option proyear_1900 "Pro 1900") (option proyear_1950 "Pro 1950") (option proyear_1990 "Pro 1990") (option proyear_2015 "Pro 2015")))
+      (option proyear_1800 "Pro 1800") (option proyear_1900 "Pro 1900") (option proyear_1950 "Pro 1950") (option proyear_1990 "Pro 1990") (option proyear_2015 "Pro 2015"))
+    ;; KataGo rank_{B}_{W} / preaz_{B}_{W}: White imitated at another rank (rank and pre-AZ strengths only).
+    (choice ai.human_white_rank :columns 7 :label settings.human_white_rank :fallback "White plays like (empty: same as above)"
+      (option "" Same) (option 20k 20k) (option 15k 15k) (option 10k 10k) (option 7k 7k) (option 5k 5k) (option 3k 3k)
+      (option 1k 1k) (option 1d 1d) (option 3d 3d) (option 5d 5d) (option 7d 7d) (option 9d 9d)))
   (section settings.analysis :fallback Analysis
     (bool analysis.on_start :label settings.analyze_on_start :fallback "Analyze on start")
     (bool analysis.show_candidates :label command.analysis.candidates :fallback Candidates)

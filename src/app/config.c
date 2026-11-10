@@ -27,6 +27,7 @@ static const ConfigField FIELDS[] = {
     STR("engine2", engine2, ""),
     STR("install.backend", install_backend, "opencl"),
     STR("ai.human_profile", human_profile, "rank_5k"),
+    STR("ai.human_white_rank", human_white_rank, ""),
     STR("rules", rules, "chinese"),
     STR("last_directory", last_directory, ""),
     BOOL("analysis.on_start", analyze_on_start, 1),
