@@ -37,6 +37,11 @@ void thread_join(Thread *thread) {
     CloseHandle(thread->handle);
     thread->handle = NULL;
 }
+void thread_detach(Thread *thread) {
+    if (!thread->handle) return;
+    CloseHandle(thread->handle);   // the thread keeps running and cleans up after itself
+    thread->handle = NULL;
+}
 
 void mutex_init(Mutex *m) { InitializeSRWLock((SRWLOCK *)m->storage); }
 void mutex_lock(Mutex *m) { AcquireSRWLockExclusive((SRWLOCK *)m->storage); }
@@ -87,6 +92,12 @@ bool thread_start(Thread *thread, ThreadMain main, void *arg) {
 void thread_join(Thread *thread) {
     if (!thread->handle) return;
     pthread_join(*(pthread_t *)thread->handle, NULL);
+    free(thread->handle);
+    thread->handle = NULL;
+}
+void thread_detach(Thread *thread) {
+    if (!thread->handle) return;
+    pthread_detach(*(pthread_t *)thread->handle);
     free(thread->handle);
     thread->handle = NULL;
 }

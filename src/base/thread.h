@@ -22,6 +22,7 @@ typedef struct OnceFlag {
 
 NODISCARD bool thread_start(Thread *thread, ThreadMain main, void *arg);
 void thread_join(Thread *thread);
+void thread_detach(Thread *thread);   // let it finish on its own (no join)
 
 void mutex_init(Mutex *mutex);
 void mutex_lock(Mutex *mutex);

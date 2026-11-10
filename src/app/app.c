@@ -2,6 +2,7 @@
 
 #include "app/file_dialog.h"
 #include "core/tsumego_frame.h"
+#include "engine/line_channel.h"
 #include "base/log.h"
 
 #include <math.h>
@@ -1242,6 +1243,7 @@ void app_shutdown(App *app) {
     free(app->second.analysis);
     batch_analyzer_destroy(app->analyzer);
     app->analyzer = NULL;
+    line_channel_wait_reapers(5000);   // engines are stopped in the background: let them finish
     bool read_only = app->options.screenshot.len > 0 || app->options.headless;   // automated runs never touch user config
     if (!read_only && !config_save(&app->config)) log_warn("config not saved");
     game_tree_free(app->tree);

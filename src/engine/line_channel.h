@@ -27,4 +27,8 @@ bool line_channel_poll(LineChannel *channel, Line *out);
 bool line_channel_alive(const LineChannel *channel);
 void line_free(Line *line);
 // Writes `farewell` (if any), closes stdin, waits briefly, then kills.
+// Sends `farewell`, closes stdin and returns at once; the process is waited
+// for (and killed if needed) on a background thread.
 void line_channel_stop(LineChannel *channel, StringView farewell);
+// Blocks until every stopped channel's process is gone (call before exiting).
+void line_channel_wait_reapers(i32 timeout_ms);

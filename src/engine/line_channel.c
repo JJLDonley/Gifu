@@ -1,6 +1,7 @@
 #include "engine/line_channel.h"
 
 #include "base/log.h"
+#include "base/os.h"
 #include "base/thread.h"
 #include "base/vec.h"
 
@@ -101,10 +102,16 @@ bool line_channel_alive(const LineChannel *c) { return c->alive; }
 
 void line_free(Line *line) { string_free(&line->text); }
 
-void line_channel_stop(LineChannel *c, StringView farewell) {
-    if (!c) return;
-    if (c->alive && farewell.len) line_channel_send(c, farewell);
-    process_close_stdin(c->process);
+// Waiting for the process to exit (and killing it if it does not) takes up to a
+// few seconds: done on a detached "reaper" thread so the UI never freezes.
+// line_channel_wait_reapers() (app shutdown) waits until they are all done.
+static Mutex g_reaper_lock;
+static OnceFlag g_reaper_once = ONCE_FLAG_INITIALIZER;
+static i32 g_reapers;
+
+static void reaper_init(void) { mutex_init(&g_reaper_lock); }
+
+static void channel_finish(LineChannel *c) {
     if (!process_wait(c->process, 1500, NULL)) {
         process_kill(c->process);
         process_wait(c->process, 2000, NULL);
@@ -116,4 +123,40 @@ void line_channel_stop(LineChannel *c, StringView farewell) {
     vec_free(&c->queue);
     mutex_destroy(&c->lock);
     free(c);
+}
+
+static i32 reaper_main(void *arg) {
+    channel_finish(arg);
+    mutex_lock(&g_reaper_lock);
+    g_reapers--;
+    mutex_unlock(&g_reaper_lock);
+    return 0;
+}
+
+void line_channel_stop(LineChannel *c, StringView farewell) {
+    if (!c) return;
+    if (c->alive && farewell.len) line_channel_send(c, farewell);
+    process_close_stdin(c->process);   // most engines quit on EOF right away
+    run_once(&g_reaper_once, reaper_init);
+    mutex_lock(&g_reaper_lock);
+    g_reapers++;
+    mutex_unlock(&g_reaper_lock);
+    Thread reaper = { 0 };
+    if (thread_start(&reaper, reaper_main, c)) {
+        thread_detach(&reaper);
+    } else {
+        reaper_main(c);   // no thread: finish here
+    }
+}
+
+void line_channel_wait_reapers(i32 timeout_ms) {
+    run_once(&g_reaper_once, reaper_init);
+    for (i32 waited = 0; waited < timeout_ms; waited += 10) {
+        mutex_lock(&g_reaper_lock);
+        i32 n = g_reapers;
+        mutex_unlock(&g_reaper_lock);
+        if (n == 0) return;
+        os_sleep_ms(10);
+    }
+    log_warn("line channel: %d engine process(es) still shutting down", g_reapers);
 }
