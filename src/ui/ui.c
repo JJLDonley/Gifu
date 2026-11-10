@@ -428,6 +428,7 @@ void ui_frame(Ui *ui) {
     Clay_UpdateScrollContainers(true, (Clay_Vector2){ 0, 0 }, GetFrameTime());
     smooth_scroll(ui);
 
+    background_poll(&ui->background);   // paper generated in the background (board layer key includes its texture)
     Clay_BeginLayout();
     layout_build(ui);
     Clay_RenderCommandArray commands = Clay_EndLayout();

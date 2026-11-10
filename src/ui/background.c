@@ -151,23 +151,82 @@ static u64 paper_key(Color base, const PaperParams *p, i32 w, i32 h, bool stains
     return key;
 }
 
-static Texture2D paper_texture(StringView cache_dir, i32 w, i32 h, Color base, const PaperParams *p, bool stains) {
+static i32 paper_worker(void *arg) {
+    PaperJob *job = arg;
+    Image img = paper_generate(job->w, job->h, job->base, &job->params, job->stains);
+    if (job->cache_path.len && !ExportImage(img, string_cstr(&job->cache_path))) log_warn("paper cache: cannot write %s", string_cstr(&job->cache_path));
+    mutex_lock(&job->lock);
+    job->image = img;
+    job->done = true;
+    mutex_unlock(&job->lock);
+    return 0;
+}
+
+static void job_finish(PaperJob *job) {   // joins the worker; frees what it made
+    if (!job->running) return;
+    thread_join(&job->thread);
+    mutex_destroy(&job->lock);
+    if (job->image.data) UnloadImage(job->image);
+    job->image = (Image){ 0 };
+    string_free(&job->cache_path);
+    job->running = job->done = false;
+}
+
+// Cached PNG: loaded now (fast). Otherwise generated on a worker thread; the
+// solid theme colour shows until background_poll uploads it.
+static void paper_texture(Background *bg, StringView cache_dir, i32 w, i32 h, Color base, const PaperParams *p, bool stains, bool for_board) {
     String file = string_format("paper-%016llx.png", (unsigned long long)paper_key(base, p, w, h, stains));
     String path = path_join(cache_dir, string_sv(&file));
     string_free(&file);
     Texture2D tex = { 0 };
     if (os_file_exists(string_sv(&path))) tex = LoadTexture(string_cstr(&path));
-    if (!tex.id) {
+    if (tex.id) {
+        SetTextureFilter(tex, TEXTURE_FILTER_BILINEAR);
+        *(for_board ? &bg->paper : &bg->texture) = tex;
+        string_free(&path);
+        return;
+    }
+    PaperJob *job = &bg->jobs[for_board ? 1 : 0];
+    job_finish(job);   // an older job for the same slot (its result is stale anyway)
+    *job = (PaperJob){ .for_board = for_board, .generation = bg->generation, .w = w, .h = h, .base = base, .params = *p, .stains = stains };
+    if (cache_dir.len && os_make_dirs(cache_dir)) job->cache_path = path;
+    else string_free(&path);
+    mutex_init(&job->lock);
+    job->running = true;
+    if (!thread_start(&job->thread, paper_worker, job)) {   // no thread: do it here
+        job->running = false;
+        mutex_destroy(&job->lock);
         Image img = paper_generate(w, h, base, p, stains);
         tex = LoadTextureFromImage(img);
-        if (cache_dir.len && os_make_dirs(cache_dir) && !ExportImage(img, string_cstr(&path))) {
-            log_warn("paper cache: cannot write %s", string_cstr(&path));
-        }
         UnloadImage(img);
+        string_free(&job->cache_path);
+        if (tex.id) SetTextureFilter(tex, TEXTURE_FILTER_BILINEAR);
+        *(for_board ? &bg->paper : &bg->texture) = tex;
     }
-    string_free(&path);
-    if (tex.id) SetTextureFilter(tex, TEXTURE_FILTER_BILINEAR);
-    return tex;
+}
+
+bool background_poll(Background *bg) {
+    bool appeared = false;
+    for (i32 i = 0; i < 2; ++i) {
+        PaperJob *job = &bg->jobs[i];
+        if (!job->running) continue;
+        mutex_lock(&job->lock);
+        bool done = job->done;
+        mutex_unlock(&job->lock);
+        if (!done) continue;
+        if (job->generation == bg->generation && job->image.data) {
+            Texture2D tex = LoadTextureFromImage(job->image);
+            if (tex.id) {
+                SetTextureFilter(tex, TEXTURE_FILTER_BILINEAR);
+                Texture2D *slot = job->for_board ? &bg->paper : &bg->texture;
+                unload(slot);
+                *slot = tex;
+                appeared = true;
+            }
+        }
+        job_finish(job);
+    }
+    return appeared;
 }
 
 void background_build(Background *bg, const Theme *theme, StringView assets_dir, StringView cache_dir) {
@@ -176,6 +235,7 @@ void background_build(Background *bg, const Theme *theme, StringView assets_dir,
     unload(&bg->paper);
     string_free(&bg->built_for);
     bg->built_for = string_from(string_sv(&theme->id));
+    bg->generation++;   // results of jobs started for an earlier theme are dropped
 
     if (theme->background.kind == BACKGROUND_IMAGE && theme->background.image.len) {
         StringView image = string_sv(&theme->background.image);
@@ -189,9 +249,11 @@ void background_build(Background *bg, const Theme *theme, StringView assets_dir,
     if (want_paper) {
         f64 start = GetTime();
         const PaperParams *p = &theme->background.paper;
-        if (theme->background.kind == BACKGROUND_PAPER) bg->texture = paper_texture(cache_dir, 1600, 1000, theme->colors.background, p, true);
-        if (theme->board.style == BOARD_STYLE_PAPER) bg->paper = paper_texture(cache_dir, 800, 800, theme->colors.board, p, false);
-        log_info("theme %s: paper ready in %.0f ms", string_cstr(&theme->id), (GetTime() - start) * 1000.0);
+        if (theme->background.kind == BACKGROUND_PAPER) paper_texture(bg, cache_dir, 1600, 1000, theme->colors.background, p, true, false);
+        if (theme->board.style == BOARD_STYLE_PAPER) paper_texture(bg, cache_dir, 800, 800, theme->colors.board, p, false, true);
+        bool generating = bg->jobs[0].running || bg->jobs[1].running;
+        log_info("theme %s: paper %s in %.0f ms", string_cstr(&theme->id), generating ? "generating in the background, started" : "ready",
+                 (GetTime() - start) * 1000.0);
     }
 }
 
@@ -223,6 +285,7 @@ void background_draw(const Background *bg, const Theme *theme, Rectangle area) {
 }
 
 void background_free(Background *bg) {
+    for (i32 i = 0; i < 2; ++i) job_finish(&bg->jobs[i]);
     unload(&bg->texture);
     unload(&bg->paper);
     string_free(&bg->built_for);
