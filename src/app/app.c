@@ -130,7 +130,6 @@ static void stop_engine(App *app) {
     app->main.synced_node = NULL;
     app->main.waiting_move = false;
     app->main.human_requested = 0;
-    app->human_policy_node = NULL;   // may come from a different human profile
     app->score_requested = false;
     app->score_pending = false;
     app->analysis_valid = false;
@@ -370,7 +369,6 @@ void app_second_engine(App *app, bool on) {
     if (app->rank_slot == s) app_rank_stop(app);
     slot_clear(s);
     string_free(&s->error);
-    if (app->human_policy_node && !slot_has_human(&app->main)) app->human_policy_node = NULL;
     if (!on) {
         app->match_mode = false;
         return;
@@ -416,13 +414,22 @@ static void on_human_policy(App *app, EngineSlot *s, const EngineEvent *ev) {
     if (ev->position_id != s->synced_position_id || !s->synced_node) return;
     memcpy(app->human_policy, ev->human_policy, sizeof(HumanPolicy));
     app->human_policy_node = s->synced_node;
+    snprintf(app->human_policy_profile, sizeof(app->human_policy_profile), "%s", s->human_requested_profile);
+}
+
+// The overlay's policy belongs to a (position, human profile) pair: a different
+// strength simply makes it not match, nothing has to clear it.
+bool app_human_policy_for(const App *app, const GameNode *node) {
+    return app->human_policy_node == node && sv_eq(sv(app->human_policy_profile), string_sv(&app->config.human_profile));
 }
 
 static void human_update(App *app) {
     EngineSlot *s = app->config.show_human_policy && !app->rank_job ? human_slot(app) : NULL;
-    if (!s || s->synced_node != app->tree->current || s->human_requested == s->synced_position_id) return;
-    if (app->human_policy_node == app->tree->current) return;
+    if (!s || s->synced_node != app->tree->current || app_human_policy_for(app, app->tree->current)) return;
+    StringView profile = string_sv(&app->config.human_profile);
+    if (s->human_requested == s->synced_position_id && sv_eq(sv(s->human_requested_profile), profile)) return;   // asked already
     s->human_requested = s->synced_position_id;
+    snprintf(s->human_requested_profile, sizeof(s->human_requested_profile), SV_FMT, SV_ARG(profile));
     engine_request_human_policy(s->engine, s->synced_position_id);
 }
 
@@ -758,8 +765,6 @@ void app_config_changed(App *app, StringView key) {
     } else if (sv_eq(key, SV("rules"))) {
         app->main.synced_node = NULL;   // resync sends kata-set-rules
     } else if (sv_eq(key, SV("ai.human_profile"))) {   // switched in place (kata-set-param)
-        app->human_policy_node = NULL;
-        app->main.human_requested = app->second.human_requested = 0;
         if (!app->rank_job) {   // a running rank job restores the new value when it ends
             if (app->main.engine) engine_set_human_profile(app->main.engine, string_sv(&app->config.human_profile));
             if (app->second.engine) engine_set_human_profile(app->second.engine, string_sv(&app->config.human_profile));
@@ -783,7 +788,7 @@ static void replace_tree(App *app, GameTree *tree) {
     app->region = (BoardRegion){ 0 };   // board size may change
     game_tree_free(app->tree);
     app->tree = tree;
-    app->human_policy_node = NULL;
+    app->human_policy_node = NULL;   // points into the freed tree (its memory may be reused)
     app_rank_stop(app);
     app->main.synced_node = NULL;
     app->analysis_valid = false;

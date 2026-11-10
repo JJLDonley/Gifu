@@ -456,7 +456,7 @@ static void draw_board(void *user, Rectangle bounds) {
         }
         f32 fade = anim_towards(&ui->anim, CANDIDATE_KEY, analysis ? 1.0f : 0.0f, 10.0f, 0.0f);
         if (analysis && app->config.show_candidates && fade > 0.01f) draw_candidates(ui, &g, analysis, board, fade);
-        if (app->config.show_human_policy && app->human_policy_node == node) draw_human_policy(ui, &g, app->human_policy, analysis, board);
+        if (app->config.show_human_policy && app_human_policy_for(app, node)) draw_human_policy(ui, &g, app->human_policy, analysis, board);
         // Ghost stone under the cursor, fading in/out per point.
         for (i32 i = 0; i < board->width * board->height; ++i) {
             Point p = board_point(board, i);

@@ -51,7 +51,8 @@ typedef struct EngineSlot {
     AnalysisSnapshot *analysis;  // latest snapshot for synced_node (second slot; main uses App.analysis)
     bool analysis_valid;
     bool waiting_move;
-    u64 human_requested;   // synced_position_id the human policy was requested for           // a request_move is outstanding
+    u64 human_requested;           // synced_position_id the human policy was requested for...
+    char human_requested_profile[40];   // ...at this human profile
 } EngineSlot;
 
 typedef struct App {
@@ -79,7 +80,8 @@ typedef struct App {
     AnalysisSnapshot *analysis;   // latest snapshot for the current node
     bool analysis_valid;
     HumanPolicy *human_policy;          // human SL network policy ...
-    const GameNode *human_policy_node;  // ... valid while this is the current node
+    const GameNode *human_policy_node;  // ... for this position ...
+    char human_policy_profile[40];      // ... at this human profile (app_human_policy_for)
 
     String log_lines[APP_LOG_LINES];
     i32 log_head, log_count;
@@ -155,6 +157,8 @@ bool app_tsumego_frame(App *app);
 // Engine-restarting settings (engine, engine2, katago.*) wait for this (Settings -> Apply, or closing Settings).
 void app_apply_engine_settings(App *app);
 bool app_engine_settings_pending(const App *app);
+// True if app->human_policy is the policy of `node` at the current human profile.
+bool app_human_policy_for(const App *app, const GameNode *node);
 // The user's KataGo settings (Settings -> KataGo) for engine_create / batch_analyzer_create.
 KataGoTuning app_katago_tuning(const App *app);
 // Game info dialog: copies the root SGF properties (players, ranks, komi,
