@@ -148,6 +148,8 @@ catagui_warnings(catagui)
 if(WIN32)
     enable_language(RC)
     target_sources(catagui PRIVATE packaging/windows/catagui.rc)
+    # windres does not report the icon as a dependency: rebuild when it changes.
+    set_source_files_properties(packaging/windows/catagui.rc PROPERTIES OBJECT_DEPENDS ${CMAKE_SOURCE_DIR}/packaging/windows/catagui.ico)
     target_link_libraries(catagui PRIVATE comdlg32)
     # GUI subsystem in Release (no console window), console in Debug for logs.
     target_link_options(catagui PRIVATE $<$<CONFIG:Release>:-mwindows>)
