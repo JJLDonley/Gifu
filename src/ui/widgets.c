@@ -161,6 +161,11 @@ void ui_help_button(Ui *ui, StringView topic) {
             StringView title = app_tr(ui->app, key, "");
             snprintf(key, sizeof(key), "help." SV_FMT ".text", SV_ARG(topic));
             StringView text = app_tr(ui->app, key, "");
+            // "{rank}" stands for the rank the Deep report compares with.
+            for (isize at = sv_find(text, SV("{rank}")); at >= 0; at = sv_find(text, SV("{rank}"))) {
+                StringView label = rank_label(CLAMP(ui->app->config.report_compare_rank, 0, RANK_COUNT - 1));
+                text = arena_format(&ui->frame, SV_FMT SV_FMT SV_FMT, SV_ARG(sv_take(text, at)), SV_ARG(label), SV_ARG(sv_drop(text, at + 6)));
+            }
             // Opens upwards when the button is in the lower half of the window.
             Clay_ElementData button = Clay_GetElementData(id);
             bool up = button.found && button.boundingBox.y > (f32)GetScreenHeight() * 0.5f;

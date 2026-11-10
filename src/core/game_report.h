@@ -21,6 +21,7 @@ extern const f32 WINRATE_LOSS_BUCKETS[LOSS_BUCKETS - 1];   // 0.02 0.05 0.10 0.2
 
 typedef struct StageReport {
     i32 moves, top1, top3;
+    i32 mistakes, blunders;
     f32 accuracy;          // 0..100, mean of move_accuracy
     f32 avg_winrate_loss;  // 0..1
     f32 avg_score_loss;    // points

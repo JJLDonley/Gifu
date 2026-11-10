@@ -11,11 +11,18 @@
 
 enum { DEEP_MAX_LINE = 4096, TREND_WINDOW = 10 };
 
+typedef f32 RankProbs[RANK_COUNT];
+
 typedef struct DeepReport {
     Ui *ui;
     GameNode **line;
     isize count;
     GameReport report;
+    f32 page_h;                  // pixels available to a tab page
+    // Human-network rank data per line index (CGR[]), see rank_page.
+    f32 (*probs)[RANK_COUNT];
+    bool *has_probs;
+    i32 prob_moves;
 } DeepReport;
 
 static const char *const PHASE_KEYS[GAME_PHASES] = { "report.phase_opening", "report.phase_middle", "report.phase_endgame" };
@@ -26,6 +33,14 @@ static Color mid_loss_color(const ThemeColors *c) { return color_lerp((Color){ 2
 
 static StringView tr(Ui *ui, const char *key, const char *fallback) { return app_tr(ui->app, key, fallback); }
 
+// Translated text with "{rank}" replaced by a rank label ("9d").
+static StringView tr_rank(Ui *ui, const char *key, const char *fallback, StringView rank) {
+    StringView text = tr(ui, key, fallback);
+    isize at = sv_find(text, SV("{rank}"));
+    if (at < 0) return text;
+    return arena_format(&ui->frame, SV_FMT SV_FMT SV_FMT, SV_ARG(sv_take(text, at)), SV_ARG(rank), SV_ARG(sv_drop(text, at + 6)));
+}
+
 static StringView player_name(Ui *ui, Stone color) {
     StringView name = game_tree_info(ui->app->tree, color == STONE_BLACK ? SV("PB") : SV("PW"));
     if (name.len) return name;
@@ -33,15 +48,15 @@ static StringView player_name(Ui *ui, Stone color) {
 }
 
 static void section_title(Ui *ui, StringView title) {
-    CLAY_TEXT(ui_str(ui, title), CLAY_TEXT_CONFIG({ .fontId = FONT_UI_BOLD, .fontSize = ui_u16(ui, 12),
+    CLAY_TEXT(ui_str(ui, title), CLAY_TEXT_CONFIG({ .fontId = FONT_UI_BOLD, .fontSize = ui_u16(ui, 13),
                                                     .textColor = color_to_clay(ui->theme->colors.text_muted), .letterSpacing = 1 }));
 }
 
 static void stat_cell(Ui *ui, StringView label, StringView value, Color color) {
     const ThemeColors *c = &ui->theme->colors;
     CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM } }) {
-        ui_label(ui, label, FONT_UI, 11, c->text_muted);
-        ui_label(ui, value, FONT_UI_BOLD, 15, color);
+        ui_label(ui, label, FONT_UI, 12, c->text_muted);
+        ui_label(ui, value, FONT_UI_BOLD, 18, color);
     }
 }
 
@@ -92,50 +107,64 @@ static void summary_column(DeepReport *d, Stone color) {
 
 // ---- Phase table --------------------------------------------------------------------------------------
 
+static f32 g_cell_size = 15.0f;   // font size of table cells (set per table from the space it gets)
+
 static void cell(Ui *ui, StringView text, FontRole role, Color color, f32 width, bool right) {
     CLAY({ .layout = { .sizing = { width > 0 ? CLAY_SIZING_FIXED(ui_px(ui, width)) : CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) },
                        .childAlignment = { .x = right ? CLAY_ALIGN_X_RIGHT : CLAY_ALIGN_X_LEFT } } }) {
-        ui_label(ui, text, role, 13, color);
+        ui_label(ui, text, role, g_cell_size, color);
     }
 }
+
+// Logical font size that fits a row of `row_px` pixels.
+static f32 font_for_row(Ui *ui, f32 row_px, f32 lo, f32 hi) { return CLAMP(row_px / ui->scale * 0.42f, lo, hi); }
 
 static void phase_table(DeepReport *d) {
     Ui *ui = d->ui;
     const ThemeColors *c = &ui->theme->colors;
-    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM,
-                       .childGap = ui_u16(ui, 4) } }) {
-        // Header: phase | Black: accuracy best loss | White: accuracy best loss
+    g_cell_size = 16.0f;
+    // Grows to the rest of the page; the three phase rows share it.
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM } }) {
         CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 8),
-                           .padding = { 0, 0, 0, ui_u16(ui, 4) } },
+                           .padding = { 0, 0, 0, ui_u16(ui, 6) }, .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } },
                .border = { .color = color_to_clay(c->border), .width = { .bottom = 1 } } }) {
+            g_cell_size = 13.0f;
             cell(ui, SV(""), FONT_UI, c->text_muted, 0, false);
             for (Stone color = STONE_BLACK; color <= STONE_WHITE; ++color) {
-                CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 18)), CLAY_SIZING_FIT(0) } } }) { ui_stone_dot(ui, color); }
-                cell(ui, tr(ui, "report.accuracy_score", "accuracy"), FONT_UI, c->text_muted, 80, true);
-                cell(ui, tr(ui, "report.accuracy", "Best move"), FONT_UI, c->text_muted, 80, true);
-                cell(ui, tr(ui, "report.avg_score_loss", "Avg points lost"), FONT_UI, c->text_muted, 110, true);
+                CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 22)), CLAY_SIZING_FIT(0) } } }) { ui_stone_dot(ui, color); }
+                cell(ui, tr(ui, "report.accuracy_score", "accuracy"), FONT_UI, c->text_muted, 74, true);
+                cell(ui, tr(ui, "report.accuracy", "Best move"), FONT_UI, c->text_muted, 74, true);
+                cell(ui, tr(ui, "report.avg_score_loss", "Avg points lost"), FONT_UI, c->text_muted, 104, true);
+                cell(ui, tr(ui, "report.errors_short", "Mist./Blund."), FONT_UI, c->text_muted, 84, true);
             }
+            g_cell_size = 17.0f;
         }
         for (i32 ph = 0; ph < GAME_PHASES; ++ph) {
-            CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 8) } }) {
+            CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(0) }, .childGap = ui_u16(ui, 8),
+                               .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } },
+                   .border = { .color = color_to_clay(color_with_alpha(c->border, 0.5f)), .width = { .bottom = ph < GAME_PHASES - 1 } } }) {
                 cell(ui, tr(ui, PHASE_KEYS[ph], PHASE_FALLBACK[ph]), FONT_UI_BOLD, c->text, 0, false);
                 for (Stone color = STONE_BLACK; color <= STONE_WHITE; ++color) {
                     const StageReport *st = &d->report.player[color].stage[ph];
-                    CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 18)), CLAY_SIZING_FIT(0) } } }) {}
+                    CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 22)), CLAY_SIZING_FIT(0) } } }) {}
                     if (st->moves == 0) {
-                        cell(ui, SV("—"), FONT_MONO, c->text_muted, 80, true);
-                        cell(ui, SV("—"), FONT_MONO, c->text_muted, 80, true);
-                        cell(ui, SV("—"), FONT_MONO, c->text_muted, 110, true);
+                        cell(ui, SV("—"), FONT_MONO, c->text_muted, 74, true);
+                        cell(ui, SV("—"), FONT_MONO, c->text_muted, 74, true);
+                        cell(ui, SV("—"), FONT_MONO, c->text_muted, 104, true);
+                        cell(ui, SV("—"), FONT_MONO, c->text_muted, 84, true);
                         continue;
                     }
-                    cell(ui, arena_format(&ui->frame, "%.1f", st->accuracy), FONT_MONO, c->text, 80, true);
-                    cell(ui, arena_format(&ui->frame, "%.0f%%", 100.0f * (f32)st->top1 / (f32)st->moves), FONT_MONO, c->text, 80, true);
+                    cell(ui, arena_format(&ui->frame, "%.1f", st->accuracy), FONT_MONO, c->text, 74, true);
+                    cell(ui, arena_format(&ui->frame, "%.0f%%", 100.0f * (f32)st->top1 / (f32)st->moves), FONT_MONO, c->text, 74, true);
                     cell(ui, arena_format(&ui->frame, "%.2f", st->avg_score_loss), FONT_MONO,
-                         st->avg_score_loss > 2.0f ? c->candidate_bad : c->text, 110, true);
+                         st->avg_score_loss > 2.0f ? c->candidate_bad : c->text, 104, true);
+                    cell(ui, arena_format(&ui->frame, "%d / %d", st->mistakes, st->blunders), FONT_MONO,
+                         st->blunders ? c->candidate_bad : c->text, 84, true);
                 }
             }
         }
     }
+    g_cell_size = 15.0f;
 }
 
 // ---- Graphs ------------------------------------------------------------------------------------------
@@ -191,18 +220,16 @@ static void draw_loss_graph(void *user, Rectangle r) {
             DrawRectangleRec((Rectangle){ x, black ? mid - h : mid, bar, h }, color_with_alpha(col, 0.85f));
         }
     } else {
-        // Rolling accuracy (last TREND_WINDOW own moves) for each player, 0..100.
-        for (f32 v = 25.0f; v < 100.0f; v += 25.0f) {
-            f32 y = r.y + r.height * (1.0f - v / 100.0f);
-            DrawLineEx((Vector2){ r.x, y }, (Vector2){ r.x + r.width, y }, 1.0f, color_with_alpha(c->text_muted, 0.15f));
-        }
+        // Rolling accuracy (last TREND_WINDOW own moves) for each player. The vertical
+        // range is fitted to the data (lowest value rounded down to 10) so it fills the graph.
+        f32 *values = arena_new_array(&ui->frame, f32, d->count * 2 + 2);
+        f32 lo = 100.0f;
         for (Stone color = STONE_BLACK; color <= STONE_WHITE; ++color) {
             f32 window[TREND_WINDOW];
             i32 n = 0, head = 0;
-            Vector2 prev = { 0 };
-            bool has_prev = false;
-            Color col = color == STONE_BLACK ? c->winrate_black : c->score_line;
             for (isize i = 0; i < d->count; ++i) {
+                f32 *v = &values[(color - 1) * d->count + i];
+                *v = -1.0f;
                 const GameNode *node = d->line[i];
                 f32 loss = 0;
                 if (!node->has_move || node->move.color != color || !game_node_score_loss(node, &loss)) continue;
@@ -211,7 +238,30 @@ static void draw_loss_graph(void *user, Rectangle r) {
                 if (n < TREND_WINDOW) n++;
                 f32 sum = 0;
                 for (i32 k = 0; k < n; ++k) sum += window[k];
-                Vector2 p = { r.x + step * (f32)i, r.y + r.height * (1.0f - (sum / (f32)n) / 100.0f) };
+                *v = sum / (f32)n;
+                lo = fminf(lo, *v);
+            }
+        }
+        lo = fmaxf(0.0f, floorf((lo - 2.0f) / 10.0f) * 10.0f);
+        if (lo > 90.0f) lo = 90.0f;
+        f32 range = 100.0f - lo;
+        f32 label_size = 11.0f * ui->scale;
+        for (f32 v = lo; v <= 100.0f; v += 10.0f) {
+            f32 y = r.y + r.height * (1.0f - (v - lo) / range);
+            DrawLineEx((Vector2){ r.x, y }, (Vector2){ r.x + r.width, y }, 1.0f, color_with_alpha(c->text_muted, 0.15f));
+            char label[8];
+            snprintf(label, sizeof(label), "%.0f", v);
+            font_draw(ui->fonts, FONT_MONO, label_size, sv(label), (Vector2){ r.x + 4.0f * ui->scale, fminf(y + 2.0f, r.y + r.height - label_size) },
+                      color_with_alpha(c->text_muted, 0.8f));
+        }
+        for (Stone color = STONE_BLACK; color <= STONE_WHITE; ++color) {
+            Vector2 prev = { 0 };
+            bool has_prev = false;
+            Color col = color == STONE_BLACK ? c->winrate_black : c->score_line;
+            for (isize i = 0; i < d->count; ++i) {
+                f32 v = values[(color - 1) * d->count + i];
+                if (v < 0) continue;
+                Vector2 p = { r.x + step * (f32)i, r.y + r.height * (1.0f - (v - lo) / range) };
                 if (has_prev) DrawLineEx(prev, p, 2.0f * ui->scale, col);
                 prev = p;
                 has_prev = true;
@@ -231,7 +281,7 @@ static void graph(DeepReport *d, bool trend, u32 index, f32 height) {
     GraphData *g = arena_new(&ui->frame, GraphData);
     *g = (GraphData){ d, trend };
     Clay_ElementId id = CLAY_IDI("DeepGraph", index);
-    CLAY({ .id = id, .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(ui_px(ui, height)) } },
+    CLAY({ .id = id, .layout = { .sizing = { CLAY_SIZING_GROW(0), height > 0 ? CLAY_SIZING_FIXED(ui_px(ui, height)) : CLAY_SIZING_GROW(0) } },
            .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 4)), .custom = { .customData = ui_custom(ui, draw_loss_graph, g) } }) {}
     Clay_ElementData data = Clay_GetElementData(id);
     if (data.found && d->count > 1 && ui->mouse_down && Clay_PointerOver(id)) {
@@ -242,39 +292,40 @@ static void graph(DeepReport *d, bool trend, u32 index, f32 height) {
 
 static void legend_dot(Ui *ui, Color color, StringView text) {
     CLAY({ .layout = { .childGap = ui_u16(ui, 4), .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
-        CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 10)), CLAY_SIZING_FIXED(ui_px(ui, 10)) } },
+        CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 12)), CLAY_SIZING_FIXED(ui_px(ui, 12)) } },
                .backgroundColor = color_to_clay(color), .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 2)) }) {}
-        ui_label(ui, text, FONT_UI, 11, ui->theme->colors.text_muted);
+        ui_label(ui, text, FONT_UI, 13, ui->theme->colors.text_muted);
     }
 }
 
 // ---- Distribution ------------------------------------------------------------------------------------
 
-static void distribution(DeepReport *d, bool winrate) {
+static void distribution(DeepReport *d, bool winrate, f32 row_px) {
     Ui *ui = d->ui;
     const ThemeColors *c = &ui->theme->colors;
     static const char *const SCORE_LABELS[LOSS_BUCKETS] = { "< 0.5", "0.5–2", "2–5", "5–10", "≥ 10" };
     static const char *const WR_LABELS[LOSS_BUCKETS] = { "< 2%", "2–5%", "5–10%", "10–20%", "≥ 20%" };
     const char *const *LABELS = winrate ? WR_LABELS : SCORE_LABELS;
-    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM,
-                       .childGap = ui_u16(ui, 5) } }) {
+    f32 font = font_for_row(ui, row_px, 12.0f, 18.0f);
+    f32 bar_px = row_px * 0.62f;
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM } }) {
         for (i32 b = 0; b < LOSS_BUCKETS; ++b) {
-            CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 8),
+            CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(row_px) }, .childGap = ui_u16(ui, 12),
                                .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
-                CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 70)), CLAY_SIZING_FIT(0) } } }) {
-                    ui_label(ui, sv(LABELS[b]), FONT_MONO, 12, c->text);
+                CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, font * 6.0f)), CLAY_SIZING_FIT(0) } } }) {
+                    ui_label(ui, sv(LABELS[b]), FONT_MONO, font, c->text);
                 }
                 for (Stone color = STONE_BLACK; color <= STONE_WHITE; ++color) {
                     const PlayerReport *p = &d->report.player[color];
                     const i32 *hist = winrate ? p->winrate_hist : p->score_hist;
                     f32 share = p->moves ? (f32)hist[b] / (f32)p->moves : 0.0f;
                     Color col = b >= 3 ? c->candidate_bad : b == 2 ? mid_loss_color(c) : (color == STONE_BLACK ? c->winrate_black : c->score_line);
-                    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(ui_px(ui, 14)) }, .childGap = ui_u16(ui, 6),
+                    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(bar_px) }, .childGap = ui_u16(ui, 8),
                                        .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
                         CLAY({ .layout = { .sizing = { CLAY_SIZING_PERCENT(fmaxf(share * 0.8f, 0.004f)), CLAY_SIZING_GROW(0) } },
                                .backgroundColor = color_to_clay(color_with_alpha(col, 0.8f)),
-                               .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 2)) }) {}
-                        CLAY_TEXT(ui_fmt(ui, "%d · %.0f%%", hist[b], share * 100.0f), ui_text_style(ui, FONT_MONO, 11, c->text_muted));
+                               .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 3)) }) {}
+                        CLAY_TEXT(ui_fmt(ui, "%d · %.0f%%", hist[b], share * 100.0f), ui_text_style(ui, FONT_MONO, font * 0.85f, c->text_muted));
                     }
                 }
             }
@@ -306,9 +357,12 @@ static void mistakes(DeepReport *d) {
     }
     n = MIN(n, REPORT_WORST);
     if (n == 0) {
-        ui_label(ui, tr(ui, "report.no_mistakes", "No analysed moves yet: run Analyze game."), FONT_UI, 13, c->text_muted);
+        ui_label(ui, tr(ui, "report.no_mistakes", "No analysed moves yet: run Analyze game."), FONT_UI, 15, c->text_muted);
         return;
     }
+    f32 row_px = (d->page_h - ui_px(ui, 72)) / (f32)REPORT_WORST;
+    g_cell_size = font_for_row(ui, row_px, 13.0f, 17.0f);
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM } }) {   // no gap between rows
     CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 10),
                        .padding = { ui_u16(ui, 6), ui_u16(ui, 6), 0, ui_u16(ui, 4) } },
            .border = { .color = color_to_clay(c->border), .width = { .bottom = 1 } } }) {
@@ -332,8 +386,8 @@ static void mistakes(DeepReport *d) {
         bool over = Clay_PointerOver(id);
         f32 h = anim_towards(&ui->anim, id.id, over ? 1.0f : 0.0f, 18.0f, 0.0f);
         CLAY({ .id = id,
-               .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 10),
-                           .padding = { ui_u16(ui, 6), ui_u16(ui, 6), ui_u16(ui, 3), ui_u16(ui, 3) },
+               .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(row_px) }, .childGap = ui_u16(ui, 10),
+                           .padding = { ui_u16(ui, 6), ui_u16(ui, 6), 0, 0 },
                            .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } },
                .backgroundColor = color_to_clay(color_with_alpha(c->hover, h * c->hover.a / 255.0f)),
                .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 3)) }) {
@@ -346,6 +400,190 @@ static void mistakes(DeepReport *d) {
             cell(ui, has_points ? arena_format(&ui->frame, "-%.1f", points) : SV("—"), FONT_MONO, c->text, 100, true);
         }
         if (over && ui->mouse_pressed) app_goto(ui->app, node);
+    }
+    }
+    g_cell_size = 15.0f;
+}
+
+// ---- Rank (human network) ------------------------------------------------------------------------------
+
+typedef struct RankGraph {
+    DeepReport *d;
+    i32 ref;   // rank index compared against
+} RankGraph;
+
+// Per move: how likely a player of the reference rank would have played it
+// (Black's bars up, White's down; square-root scale so small values show).
+static void draw_rank_graph(void *user, Rectangle r) {
+    RankGraph *g = user;
+    DeepReport *d = g->d;
+    Ui *ui = d->ui;
+    const ThemeColors *c = &ui->theme->colors;
+    DrawRectangleRec(r, color_with_alpha(c->surface_alt, 0.6f));
+    if (d->count < 2) return;
+    f32 step = r.width / (f32)(d->count - 1);
+    phase_dividers(d, r, step);
+    f32 mid = r.y + r.height * 0.5f, half = r.height * 0.5f - 2.0f;
+    DrawLineEx((Vector2){ r.x, mid }, (Vector2){ r.x + r.width, mid }, 1.0f, color_with_alpha(c->text_muted, 0.4f));
+    f32 bar = fmaxf(1.0f, fminf(step * 0.7f, 8.0f * ui->scale));
+    for (isize i = 0; i < d->count; ++i) {
+        if (!d->has_probs[i]) continue;
+        f32 p = d->probs[i][g->ref];
+        f32 h = fmaxf(1.0f, half * sqrtf(CLAMP(p, 0.0f, 1.0f)));
+        bool black = d->line[i]->move.color == STONE_BLACK;
+        Color col = p < 0.02f ? c->candidate_bad : c->human_policy;
+        DrawRectangleRec((Rectangle){ r.x + step * (f32)i - bar * 0.5f, black ? mid - h : mid, bar, h }, color_with_alpha(col, 0.85f));
+    }
+    for (isize i = 0; i < d->count; ++i) {
+        if (d->line[i] != ui->app->tree->current) continue;
+        f32 x = r.x + step * (f32)i;
+        DrawLineEx((Vector2){ x, r.y }, (Vector2){ x, r.y + r.height }, 1.5f, c->accent);
+    }
+}
+
+static void rank_card(DeepReport *d, Stone color, i32 ref) {
+    Ui *ui = d->ui;
+    App *app = ui->app;
+    const ThemeColors *c = &ui->theme->colors;
+    const RankTally *t = &app->rank.total[color];
+    i32 est = rank_tally_best(t);
+    f32 post[RANK_COUNT];
+    rank_tally_posterior(t, post);
+    // Per-move comparison with the reference rank and the player's own estimate.
+    f64 sum_ref = 0, sum_est = 0;
+    i32 moves = 0, closer = 0, unlikely = 0;
+    isize worst[3] = { -1, -1, -1 };
+    for (isize i = 0; i < d->count; ++i) {
+        if (!d->has_probs[i] || d->line[i]->move.color != color) continue;
+        f32 pr = d->probs[i][ref], pe = est >= 0 ? d->probs[i][est] : 0.0f;
+        sum_ref += pr;
+        sum_est += pe;
+        moves++;
+        if (pr > pe) closer++;
+        if (pr < 0.02f) unlikely++;
+        for (i32 k = 0; k < 3; ++k) {   // the three moves the reference rank would least play
+            if (worst[k] < 0 || pr < d->probs[worst[k]][ref]) {
+                for (i32 m = 2; m > k; --m) worst[m] = worst[m - 1];
+                worst[k] = i;
+                break;
+            }
+        }
+    }
+    StringView ref_label = rank_label(ref);
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                       .childGap = ui_u16(ui, 10), .padding = CLAY_PADDING_ALL(ui_u16(ui, 12)) },
+           .backgroundColor = color_to_clay(c->surface_alt), .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 6)) }) {
+        CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 8),
+                           .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
+            ui_stone_dot(ui, color);
+            ui_label(ui, player_name(ui, color), FONT_UI_BOLD, 16, c->text);
+            CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) } } }) {}
+            if (est >= 0) {
+                CLAY_TEXT(ui_fmt(ui, "≈ " SV_FMT, SV_ARG(rank_label(est))), ui_text_style(ui, FONT_UI_BOLD, 22, c->human_policy));
+                CLAY_TEXT(ui_fmt(ui, "%.0f%%", post[est] * 100.0f), ui_text_style(ui, FONT_MONO, 13, c->text_muted));
+            }
+        }
+        // Posterior over ranks: the estimate is filled, the reference rank outlined.
+        f32 bar_h = ui_px(ui, 64);
+        CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 3) } }) {
+            for (i32 r = 0; r < RANK_COUNT; ++r) {
+                f32 h = fmaxf(ui_px(ui, 2), bar_h * fminf(1.0f, post[r] / fmaxf(est >= 0 ? post[est] : 1.0f, 1e-6f)));
+                Clay_BorderWidth outline = { 0 };
+                if (r == ref) outline = (Clay_BorderWidth)CLAY_BORDER_OUTSIDE(2);
+                CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                                   .childGap = ui_u16(ui, 3), .childAlignment = { .x = CLAY_ALIGN_X_CENTER } } }) {
+                    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(bar_h) }, .childAlignment = { .y = CLAY_ALIGN_Y_BOTTOM } } }) {
+                        CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(h) } },
+                               .backgroundColor = color_to_clay(r == est ? c->human_policy : color_with_alpha(c->human_policy, 0.35f)),
+                               .border = { .color = color_to_clay(c->accent), .width = outline },
+                               .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 2)) }) {}
+                    }
+                    ui_label(ui, rank_label(r), FONT_MONO, 11, r == ref ? c->accent : c->text_muted);
+                }
+            }
+        }
+        // Comparison with the reference rank.
+        CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 10) } }) {
+            stat_cell(ui, tr_rank(ui, "report.rank_ref_plays", "{rank} would play", ref_label),
+                      moves ? arena_format(&ui->frame, "%.1f%%", 100.0 * sum_ref / moves) : SV("—"), c->text);
+            stat_cell(ui, tr(ui, "report.rank_own", "Own rank would play"),
+                      moves && est >= 0 ? arena_format(&ui->frame, "%.1f%%", 100.0 * sum_est / moves) : SV("—"), c->text);
+            stat_cell(ui, tr_rank(ui, "report.rank_closer", "More {rank}-like", ref_label),
+                      moves ? arena_format(&ui->frame, "%.0f%%", 100.0 * closer / moves) : SV("—"), c->text);
+            stat_cell(ui, tr_rank(ui, "report.rank_unlikely_for", "Unlikely for {rank}", ref_label),
+                      arena_format(&ui->frame, "%d", unlikely), unlikely ? c->candidate_bad : c->text);
+        }
+        // Per phase.
+        CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 14) } }) {
+            for (i32 ph = 0; ph < GAME_PHASES; ++ph) {
+                i32 r = rank_tally_best(&app->rank.phase[ph][color]);
+                CLAY({ .layout = { .childGap = ui_u16(ui, 5), .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
+                    ui_label(ui, tr(ui, PHASE_KEYS[ph], PHASE_FALLBACK[ph]), FONT_UI, 13, c->text_muted);
+                    ui_label(ui, r >= 0 ? rank_label(r) : SV("—"), FONT_UI_BOLD, 15, c->text);
+                }
+            }
+        }
+        // The moves the reference rank would least play.
+        CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 6),
+                           .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
+            ui_label(ui, tr_rank(ui, "report.rank_least", "Least {rank}-like", ref_label), FONT_UI, 13, c->text_muted);
+            for (i32 k = 0; k < 3; ++k) {
+                if (worst[k] < 0) continue;
+                GameNode *node = d->line[worst[k]];
+                char coord[8];
+                point_to_gtp(node->move.point, node->board.width, node->board.height, coord);
+                Clay_ElementId id = CLAY_IDI("RankLeast", (u32)(color * 8 + k));
+                bool over = Clay_PointerOver(id);
+                CLAY({ .id = id, .layout = { .childGap = ui_u16(ui, 5), .padding = { ui_u16(ui, 7), ui_u16(ui, 7), ui_u16(ui, 2), ui_u16(ui, 2) } },
+                       .backgroundColor = color_to_clay(over ? c->hover : c->surface),
+                       .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 4)) }) {
+                    CLAY_TEXT(ui_fmt(ui, "%d %s", node->move_number, coord), ui_text_style(ui, FONT_MONO, 13, c->text));
+                    CLAY_TEXT(ui_fmt(ui, "%.1f%%", d->probs[worst[k]][ref] * 100.0f), ui_text_style(ui, FONT_MONO, 13, c->candidate_bad));
+                }
+                if (over && ui->mouse_pressed) app_goto(app, node);
+            }
+        }
+    }
+}
+
+static void rank_page(DeepReport *d) {
+    Ui *ui = d->ui;
+    App *app = ui->app;
+    const ThemeColors *c = &ui->theme->colors;
+    if (d->prob_moves == 0) {
+        ui_label(ui, tr(ui, "report.rank_none", "No rank estimate for this game yet."), FONT_UI, 15, c->text_muted);
+        ui_command_button_ex(ui, SV("analysis.rank"), SV("@rank"), true, BUTTON_PRIMARY, 20);
+        return;
+    }
+    i32 ref = CLAMP(app->config.report_compare_rank, 0, RANK_COUNT - 1);
+    // Reference rank picker.
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 4),
+                       .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
+        CLAY({ .layout = { .padding = { 0, ui_u16(ui, 8), 0, 0 } } }) {
+            ui_label(ui, tr(ui, "report.compare_with", "Compare with"), FONT_UI_BOLD, 14, c->text);
+        }
+        for (i32 r = 0; r < RANK_COUNT; ++r) {
+            if (ui_button(ui, CLAY_IDI("RankRef", (u32)r), rank_label(r), BUTTON_NORMAL, r == ref, true)) app->config.report_compare_rank = r;
+        }
+        ui_help_button(ui, SV("rank_compare"));
+    }
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 12) } }) {
+        rank_card(d, STONE_BLACK, ref);
+        rank_card(d, STONE_WHITE, ref);
+    }
+    CLAY({ .layout = { .childGap = ui_u16(ui, 12), .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
+        legend_dot(ui, c->human_policy, tr_rank(ui, "report.rank_graph", "How likely a {rank} plays each move (Black up, White down)", rank_label(ref)));
+        legend_dot(ui, c->candidate_bad, tr(ui, "report.rank_unlikely", "under 2%"));
+    }
+    RankGraph *g = arena_new(&ui->frame, RankGraph);
+    *g = (RankGraph){ d, ref };
+    Clay_ElementId id = CLAY_ID("RankGraph");
+    CLAY({ .id = id, .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(0) } },
+           .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 4)), .custom = { .customData = ui_custom(ui, draw_rank_graph, g) } }) {}
+    Clay_ElementData data = Clay_GetElementData(id);
+    if (data.found && d->count > 1 && ui->mouse_down && Clay_PointerOver(id)) {
+        f32 t = (ui->mouse.x - data.boundingBox.x) / fmaxf(1.0f, data.boundingBox.width);
+        app_goto(app, d->line[(isize)lroundf(CLAMP(t, 0.0f, 1.0f) * (f32)(d->count - 1))]);
     }
 }
 
@@ -381,9 +619,10 @@ static void body(Ui *ui, void *user) {
         ui_help_button(ui, SV("deep_report"));
     }
     // Tabs: one kind of data per page.
-    enum { TAB_OVERVIEW, TAB_GRAPHS, TAB_DISTRIBUTION, TAB_MISTAKES, TAB_COUNT };
-    static const char *const TAB_KEYS[TAB_COUNT] = { "report.tab_overview", "report.tab_graphs", "report.tab_distribution", "report.tab_mistakes" };
-    static const char *const TAB_FALLBACK[TAB_COUNT] = { "Overview", "Graphs", "Distribution", "Mistakes" };
+    enum { TAB_OVERVIEW, TAB_RANK, TAB_GRAPHS, TAB_DISTRIBUTION, TAB_MISTAKES, TAB_COUNT };
+    static const char *const TAB_KEYS[TAB_COUNT] = { "report.tab_overview", "report.tab_rank", "report.tab_graphs", "report.tab_distribution",
+                                                     "report.tab_mistakes" };
+    static const char *const TAB_FALLBACK[TAB_COUNT] = { "Overview", "Rank", "Graphs", "Distribution", "Mistakes" };
     i32 tab = CLAMP(ui->deep_report_tab, 0, TAB_COUNT - 1);
     CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 4),
                        .padding = { 0, 0, 0, ui_u16(ui, 6) } },
@@ -395,7 +634,8 @@ static void body(Ui *ui, void *user) {
         }
     }
     // Fixed-height page so switching tabs never resizes the dialog; long pages scroll inside.
-    f32 page_h = fminf(ui_px(ui, 540), (f32)GetScreenHeight() * 0.62f);
+    f32 page_h = fminf(ui_px(ui, 560), (f32)GetScreenHeight() * 0.64f);
+    d->page_h = page_h;
     CLAY({ .id = CLAY_ID("DeepPage"),
            .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(page_h) }, .layoutDirection = CLAY_TOP_TO_BOTTOM,
                        .childGap = ui_u16(ui, 12) },
@@ -409,31 +649,36 @@ static void body(Ui *ui, void *user) {
                 block(ui, tr(ui, "report.by_phase", "BY PHASE"), SV(""));
                 phase_table(d);
                 break;
+            case TAB_RANK: rank_page(d); break;
             case TAB_GRAPHS:
                 block(ui, tr(ui, "report.points_per_move", "POINTS LOST PER MOVE"), SV("loss_graph"));
                 CLAY({ .layout = { .childGap = ui_u16(ui, 12) } }) {
                     legend_dot(ui, c->text_muted, tr(ui, "report.legend_small", "< 2 points"));
                     legend_dot(ui, mid_loss_color(c), tr(ui, "report.legend_mistake", "2–5 points"));
                     legend_dot(ui, c->candidate_bad, tr(ui, "report.legend_blunder", "≥ 5 points"));
-                    ui_label(ui, tr(ui, "report.legend_sides", "Black above the line, White below"), FONT_UI, 11, c->text_muted);
+                    ui_label(ui, tr(ui, "report.legend_sides", "Black above the line, White below"), FONT_UI, 13, c->text_muted);
                 }
-                graph(d, false, 0, 210);
+                graph(d, false, 0, 0);
                 block(ui, tr(ui, "report.accuracy_trend", "ACCURACY TREND (LAST 10 MOVES)"), SV(""));
                 CLAY({ .layout = { .childGap = ui_u16(ui, 12) } }) {
                     legend_dot(ui, c->winrate_black, player_name(ui, STONE_BLACK));
                     legend_dot(ui, c->score_line, player_name(ui, STONE_WHITE));
                 }
-                graph(d, true, 1, 170);
+                graph(d, true, 1, 0);
                 break;
             case TAB_DISTRIBUTION:
                 CLAY({ .layout = { .childGap = ui_u16(ui, 12) } }) {
                     legend_dot(ui, c->winrate_black, player_name(ui, STONE_BLACK));
                     legend_dot(ui, c->score_line, player_name(ui, STONE_WHITE));
                 }
+            {
+                // Ten rows (two tables of five) share what is left after the titles.
+                f32 row_px = (page_h - ui_px(ui, 120)) / (f32)(2 * LOSS_BUCKETS);
                 block(ui, tr(ui, "report.distribution", "POINTS LOST PER MOVE"), SV(""));
-                distribution(d, false);
+                distribution(d, false, row_px);
                 block(ui, tr(ui, "report.distribution_wr", "WIN RATE LOST PER MOVE"), SV(""));
-                distribution(d, true);
+                distribution(d, true, row_px);
+            }
                 break;
             default:
                 block(ui, tr(ui, "report.biggest", "BIGGEST MISTAKES"), SV(""));
@@ -449,5 +694,13 @@ void deep_report_dialog(Ui *ui) {
     d->line = arena_new_array(&ui->frame, GameNode *, DEEP_MAX_LINE);
     d->count = MIN(game_tree_active_line(ui->app->tree, d->line, DEEP_MAX_LINE), (isize)DEEP_MAX_LINE);
     game_report_compute(d->line, d->count, &d->report);
+    d->probs = arena_new_array(&ui->frame, RankProbs, d->count + 1);
+    d->has_probs = arena_new_array(&ui->frame, bool, d->count + 1);
+    for (isize i = 0; i < d->count; ++i) {
+        const GameNode *node = d->line[i];
+        StringView text = node->has_move ? game_node_prop(node, SV(RANK_SGF_PROP)) : SV("");
+        d->has_probs[i] = text.len && rank_probs_parse(text, d->probs[i]);
+        d->prob_moves += d->has_probs[i];
+    }
     ui_modal_shell(ui, tr(ui, "report.deep_title", "Deep report"), 940, body, NULL, d);
 }

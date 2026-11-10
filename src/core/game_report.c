@@ -68,8 +68,8 @@ void game_report_compute(GameNode *const *line, isize count, GameReport *out) {
         stage_acc[phase][c] += acc;
         p->score_hist[bucket(SCORE_LOSS_BUCKETS, score_loss)]++;
         p->winrate_hist[bucket(WINRATE_LOSS_BUCKETS, wr_loss)]++;
-        if (wr_loss > 0.10f) p->blunders++;
-        else if (wr_loss > 0.05f) p->mistakes++;
+        if (wr_loss > 0.10f) p->blunders++, st->blunders++;
+        else if (wr_loss > 0.05f) p->mistakes++, st->mistakes++;
         const NodeEval *before = &n->parent->eval;
         for (i32 k = 0; k < before->top_count; ++k) {
             if (!point_eq(before->top[k], n->move.point)) continue;

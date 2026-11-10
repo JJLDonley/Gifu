@@ -40,6 +40,7 @@ static const ConfigField FIELDS[] = {
     BOOL("board.show_move_numbers", show_move_numbers, 0),
     FLOAT("ai.seconds_per_move", ai_seconds_per_move, 2.0, 0.1, 120.0),
     BOOL("ai.human_style", ai_human_style, 0),
+    INT("report.compare_rank", report_compare_rank, 11, 0, 11),
     INT("engine.max_processes", engine_max_processes, 1, 1, 4),
     INT("new_game.size", new_game_size, 19, 5, 25),
     FLOAT("new_game.komi", new_game_komi, 7.5, -150.0, 150.0),
