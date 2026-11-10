@@ -8,6 +8,7 @@
 #include "base/sexpr.h"
 #include "ui/anim.h"
 #include "ui/background.h"
+#include "ui/layout_model.h"
 #include "ui/clay_render.h"
 #include "ui/font_cache.h"
 #include "ui/theme.h"
@@ -58,6 +59,7 @@ typedef enum UiDialog {
     UI_DIALOG_GAME_INFO,
     UI_DIALOG_REPORT,
     UI_DIALOG_THEME_EDITOR,
+    UI_DIALOG_LAYOUT_EDITOR,
 } UiDialog;
 
 // Theme editor state (theme_editor.c): `edit` is the live copy ui->theme points to while open.
@@ -72,6 +74,15 @@ typedef struct ThemeEditor {
     u32 version;            // bumped on every edit (board layer cache key)
     bool background_stale;  // background colour changed: rebuild the paper when the drag ends
 } ThemeEditor;
+
+// "Customize layout" dialog state (layout_editor.c).
+typedef struct LayoutEditor {
+    bool open;
+    LayoutModel model;
+    String source;          // text the model's positions refer to (the active layout file)
+    bool had_user_file;     // <config_dir>/layout.lisp existed when the dialog opened
+    String original_user;   // ...and its contents (Undo changes)
+} LayoutEditor;
 
 typedef struct Ui {
     App *app;
@@ -98,6 +109,7 @@ typedef struct Ui {
     char help_topic[32];   // open "?" popover (empty = none)
     i32 deep_report_tab;
     ThemeEditor theme_editor;
+    LayoutEditor layout_editor;
     i32 form_tab;          // selected section of a tabbed form (Settings)
     bool help_button_hovered;   // a "?" button is under the mouse (this frame)
 
@@ -179,6 +191,9 @@ void ui_reload_themes(Ui *ui);   // built-in + user themes, again (after saving 
 void theme_editor_open(Ui *ui);
 void theme_editor_cancel(Ui *ui);
 void theme_editor_dialog(Ui *ui);
+void layout_editor_open(Ui *ui);
+void layout_editor_close(Ui *ui);
+void layout_editor_dialog(Ui *ui);
 
 // ---- Shared helpers (widgets.c) ---------------------------------------------------------------
 

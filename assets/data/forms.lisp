@@ -21,7 +21,8 @@
       (option ja "日本語")
       (option ko "한국어"))
     (number ui_scale :min 0.75 :max 2.0 :step 0.05 :format "%.2f×" :label settings.ui_scale :fallback "Interface scale")
-    (command view.theme_editor))
+    (command view.theme_editor)
+    (command view.layout_editor))
   (section settings.board :fallback Board
     (bool board.show_coordinates :label command.view.coordinates :fallback Coordinates)
     (bool board.show_move_numbers :label command.view.move_numbers :fallback "Move numbers")

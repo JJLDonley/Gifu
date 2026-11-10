@@ -325,6 +325,7 @@ void ui_modal_shell(Ui *ui, StringView title, f32 width, ModalSection body, Moda
 void ui_close_dialog(Ui *ui) {
     if (ui->dialog == UI_DIALOG_SETTINGS) app_apply_engine_settings(ui->app);   // nothing left half-applied
     if (ui->dialog == UI_DIALOG_THEME_EDITOR) theme_editor_cancel(ui);          // closed without Save
+    if (ui->dialog == UI_DIALOG_LAYOUT_EDITOR) layout_editor_close(ui);         // changes are already saved
     ui->dialog = UI_DIALOG_NONE;
     ui->focus_id = 0;
 }
@@ -376,5 +377,6 @@ void ui_dialogs(Ui *ui) {
         case UI_DIALOG_GAME_INFO: ui_modal(ui, ui_form(ui, "game_info"), 520, game_info_footer, NULL); break;
         case UI_DIALOG_REPORT: deep_report_dialog(ui); break;
         case UI_DIALOG_THEME_EDITOR: theme_editor_dialog(ui); break;
+        case UI_DIALOG_LAYOUT_EDITOR: layout_editor_dialog(ui); break;
     }
 }

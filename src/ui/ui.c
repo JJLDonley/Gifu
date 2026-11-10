@@ -121,6 +121,8 @@ static void cmd_settings(void *c) { open_dialog(UI(c), UI_DIALOG_SETTINGS); }
 static bool settings_shown(const void *c) { return ((const Ui *)c)->dialog == UI_DIALOG_SETTINGS; }
 static void cmd_new_game(void *c) { open_dialog(UI(c), UI_DIALOG_NEW_GAME); }
 static void cmd_theme_editor(void *c) { theme_editor_open(UI(c)); }
+static void cmd_layout_editor(void *c) { layout_editor_open(UI(c)); }
+static bool layout_editor_shown(const void *c) { return ((const Ui *)c)->dialog == UI_DIALOG_LAYOUT_EDITOR; }
 static bool theme_editor_shown(const void *c) { return ((const Ui *)c)->dialog == UI_DIALOG_THEME_EDITOR; }
 static void cmd_deep_report(void *c) { open_dialog(UI(c), UI_DIALOG_REPORT); }
 static bool deep_report_shown(const void *c) { return ((const Ui *)c)->dialog == UI_DIALOG_REPORT; }
@@ -167,6 +169,7 @@ static void register_ui_commands(Ui *ui) {
         { "file.new", "New game", "New", cmd_new_game, NULL, NULL, ui },
         { "game.info", "Game info…", "Info", cmd_game_info, NULL, NULL, ui },
         { "view.theme_editor", "Edit theme…", "Theme", cmd_theme_editor, NULL, theme_editor_shown, ui },
+        { "view.layout_editor", "Customize layout…", "Layout", cmd_layout_editor, NULL, layout_editor_shown, ui },
         { "analysis.report", "Deep report", "Deep report", cmd_deep_report, NULL, deep_report_shown, ui },
         { "engine.setup", "Download engines…", "Setup", cmd_setup, NULL, NULL, ui },
         { "view.next_tab", "Next tab", "Tab", cmd_next_tab, NULL, NULL, ui },
@@ -276,6 +279,7 @@ bool ui_init(Ui *ui, App *app) {
 
 void ui_shutdown(Ui *ui) {
     theme_editor_cancel(ui);
+    layout_editor_close(ui);
     text_edit_free(&ui->theme_editor.name);
     text_edit_free(&ui->theme_editor.hex);
     if (ui->installer.started) {   // stop a running download cleanly
