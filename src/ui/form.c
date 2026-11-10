@@ -319,6 +319,7 @@ void ui_modal_shell(Ui *ui, StringView title, f32 width, ModalSection body, Moda
 }
 
 void ui_close_dialog(Ui *ui) {
+    if (ui->dialog == UI_DIALOG_SETTINGS) app_apply_engine_settings(ui->app);   // nothing left half-applied
     ui->dialog = UI_DIALOG_NONE;
     ui->focus_id = 0;
 }
@@ -336,6 +337,20 @@ static void new_game_footer(Ui *ui, void *user) {
     }
 }
 
+// Engine settings (profile, KataGo threads/visits/GPU...) restart KataGo, which
+// takes a moment: they are applied together with this button (or on close).
+static void settings_footer(Ui *ui, void *user) {
+    UNUSED(user);
+    const ThemeColors *c = &ui->theme->colors;
+    bool pending = app_engine_settings_pending(ui->app);
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) } } }) {
+        if (pending) ui_label(ui, app_tr(ui->app, "settings.restart_pending", "Engine settings changed: Apply restarts KataGo"), FONT_UI, 13, c->text_muted);
+    }
+    if (ui_button(ui, CLAY_ID("SettingsApply"), app_tr(ui->app, "label.apply", "Apply"), BUTTON_PRIMARY, false, pending)) {
+        app_apply_engine_settings(ui->app);
+    }
+}
+
 static void game_info_footer(Ui *ui, void *user) {
     UNUSED(user);
     if (ui_button(ui, CLAY_ID("GameInfoCancel"), app_tr(ui->app, "label.cancel", "Cancel"), BUTTON_NORMAL, false, true)) {
@@ -350,7 +365,7 @@ static void game_info_footer(Ui *ui, void *user) {
 void ui_dialogs(Ui *ui) {
     switch (ui->dialog) {
         case UI_DIALOG_NONE: break;
-        case UI_DIALOG_SETTINGS: ui_modal(ui, ui_form(ui, "settings"), 600, NULL, NULL); break;
+        case UI_DIALOG_SETTINGS: ui_modal(ui, ui_form(ui, "settings"), 600, settings_footer, NULL); break;
         case UI_DIALOG_NEW_GAME: ui_modal(ui, ui_form(ui, "new_game"), 520, new_game_footer, NULL); break;
         case UI_DIALOG_SETUP: engine_setup_dialog(ui); break;
         case UI_DIALOG_GAME_INFO: ui_modal(ui, ui_form(ui, "game_info"), 520, game_info_footer, NULL); break;

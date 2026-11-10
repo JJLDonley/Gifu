@@ -710,11 +710,27 @@ void app_reload_language(App *app) {
     app->language_version++;
 }
 
+// Settings that need KataGo restarted are collected and applied together
+// (app_apply_engine_settings): restarting on every click froze the UI.
+void app_apply_engine_settings(App *app) {
+    if (!app->restart_main_pending && !app->restart_second_pending) return;
+    bool main = app->restart_main_pending, second = app->restart_second_pending;
+    app->restart_main_pending = app->restart_second_pending = false;
+    if (!katago_overrides_valid(string_sv(&app->config.katago_overrides))) {
+        app_set_status(app, "KataGo overrides ignored: expected key=value, key=value");
+    }
+    if (main) app_restart_engine(app);
+    if (second && app->second.engine) app_second_engine(app, true);
+    app_set_status(app, "Engine settings applied");
+}
+
+bool app_engine_settings_pending(const App *app) { return app->restart_main_pending || app->restart_second_pending; }
+
 void app_config_changed(App *app, StringView key) {
     if (sv_eq(key, SV("language"))) {
         app_reload_language(app);
     } else if (sv_eq(key, SV("engine"))) {
-        app_restart_engine(app);
+        app->restart_main_pending = true;
     } else if (sv_eq(key, SV("rules"))) {
         app->main.synced_node = NULL;   // resync sends kata-set-rules
     } else if (sv_eq(key, SV("ai.human_profile"))) {   // switched in place (kata-set-param)
@@ -724,15 +740,11 @@ void app_config_changed(App *app, StringView key) {
             if (app->main.engine) engine_set_human_profile(app->main.engine, string_sv(&app->config.human_profile));
             if (app->second.engine) engine_set_human_profile(app->second.engine, string_sv(&app->config.human_profile));
         }
-    } else if (sv_starts_with(key, SV("katago."))) {   // launch overrides: restart what is running
-        if (sv_eq(key, SV("katago.overrides")) && !katago_overrides_valid(string_sv(&app->config.katago_overrides))) {
-            app_set_status(app, "KataGo overrides: expected key=value, key=value");
-            return;
-        }
-        if (app->main.engine) app_restart_engine(app);
-        if (app->second.engine) app_second_engine(app, true);
+    } else if (sv_starts_with(key, SV("katago."))) {   // launch overrides: restart what is running (on Apply)
+        if (app->main.engine) app->restart_main_pending = true;
+        if (app->second.engine) app->restart_second_pending = true;
     } else if (sv_eq(key, SV("engine2"))) {
-        if (app->second.engine) app_second_engine(app, true);
+        if (app->second.engine) app->restart_second_pending = true;
     } else if (sv_starts_with(key, SV("analysis."))) {
         if (app->analysis_enabled) app_set_analysis(app, true);
         if (app->second.engine) {

@@ -99,6 +99,7 @@ typedef struct App {
     RankEstimator *rank_job;
     EngineSlot *rank_slot;      // engine lent to the rank job (not polled by the app meanwhile)
     bool rank_pending;          // requested while the engine was starting: runs once it is ready
+    bool restart_main_pending, restart_second_pending;   // engine settings changed, not applied yet
     GameNode *rank_end;         // last node of the line the job is scoring
     GameNode *rank_line_end;    // active line `rank` was computed for
     RankSummary rank;           // from the CGR[] of the active line (app_rank_refresh)
@@ -148,6 +149,9 @@ void app_set_region(App *app, BoardRegion region);
 // Adds a setup node that fills the board around the problem (the selected
 // region, or the stones' bounding box) and limits analysis to the problem.
 bool app_tsumego_frame(App *app);
+// Engine-restarting settings (engine, engine2, katago.*) wait for this (Settings -> Apply, or closing Settings).
+void app_apply_engine_settings(App *app);
+bool app_engine_settings_pending(const App *app);
 // The user's KataGo settings (Settings -> KataGo) for engine_create / batch_analyzer_create.
 KataGoTuning app_katago_tuning(const App *app);
 // Recomputes app->rank from the CGR[] properties on the active line.
