@@ -232,6 +232,44 @@ static bool apply_entry(Theme *t, StringView key, StringView value) {
     return false;
 }
 
+static void push_color(String *out, Color c) {
+    if (c.a == 255) string_pushf(out, "#%02X%02X%02X", c.r, c.g, c.b);
+    else string_pushf(out, "#%02X%02X%02X%02X", c.r, c.g, c.b, c.a);
+}
+
+String theme_write(const Theme *t, StringView comment) {
+    String out = { 0 };
+    if (comment.len) string_pushf(&out, "# " SV_FMT "\n\n", SV_ARG(comment));
+    for (i32 i = 0; i < (i32)countof(THEME_FIELDS); ++i) {
+        const ThemeField *f = &THEME_FIELDS[i];
+        const void *p = (const u8 *)t + f->offset;
+        string_pushf(&out, "%s = ", f->key);
+        switch (f->type) {
+            case TF_F32: string_pushf(&out, "%g", (f64) * (const f32 *)p); break;
+            case TF_I32: string_pushf(&out, "%d", *(const i32 *)p); break;
+            case TF_U32: string_pushf(&out, "%u", *(const u32 *)p); break;
+            case TF_BOOL: string_push(&out, *(const bool *)p ? SV("true") : SV("false")); break;
+            case TF_COLOR: push_color(&out, *(const Color *)p); break;
+            case TF_STRING: kv_write_value(&out, string_sv((const String *)p)); break;
+            case TF_ENUM: {
+                i32 v = *(const i32 *)p;
+                for (isize k = 0; k < f->name_count; ++k) {
+                    if (f->names[k].value == v) string_push(&out, sv(f->names[k].name));
+                }
+                break;
+            }
+        }
+        string_push_char(&out, '\n');
+    }
+    string_push_char(&out, '\n');
+    for (i32 i = 0; i < (i32)countof(COLOR_FIELDS); ++i) {
+        string_pushf(&out, "colors.%-17s = ", COLOR_FIELDS[i].key);
+        push_color(&out, *(const Color *)((const u8 *)&t->colors + COLOR_FIELDS[i].offset));
+        string_push_char(&out, '\n');
+    }
+    return out;
+}
+
 void theme_apply_kv(Theme *t, const KvFile *kv, StringView source) {
     vec_foreach(KvEntry, e, &kv->entries) {
         if (sv_eq(e->key, SV("extends"))) continue;

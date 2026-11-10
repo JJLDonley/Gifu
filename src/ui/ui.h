@@ -57,7 +57,21 @@ typedef enum UiDialog {
     UI_DIALOG_SETUP,
     UI_DIALOG_GAME_INFO,
     UI_DIALOG_REPORT,
+    UI_DIALOG_THEME_EDITOR,
 } UiDialog;
+
+// Theme editor state (theme_editor.c): `edit` is the live copy ui->theme points to while open.
+typedef struct ThemeEditor {
+    bool open;
+    Theme edit;
+    isize base_index;       // theme it started from (Cancel / Reset)
+    i32 group, selected;    // colour group tab, selected colour
+    i32 drag;               // slider being dragged (channel + 1), 0 = none
+    f32 hsv[4];             // hue 0..360, saturation, value, alpha (selected colour)
+    TextEdit name, hex;
+    u32 version;            // bumped on every edit (board layer cache key)
+    bool background_stale;  // background colour changed: rebuild the paper when the drag ends
+} ThemeEditor;
 
 typedef struct Ui {
     App *app;
@@ -83,6 +97,7 @@ typedef struct Ui {
     bool debug;
     char help_topic[32];   // open "?" popover (empty = none)
     i32 deep_report_tab;
+    ThemeEditor theme_editor;
     i32 form_tab;          // selected section of a tabbed form (Settings)
     bool help_button_hovered;   // a "?" button is under the mouse (this frame)
 
@@ -101,8 +116,8 @@ typedef struct Ui {
     UiDialog dialog;
     Arena forms_arena;
     const Sexpr *forms_root;   // assets/data/forms.lisp
-    TextEdit form_edits[8];                     // text fields, keyed by config field
-    const struct ConfigField *form_edit_fields[8];
+    TextEdit form_edits[16];                    // text fields, keyed by config field
+    const struct ConfigField *form_edit_fields[16];
     i32 form_edit_count;
     u32 language_version;
 
@@ -160,6 +175,10 @@ bool ui_init(Ui *ui, App *app);
 void ui_shutdown(Ui *ui);
 void ui_frame(Ui *ui);
 void ui_apply_theme(Ui *ui, isize index);
+void ui_reload_themes(Ui *ui);   // built-in + user themes, again (after saving one)
+void theme_editor_open(Ui *ui);
+void theme_editor_cancel(Ui *ui);
+void theme_editor_dialog(Ui *ui);
 
 // ---- Shared helpers (widgets.c) ---------------------------------------------------------------
 

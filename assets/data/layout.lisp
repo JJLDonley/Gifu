@@ -31,7 +31,7 @@
     (menu menu.analysis
       analysis.toggle analysis.play_best analysis.game analysis.report analysis.rank analysis.region analysis.tsumego_frame - analysis.candidates analysis.ownership analysis.human_policy - engine.second engine.restart engine.setup :fallback "Analysis")
     (menu menu.view
-      view.coordinates view.move_numbers view.next_tab - view.zoom_in view.zoom_out - view.settings :fallback "View"))
+      view.coordinates view.move_numbers view.next_tab - view.zoom_in view.zoom_out - view.theme_editor view.settings :fallback "View"))
 
   (toolbar
     (button file.new :icon @plus :label)

@@ -257,7 +257,7 @@ static u64 layer_key(Ui *ui, Rectangle bounds, const Board *board) {
     u64 h = 1469598103934665603ull;
     u64 parts[] = { (u64)bounds.width, (u64)bounds.height, (u64)board->width, (u64)board->height,
                     ui->app->config.show_coordinates, (u64)(uintptr_t)ui->theme, (u64)(ui->scale * 1000.0f),
-                    ui->board_texture.id, ui->background.paper.id, ui->language_version };
+                    ui->board_texture.id, ui->background.paper.id, ui->language_version, ui->theme_editor.version };
     for (i32 i = 0; i < (i32)countof(parts); ++i) h = (h ^ parts[i]) * 1099511628211ull;
     return h;
 }

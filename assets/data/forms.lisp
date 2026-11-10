@@ -5,6 +5,7 @@
 ;;   (bool KEY :label I18N-KEY :fallback "Text")
 ;;   (number KEY :min N :max N :step N :format "%.1f" [:zero I18N-KEY [:zero_value N]] ...)
 ;;       range defaults to the field's; :zero labels the "unset" value (0 or :zero_value) e.g. "from .cfg"
+;;   (command ID)  a button that runs a registered command (e.g. view.theme_editor)
 ;;   (form NAME :tabs ...) shows one section at a time, with the section titles as tabs
 ;;   (choice KEY :columns N [:source themes|engines] (option VALUE "Label") ...)
 ;;   (text KEY :placeholder "Text" ...)
@@ -19,7 +20,8 @@
       (option zh_TW "繁體中文")
       (option ja "日本語")
       (option ko "한국어"))
-    (number ui_scale :min 0.75 :max 2.0 :step 0.05 :format "%.2f×" :label settings.ui_scale :fallback "Interface scale"))
+    (number ui_scale :min 0.75 :max 2.0 :step 0.05 :format "%.2f×" :label settings.ui_scale :fallback "Interface scale")
+    (command view.theme_editor))
   (section settings.board :fallback Board
     (bool board.show_coordinates :label command.view.coordinates :fallback Coordinates)
     (bool board.show_move_numbers :label command.view.move_numbers :fallback "Move numbers")

@@ -72,6 +72,8 @@ void theme_free(Theme *theme);
 Theme theme_clone(const Theme *theme);
 // Applies every key of a theme file (warnings name `source` and the line).
 void theme_apply_kv(Theme *theme, const KvFile *kv, StringView source);
+// Every key of `theme` as a complete .theme file (no "extends"), readable by theme_apply_kv.
+String theme_write(const Theme *theme, StringView comment);
 // Loads every *.theme in each dir (later dirs override same ids). Resolves "extends".
 void themes_load(ThemeVec *out, const StringView *dirs, isize dir_count);
 void themes_free(ThemeVec *themes);

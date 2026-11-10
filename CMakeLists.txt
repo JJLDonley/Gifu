@@ -143,6 +143,7 @@ add_executable(catagui
     src/ui/winrate_graph.c
     src/ui/panels.c
     src/ui/deep_report.c
+    src/ui/theme_editor.c
     src/ui/layout.c)
 target_link_libraries(catagui PRIVATE catagui_core raylib)
 catagui_warnings(catagui)
@@ -199,8 +200,11 @@ if(CATAGUI_BUILD_TESTS)
         tests/test_sgf.c
         tests/test_analysis.c
         tests/test_data.c
-        tests/test_installer.c)
+        tests/test_installer.c
+        tests/test_theme.c
+        src/ui/theme.c)   # pure data code: needs raylib's Color type, not the library
     target_link_libraries(catagui_tests PRIVATE catagui_core)
+    target_include_directories(catagui_tests PRIVATE third_party/raylib/src)
     target_compile_definitions(catagui_tests PRIVATE CATAGUI_SOURCE_DIR="${CATAGUI_TEST_SOURCE_DIR}")
     catagui_warnings(catagui_tests)
     add_test(NAME unit COMMAND catagui_tests)

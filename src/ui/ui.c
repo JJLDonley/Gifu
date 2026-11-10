@@ -56,6 +56,17 @@ static void setup_fonts(Ui *ui) {
 
 // ---- Themes ---------------------------------------------------------------------------------
 
+void ui_reload_themes(Ui *ui) {
+    themes_free(&ui->themes);
+    String builtin = path_join(string_sv(&ui->app->assets_dir), SV("themes"));
+    String user = path_join(string_sv(&ui->app->config_dir), SV("themes"));
+    StringView dirs[] = { string_sv(&builtin), string_sv(&user) };
+    themes_load(&ui->themes, dirs, countof(dirs));
+    string_free(&builtin);
+    string_free(&user);
+    log_info("loaded %td themes", ui->themes.len);
+}
+
 void ui_apply_theme(Ui *ui, isize index) {
     if (index < 0 || index >= ui->themes.len) return;
     ui->theme_index = index;
@@ -109,6 +120,8 @@ static void open_dialog(Ui *ui, UiDialog dialog) {
 static void cmd_settings(void *c) { open_dialog(UI(c), UI_DIALOG_SETTINGS); }
 static bool settings_shown(const void *c) { return ((const Ui *)c)->dialog == UI_DIALOG_SETTINGS; }
 static void cmd_new_game(void *c) { open_dialog(UI(c), UI_DIALOG_NEW_GAME); }
+static void cmd_theme_editor(void *c) { theme_editor_open(UI(c)); }
+static bool theme_editor_shown(const void *c) { return ((const Ui *)c)->dialog == UI_DIALOG_THEME_EDITOR; }
 static void cmd_deep_report(void *c) { open_dialog(UI(c), UI_DIALOG_REPORT); }
 static bool deep_report_shown(const void *c) { return ((const Ui *)c)->dialog == UI_DIALOG_REPORT; }
 static void cmd_game_info(void *c) {
@@ -153,6 +166,7 @@ static void register_ui_commands(Ui *ui) {
         { "view.settings", "Settings", "Settings", cmd_settings, NULL, settings_shown, ui },
         { "file.new", "New game", "New", cmd_new_game, NULL, NULL, ui },
         { "game.info", "Game info…", "Info", cmd_game_info, NULL, NULL, ui },
+        { "view.theme_editor", "Edit theme…", "Theme", cmd_theme_editor, NULL, theme_editor_shown, ui },
         { "analysis.report", "Deep report", "Deep report", cmd_deep_report, NULL, deep_report_shown, ui },
         { "engine.setup", "Download engines…", "Setup", cmd_setup, NULL, NULL, ui },
         { "view.next_tab", "Next tab", "Tab", cmd_next_tab, NULL, NULL, ui },
@@ -198,6 +212,18 @@ static void validate_command_refs(Ui *ui) {
     vec_foreach(KeyBinding, kb, &ui->app->keymap.bindings) {
         if (!command_find(rc.commands, string_sv(&kb->command))) log_warn("keymap: unknown command '%s'", string_cstr(&kb->command)), rc.missing++;
     }
+    // (command ID) buttons in forms.lisp.
+    for (const Sexpr *form = ui->forms_root ? ui->forms_root->first : NULL; form; form = form->next) {
+        for (const Sexpr *sec = sexpr_next_child(form, NULL); sec; sec = sexpr_next_child(form, sec)) {
+            for (const Sexpr *f = sexpr_next_child(sec, NULL); f; f = sexpr_next_child(sec, f)) {
+                const Sexpr *id = sexpr_is_list(f, "command") ? sexpr_next_arg(f, NULL) : NULL;
+                if (id && !command_find(rc.commands, id->text)) {
+                    log_warn("forms: unknown command '" SV_FMT "'", SV_ARG(id->text));
+                    rc.missing++;
+                }
+            }
+        }
+    }
     if (rc.missing == 0) log_info("data: all layout components and command references resolve");
 }
 
@@ -206,13 +232,7 @@ bool ui_init(Ui *ui, App *app) {
     ui->frame.default_block_size = 512 * 1024;
     ui->fonts = font_cache_create();
 
-    String builtin = path_join(string_sv(&app->assets_dir), SV("themes"));
-    String user = path_join(string_sv(&app->config_dir), SV("themes"));
-    StringView dirs[] = { string_sv(&builtin), string_sv(&user) };
-    themes_load(&ui->themes, dirs, countof(dirs));
-    string_free(&builtin);
-    string_free(&user);
-    log_info("loaded %td themes", ui->themes.len);
+    ui_reload_themes(ui);
 
     String forms_path = path_join(string_sv(&app->assets_dir), SV("data/forms.lisp"));
     String forms_text = { 0 };
@@ -255,6 +275,9 @@ bool ui_init(Ui *ui, App *app) {
 }
 
 void ui_shutdown(Ui *ui) {
+    theme_editor_cancel(ui);
+    text_edit_free(&ui->theme_editor.name);
+    text_edit_free(&ui->theme_editor.hex);
     if (ui->installer.started) {   // stop a running download cleanly
         installer_cancel(&ui->installer);
         installer_finish(&ui->installer);

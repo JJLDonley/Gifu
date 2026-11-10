@@ -211,8 +211,12 @@ static void form_section(Ui *ui, const Sexpr *section, u32 index, bool title) {
                        .childGap = ui_u16(ui, 10) } }) {
         if (title) ui_card_title(ui, title_of(ui, section));
         for (const Sexpr *v = sexpr_next_child(section, NULL); v; v = sexpr_next_child(section, v), ++index) {
-            const ConfigField *f = config_field(field_key(v));
             StringView type = sexpr_head(v);
+            if (sv_eq(type, SV("command"))) {   // (command ID): a button running a registered command
+                ui_command_button_ex(ui, field_key(v), SV(""), true, BUTTON_NORMAL, 100 + index);
+                continue;
+            }
+            const ConfigField *f = config_field(field_key(v));
             if (!f) {
                 ui_label(ui, arena_format(&ui->frame, "unknown setting '" SV_FMT "'", SV_ARG(field_key(v))), FONT_UI, 12, c->danger);
                 continue;
@@ -320,6 +324,7 @@ void ui_modal_shell(Ui *ui, StringView title, f32 width, ModalSection body, Moda
 
 void ui_close_dialog(Ui *ui) {
     if (ui->dialog == UI_DIALOG_SETTINGS) app_apply_engine_settings(ui->app);   // nothing left half-applied
+    if (ui->dialog == UI_DIALOG_THEME_EDITOR) theme_editor_cancel(ui);          // closed without Save
     ui->dialog = UI_DIALOG_NONE;
     ui->focus_id = 0;
 }
@@ -370,5 +375,6 @@ void ui_dialogs(Ui *ui) {
         case UI_DIALOG_SETUP: engine_setup_dialog(ui); break;
         case UI_DIALOG_GAME_INFO: ui_modal(ui, ui_form(ui, "game_info"), 520, game_info_footer, NULL); break;
         case UI_DIALOG_REPORT: deep_report_dialog(ui); break;
+        case UI_DIALOG_THEME_EDITOR: theme_editor_dialog(ui); break;
     }
 }
