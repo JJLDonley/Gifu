@@ -22,8 +22,6 @@
     (button game.ai_black :icon "@stone_black AI")
     (button game.ai_white :icon "@stone_white AI")
     (button game.ai_move)
-    (separator)
-    (button sync.screen :icon @screen :label)
     (spacer)
     (engine-status)
     (button view.settings :icon @gear))
