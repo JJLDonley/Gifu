@@ -70,7 +70,7 @@ typedef struct App {
 
     GameTree *tree;
     String sgf_path;
-    bool dirty;
+    bool dirty;                 // unsaved edits (app_mark_edited); analysis alone never sets it
 
     // Engines: `main` drives analysis, the board and the graph; `second` is an
     // optional extra engine for side-by-side comparison and engine-vs-engine games.
@@ -157,6 +157,8 @@ bool app_tsumego_frame(App *app);
 // Engine-restarting settings (engine, engine2, katago.*) wait for this (Settings -> Apply, or closing Settings).
 void app_apply_engine_settings(App *app);
 bool app_engine_settings_pending(const App *app);
+// An edit to the game (the only thing that marks it unsaved; analysis does not).
+void app_mark_edited(App *app);
 // True if app->human_policy is the policy of `node` at the current human profile.
 bool app_human_policy_for(const App *app, const GameNode *node);
 // The user's KataGo settings (Settings -> KataGo) for engine_create / batch_analyzer_create.

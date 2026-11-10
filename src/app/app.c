@@ -284,7 +284,6 @@ static void flash_update(App *app) {
         if (done) {
             if (app->flash_job.failed) app_set_status(app, "Game analysis failed: %s", string_cstr(&app->flash_job.error));
             else app_set_status(app, "Game analysis complete");
-            app->dirty = true;   // evals are saved as CGE[] with the game
             flash_finish(app);   // destroys the analyzer
         }
     }
@@ -337,7 +336,6 @@ static void batch_advance(App *app) {
     }
     if (app->batch_index >= app->batch_count) {
         app_set_status(app, "Game analysis complete");
-        app->dirty = true;   // evals are saved as CGE[] with the game
         app_batch_stop(app);
     }
 }
@@ -540,7 +538,7 @@ static void rank_update(App *app) {
         // the graph and the Deep report all follow the job as it runs.
         if (p->done != app->rank_stored) {
             app->rank_stored = p->done;
-            if (rank_progress_store(p, app->tree, app->rank_end) > 0) app->dirty = true;
+            rank_progress_store(p, app->tree, app->rank_end);
         }
         if (p->finished) {
             if (p->failed) {
@@ -834,15 +832,33 @@ bool app_save_sgf(App *app, StringView path) {
         app->sgf_path = copy;
     }
     app->dirty = false;
-    app_set_status(app, "Saved " SV_FMT, SV_ARG(path_basename(path)));
+    // Analysis (live, Analyze game, rank estimates) lives in memory for the session
+    // and is written only here: say how much went into the file.
+    i32 analysed = 0;
+    for (GameNode *n = app->tree->root; n;) {
+        analysed += n->eval.valid;
+        if (n->first_child) {
+            n = n->first_child;
+            continue;
+        }
+        while (n && !n->next_sibling) n = n->parent;
+        if (n) n = n->next_sibling;
+    }
+    if (analysed) app_set_status(app, "Saved " SV_FMT " (with the analysis of %d positions)", SV_ARG(path_basename(path)), analysed);
+    else app_set_status(app, "Saved " SV_FMT, SV_ARG(path_basename(path)));
     return true;
 }
+
+// Edits (moves, deletions, comments, game info, frames, results) are what make a
+// game "unsaved". Analysis never does: it is kept in memory for the session and
+// written with the game on Save (Ctrl+S).
+void app_mark_edited(App *app) { app->dirty = true; }
 
 MoveError app_play(App *app, Point point) {
     GameNode *before = app->tree->current;
     i32 children_before = game_node_child_count(before);
     MoveError err = game_tree_play(app->tree, (Move){ before->to_play, point });
-    if (err == MOVE_OK && game_node_child_count(before) > children_before) app->dirty = true;
+    if (err == MOVE_OK && game_node_child_count(before) > children_before) app_mark_edited(app);
     return err;
 }
 
@@ -893,7 +909,7 @@ void app_game_info_apply(App *app) {
     }
     if (!changed) return;
     game_tree_rebuild(tree, tree->root);
-    app->dirty = true;
+    app_mark_edited(app);
     app_set_status(app, "Game info updated");
 }
 
@@ -931,7 +947,7 @@ bool app_tsumego_frame(App *app) {
     game_node_set_prop(tree, node, SV("C"), SV("Tsumego frame"));
     game_tree_rebuild(tree, node);
     game_tree_goto(tree, node);
-    app->dirty = true;
+    app_mark_edited(app);
     BoardRect a = frame->area;
     app_set_region(app, (BoardRegion){ true, a.x0, a.y0, a.x1, a.y1 });
     app_set_status(app, "Tsumego frame added (%s attacks); analysis limited to the problem",
@@ -1042,7 +1058,7 @@ static bool has_stones(const void *c) {
 }
 static void cmd_delete(void *c) {
     App *app = APP(c);
-    if (game_tree_delete_node(app->tree, app->tree->current)) app->dirty = true;
+    if (game_tree_delete_node(app->tree, app->tree->current)) app_mark_edited(app);
 }
 
 static void cmd_toggle_analysis(void *c) { app_set_analysis(APP(c), !APP(c)->analysis_enabled); }
@@ -1096,7 +1112,7 @@ static void cmd_write_result(void *c) {
     App *app = APP(c);
     if (!app->result.len) return;
     game_node_set_prop(app->tree, app->tree->root, SV("RE"), string_sv(&app->result));
-    app->dirty = true;
+    app_mark_edited(app);
     app_set_status(app, "Result saved to game");
 }
 static bool has_result(const void *c) { return CAPP(c)->result.len > 0 && CAPP(c)->result_position == CAPP(c)->main.synced_position_id; }

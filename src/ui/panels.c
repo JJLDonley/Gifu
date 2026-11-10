@@ -457,7 +457,7 @@ static void commit_comment(Ui *ui) {
     if (sv_eq(old, text)) return;
     if (text.len) game_node_set_prop(ui->app->tree, node, SV("C"), text);
     else game_node_remove_prop(ui->app->tree, node, SV("C"));
-    ui->app->dirty = true;
+    app_mark_edited(ui->app);
 }
 
 static void panel_comment(Ui *ui) {
