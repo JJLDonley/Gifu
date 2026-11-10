@@ -99,6 +99,7 @@ add_library(catagui_core STATIC
     src/engine/kata_analysis.c
     src/engine/position.c
     src/engine/katago_engine.c
+    src/engine/katago_tuning.c
     src/engine/katago_analyzer.c
     src/engine/game_job.c
     src/engine/http.c

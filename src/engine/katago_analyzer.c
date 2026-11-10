@@ -180,14 +180,18 @@ static const BatchAnalyzerVTable KATAGO_ANALYZER_VTABLE = {
 };
 
 BatchAnalyzer *katago_analyzer_create(const KataGoAnalyzerSettings *s, String *error) {
+    // Whole games are many positions at modest visits: favour parallel
+    // positions (analysis threads) over deep search on each one, unless the user set them.
+    String overrides = string_from(SV("reportAnalysisWinratesAs=BLACK"));
+    if (sv_find(s->overrides, SV("numAnalysisThreads=")) < 0) string_push(&overrides, SV(",numAnalysisThreads=12"));
+    if (sv_find(s->overrides, SV("numSearchThreadsPerAnalysisThread=")) < 0) string_push(&overrides, SV(",numSearchThreadsPerAnalysisThread=2"));
+    string_push(&overrides, s->overrides);
     StringView args[] = {
-        SV("analysis"), SV("-model"), s->model, SV("-config"), s->config,
-        // Whole games are many positions at modest visits: favour parallel
-        // positions (analysis threads) over deep search on each one.
-        SV("-override-config"), SV("reportAnalysisWinratesAs=BLACK,numAnalysisThreads=12,numSearchThreadsPerAnalysisThread=2"),
+        SV("analysis"), SV("-model"), s->model, SV("-config"), s->config, SV("-override-config"), string_sv(&overrides),
     };
     ProcessSpec spec = { s->program, args, countof(args), s->working_dir, s->launcher, s->launcher_count };
     LineChannel *channel = line_channel_start(&spec, error);
+    string_free(&overrides);
     if (!channel) return NULL;
     KataGoAnalyzer *k = calloc(1, sizeof(KataGoAnalyzer));
     if (!k) abort();

@@ -65,16 +65,26 @@ static void number_field(Ui *ui, const Sexpr *v, const ConfigField *f, u32 index
     f64 value = config_get_number(config, f);
     f64 step = sexpr_prop_number(v, "step", 1.0);
     f64 lo = sexpr_prop_number(v, "min", f->min), hi = sexpr_prop_number(v, "max", f->max);
+    // Shift+click steps ten times as far (visits, cache sizes...).
+    if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) step *= 10.0;
     char text[48];
-    String fmt = string_from(sexpr_prop_text(v, "format", SV("%g")));
-    snprintf(text, sizeof(text), string_cstr(&fmt), value);
-    string_free(&fmt);
+    StringView zero_key = sexpr_prop_text(v, "zero", SV(""));
+    f64 zero_value = sexpr_prop_number(v, "zero_value", 0.0);
+    if (zero_key.len && fabs(value - zero_value) < 1e-9) {   // "unset": keep the engine's own value
+        String key = string_from(zero_key);
+        snprintf(text, sizeof(text), SV_FMT, SV_ARG(app_tr(ui->app, string_cstr(&key), "default")));
+        string_free(&key);
+    } else {
+        String fmt = string_from(sexpr_prop_text(v, "format", SV("%g")));
+        snprintf(text, sizeof(text), string_cstr(&fmt), value);
+        string_free(&fmt);
+    }
     CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 6),
                        .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
         field_label(ui, label_of(ui, v));
         f64 next = value;
         if (ui_button(ui, CLAY_IDI("FormMinus", index), SV("−"), BUTTON_NORMAL, false, value > lo + 1e-9)) next = value - step;
-        CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 72)), CLAY_SIZING_FIT(0) }, .childAlignment = { .x = CLAY_ALIGN_X_CENTER } } }) {
+        CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 96)), CLAY_SIZING_FIT(0) }, .childAlignment = { .x = CLAY_ALIGN_X_CENTER } } }) {
             ui_label(ui, sv(text), FONT_MONO, 14, ui->theme->colors.text);
         }
         if (ui_button(ui, CLAY_IDI("FormPlus", index), SV("+"), BUTTON_NORMAL, false, value < hi - 1e-9)) next = value + step;
@@ -195,31 +205,59 @@ const Sexpr *ui_form(Ui *ui, const char *name) {
     return NULL;
 }
 
-void form_render(Ui *ui, const Sexpr *form) {
+static void form_section(Ui *ui, const Sexpr *section, u32 index, bool title) {
     const ThemeColors *c = &ui->theme->colors;
-    u32 index = 0;
-    for (const Sexpr *section = sexpr_next_child(form, NULL); section; section = sexpr_next_child(form, section)) {
-        if (!sexpr_is_list(section, "section")) continue;
-        CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM,
-                           .childGap = ui_u16(ui, 10) } }) {
-            ui_card_title(ui, title_of(ui, section));
-            for (const Sexpr *v = sexpr_next_child(section, NULL); v; v = sexpr_next_child(section, v), ++index) {
-                const ConfigField *f = config_field(field_key(v));
-                StringView type = sexpr_head(v);
-                if (!f) {
-                    ui_label(ui, arena_format(&ui->frame, "unknown setting '" SV_FMT "'", SV_ARG(field_key(v))), FONT_UI, 12, c->danger);
-                    continue;
-                }
-                if (sv_eq(type, SV("bool"))) bool_field(ui, v, f, index);
-                else if (sv_eq(type, SV("number"))) number_field(ui, v, f, index);
-                else if (sv_eq(type, SV("choice"))) choice_field(ui, v, f, index);
-                else if (sv_eq(type, SV("text"))) text_field(ui, v, f, index);
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                       .childGap = ui_u16(ui, 10) } }) {
+        if (title) ui_card_title(ui, title_of(ui, section));
+        for (const Sexpr *v = sexpr_next_child(section, NULL); v; v = sexpr_next_child(section, v), ++index) {
+            const ConfigField *f = config_field(field_key(v));
+            StringView type = sexpr_head(v);
+            if (!f) {
+                ui_label(ui, arena_format(&ui->frame, "unknown setting '" SV_FMT "'", SV_ARG(field_key(v))), FONT_UI, 12, c->danger);
+                continue;
             }
+            if (sv_eq(type, SV("bool"))) bool_field(ui, v, f, index);
+            else if (sv_eq(type, SV("number"))) number_field(ui, v, f, index);
+            else if (sv_eq(type, SV("choice"))) choice_field(ui, v, f, index);
+            else if (sv_eq(type, SV("text"))) text_field(ui, v, f, index);
         }
     }
 }
 
-// ---- Modal shell ------------------------------------------------------------------------------------
+void form_render(Ui *ui, const Sexpr *form) {
+    const ThemeColors *c = &ui->theme->colors;
+    // Field indices stay stable per field (ids for buttons / text edits), tabbed or not.
+    u32 base[32] = { 0 };
+    const Sexpr *sections[32];
+    i32 count = 0;
+    u32 index = 0;
+    for (const Sexpr *section = sexpr_next_child(form, NULL); section && count < 32; section = sexpr_next_child(form, section)) {
+        if (!sexpr_is_list(section, "section")) continue;
+        sections[count] = section;
+        base[count++] = index;
+        for (const Sexpr *v = sexpr_next_child(section, NULL); v; v = sexpr_next_child(section, v)) ++index;
+    }
+    if (!sexpr_flag(form, "tabs")) {
+        for (i32 i = 0; i < count; ++i) form_section(ui, sections[i], base[i], true);
+        return;
+    }
+    // Tabs: one section at a time in a fixed-height page (the dialog never jumps).
+    i32 tab = CLAMP(ui->form_tab, 0, count - 1);
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 4),
+                       .padding = { 0, 0, 0, ui_u16(ui, 6) } },
+           .border = { .color = color_to_clay(c->border), .width = { .bottom = 1 } } }) {
+        for (i32 i = 0; i < count; ++i) {
+            if (ui_button(ui, CLAY_IDI("FormTab", (u32)i), title_of(ui, sections[i]), BUTTON_GHOST, i == tab, true)) ui->form_tab = i;
+        }
+    }
+    f32 page_h = fminf(ui_px(ui, 470), (f32)GetScreenHeight() * 0.6f);
+    CLAY({ .id = CLAY_ID("FormPage"),
+           .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(page_h) }, .layoutDirection = CLAY_TOP_TO_BOTTOM },
+           .clip = { .vertical = true, .childOffset = Clay_GetScrollOffset() } }) {
+        form_section(ui, sections[tab], base[tab], false);
+    }
+}
 
 static void form_body(Ui *ui, void *user) { form_render(ui, (const Sexpr *)user); }
 

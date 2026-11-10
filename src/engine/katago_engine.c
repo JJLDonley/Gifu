@@ -382,6 +382,8 @@ Engine *katago_engine_create(const KataGoSettings *settings, String *error) {
     String overrides = string_from(SV("reportAnalysisWinratesAs=SIDETOMOVE"));
     bool human = settings->human_model.len && human_profile_valid(settings->human_profile);
     if (human) string_pushf(&overrides, ",humanSLProfile=" SV_FMT, SV_ARG(settings->human_profile));
+    string_push(&overrides, settings->overrides);
+    log_info("katago overrides: " SV_FMT, SV_ARG(string_sv(&overrides)));
     args[argc++] = SV("-override-config");
     args[argc++] = string_sv(&overrides);
     for (isize i = 0; i < settings->extra_arg_count && argc < (isize)countof(args); ++i) args[argc++] = settings->extra_args[i];

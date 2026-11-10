@@ -57,6 +57,7 @@ typedef struct KataGoAnalyzerSettings {
     StringView program, model, config, working_dir;
     const StringView *launcher;   // optional prefix (ssh ...)
     isize launcher_count;
+    StringView overrides;         // extra ",key=value" pairs (katago_tuning_overrides)
 } KataGoAnalyzerSettings;
 BatchAnalyzer *katago_analyzer_create(const KataGoAnalyzerSettings *settings, String *error);
 

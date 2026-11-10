@@ -148,6 +148,8 @@ void app_set_region(App *app, BoardRegion region);
 // Adds a setup node that fills the board around the problem (the selected
 // region, or the stones' bounding box) and limits analysis to the problem.
 bool app_tsumego_frame(App *app);
+// The user's KataGo settings (Settings -> KataGo) for engine_create / batch_analyzer_create.
+KataGoTuning app_katago_tuning(const App *app);
 // Recomputes app->rank from the CGR[] properties on the active line.
 void app_rank_refresh(App *app);
 // Game info dialog: copies the root SGF properties (players, ranks, komi,

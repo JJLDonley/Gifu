@@ -83,6 +83,7 @@ typedef struct Ui {
     bool debug;
     char help_topic[32];   // open "?" popover (empty = none)
     i32 deep_report_tab;
+    i32 form_tab;          // selected section of a tabbed form (Settings)
     bool help_button_hovered;   // a "?" button is under the mouse (this frame)
 
     // Input for this frame.

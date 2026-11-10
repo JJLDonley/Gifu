@@ -57,7 +57,8 @@ int headless_analyze(App *app) {
     printf("Analyzing %d game(s) with %s, %d visits per position\n", o->analyze_count, string_cstr(&profile->name), visits);
 
     String err = { 0 };
-    BatchAnalyzer *analyzer = batch_analyzer_create(profile, &err);
+    KataGoTuning tuning = app_katago_tuning(app);
+    BatchAnalyzer *analyzer = batch_analyzer_create(profile, &tuning, &err);
     if (!analyzer) {
         fprintf(stderr, "cannot start analysis engine: %s\n", string_cstr(&err));
         string_free(&err);
@@ -185,9 +186,9 @@ int headless_install(App *app) {
 }
 
 // Starts the engine and waits until it answers (KataGo loads its networks first).
-static Engine *start_ready_engine(const EngineProfile *profile, StringView human_profile) {
+static Engine *start_ready_engine(const EngineProfile *profile, StringView human_profile, const KataGoTuning *tuning) {
     String err = { 0 };
-    Engine *engine = engine_create(profile, human_profile, &err);
+    Engine *engine = engine_create(profile, human_profile, tuning, &err);
     if (!engine) {
         fprintf(stderr, "cannot start %s: %s\n", string_cstr(&profile->name), string_cstr(&err));
         string_free(&err);
@@ -218,7 +219,8 @@ int headless_rank(App *app) {
         fprintf(stderr, "no engine profile with a human network (catagui --install human)\n");
         return 2;
     }
-    Engine *engine = start_ready_engine(profile, string_sv(&app->config.human_profile));
+    KataGoTuning tuning = app_katago_tuning(app);
+    Engine *engine = start_ready_engine(profile, string_sv(&app->config.human_profile), &tuning);
     if (!engine) return 2;
     printf("Estimating ranks with %s\n", string_cstr(&profile->name));
     i32 failures = 0;

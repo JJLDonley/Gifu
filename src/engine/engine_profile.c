@@ -175,7 +175,7 @@ bool engine_profile_available(const EngineProfile *profile) {
 
 // ---- Factory ------------------------------------------------------------------------
 
-typedef Engine *(*EngineConstructor)(const EngineProfile *profile, StringView human_profile, String *error);
+typedef Engine *(*EngineConstructor)(const EngineProfile *profile, StringView human_profile, const KataGoTuning *tuning, String *error);
 
 
 // KataGoSettings for a profile; `storage` holds the arrays the settings point into.
@@ -217,11 +217,16 @@ const EngineProfile *engine_profiles_find_human(const EngineProfileVec *profiles
     return NULL;
 }
 
-static Engine *create_katago_gtp(const EngineProfile *p, StringView human_profile, String *error) {
+static Engine *create_katago_gtp(const EngineProfile *p, StringView human_profile, const KataGoTuning *tuning, String *error) {
     SettingsStorage st;
     KataGoSettings settings = settings_for(p, &st);
     settings.human_profile = human_profile;
-    return katago_engine_create(&settings, error);
+    String overrides = { 0 };
+    katago_tuning_overrides(tuning, false, string_sv(&p->program), &overrides);
+    settings.overrides = string_sv(&overrides);
+    Engine *engine = katago_engine_create(&settings, error);
+    string_free(&overrides);
+    return engine;
 }
 
 static const struct {
@@ -231,9 +236,9 @@ static const struct {
     { "katago-gtp", create_katago_gtp },
 };
 
-Engine *engine_create(const EngineProfile *profile, StringView human_profile, String *error) {
+Engine *engine_create(const EngineProfile *profile, StringView human_profile, const KataGoTuning *tuning, String *error) {
     for (i32 i = 0; i < (i32)countof(ENGINE_KINDS); ++i) {
-        if (sv_eq(string_sv(&profile->kind), sv(ENGINE_KINDS[i].kind))) return ENGINE_KINDS[i].create(profile, human_profile, error);
+        if (sv_eq(string_sv(&profile->kind), sv(ENGINE_KINDS[i].kind))) return ENGINE_KINDS[i].create(profile, human_profile, tuning, error);
     }
     if (error) *error = string_format("unknown engine kind '" SV_FMT "'", SV_ARG(string_sv(&profile->kind)));
     return NULL;
@@ -244,7 +249,7 @@ bool engine_profile_can_batch(const EngineProfile *profile) {
            (profile->launcher.len || os_file_exists(string_sv(&profile->analysis_config)));
 }
 
-BatchAnalyzer *batch_analyzer_create(const EngineProfile *profile, String *error) {
+BatchAnalyzer *batch_analyzer_create(const EngineProfile *profile, const KataGoTuning *tuning, String *error) {
     if (!engine_profile_can_batch(profile)) {
         if (error) *error = string_from(SV("engine profile has no usable analysis_config"));
         return NULL;
@@ -264,5 +269,10 @@ BatchAnalyzer *batch_analyzer_create(const EngineProfile *profile, String *error
         .config = string_sv(&profile->analysis_config),
         .working_dir = working_dir,
     };
-    return katago_analyzer_create(&settings, error);
+    String overrides = { 0 };
+    katago_tuning_overrides(tuning, true, string_sv(&profile->program), &overrides);
+    settings.overrides = string_sv(&overrides);
+    BatchAnalyzer *analyzer = katago_analyzer_create(&settings, error);
+    string_free(&overrides);
+    return analyzer;
 }

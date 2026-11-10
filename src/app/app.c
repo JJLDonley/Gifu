@@ -105,6 +105,20 @@ void app_set_region(App *app, BoardRegion region) {
     if (region.active) app_set_status(app, "Analysis limited to the selected region");
 }
 
+KataGoTuning app_katago_tuning(const App *app) {
+    const Config *c = &app->config;
+    return (KataGoTuning){
+        .search_threads = c->katago_search_threads,
+        .max_visits = c->katago_max_visits,
+        .gpu = c->katago_gpu,
+        .nn_batch = c->katago_nn_batch,
+        .nn_cache_power = c->katago_nn_cache_power,
+        .analysis_threads = c->katago_analysis_threads,
+        .analysis_search_threads = c->katago_analysis_search_threads,
+        .extra = string_sv(&c->katago_overrides),
+    };
+}
+
 static void stop_engine(App *app) {
     if (app->rank_slot == &app->main) app_rank_stop(app);
     app_batch_stop(app);
@@ -144,7 +158,8 @@ static void start_engine(App *app) {
         return;
     }
     String err = { 0 };
-    app->main.engine = engine_create(profile, string_sv(&app->config.human_profile), &err);
+    KataGoTuning tuning = app_katago_tuning(app);
+    app->main.engine = engine_create(profile, string_sv(&app->config.human_profile), &tuning, &err);
     if (!app->main.engine) {
         app->main.status = ENGINE_STATUS_FAILED;
         app->main.error = err;
@@ -230,7 +245,8 @@ static bool flash_start(App *app) {
     }
     if (!app->analyzer) {
         String err = { 0 };
-        app->analyzer = batch_analyzer_create(app->main.profile, &err);
+        KataGoTuning tuning = app_katago_tuning(app);
+        app->analyzer = batch_analyzer_create(app->main.profile, &tuning, &err);
         if (!app->analyzer) {
             log_warn("analysis engine: %s (falling back to GTP)", string_cstr(&err));
             string_free(&err);
@@ -362,7 +378,8 @@ void app_second_engine(App *app, bool on) {
         return;
     }
     String err = { 0 };
-    s->engine = engine_create(p, string_sv(&app->config.human_profile), &err);
+    KataGoTuning tuning = app_katago_tuning(app);
+    s->engine = engine_create(p, string_sv(&app->config.human_profile), &tuning, &err);
     s->profile = p;
     if (!s->engine) {
         s->status = ENGINE_STATUS_FAILED;
@@ -707,6 +724,13 @@ void app_config_changed(App *app, StringView key) {
             if (app->main.engine) engine_set_human_profile(app->main.engine, string_sv(&app->config.human_profile));
             if (app->second.engine) engine_set_human_profile(app->second.engine, string_sv(&app->config.human_profile));
         }
+    } else if (sv_starts_with(key, SV("katago."))) {   // launch overrides: restart what is running
+        if (sv_eq(key, SV("katago.overrides")) && !katago_overrides_valid(string_sv(&app->config.katago_overrides))) {
+            app_set_status(app, "KataGo overrides: expected key=value, key=value");
+            return;
+        }
+        if (app->main.engine) app_restart_engine(app);
+        if (app->second.engine) app_second_engine(app, true);
     } else if (sv_eq(key, SV("engine2"))) {
         if (app->second.engine) app_second_engine(app, true);
     } else if (sv_starts_with(key, SV("analysis."))) {

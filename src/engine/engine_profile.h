@@ -26,6 +26,7 @@
 #include "base/os.h"
 #include "engine/batch_analyzer.h"
 #include "engine/engine.h"
+#include "engine/katago_tuning.h"
 
 typedef struct EngineProfile {
     String id;
@@ -62,9 +63,10 @@ bool engine_profile_available(const EngineProfile *profile);
 // Factory: maps profile.kind to a concrete Engine implementation. `human_profile`
 // (e.g. "rank_5k", "preaz_1d", "proyear_1990") sets humanSLProfile when the
 // profile has a human_model; ignored otherwise.
-Engine *engine_create(const EngineProfile *profile, StringView human_profile, String *error);
+// `tuning` (may be NULL) adds the user's KataGo settings.
+Engine *engine_create(const EngineProfile *profile, StringView human_profile, const KataGoTuning *tuning, String *error);
 // Batch analyzer for the profile (NULL with an error when it has no analysis_config).
-BatchAnalyzer *batch_analyzer_create(const EngineProfile *profile, String *error);
+BatchAnalyzer *batch_analyzer_create(const EngineProfile *profile, const KataGoTuning *tuning, String *error);
 bool engine_profile_can_batch(const EngineProfile *profile);
 // First available profile with a human network (preferring `preferred`), or NULL.
 const EngineProfile *engine_profiles_find_human(const EngineProfileVec *profiles, StringView preferred);
