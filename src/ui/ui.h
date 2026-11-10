@@ -108,6 +108,7 @@ typedef struct Ui {
     bool debug;
     char help_topic[32];   // open "?" popover (empty = none)
     i32 deep_report_tab;
+    i32 deep_report_filter;   // All moves tab: bit 0 Black, bit 1 White, bit 2 losses >= 2 points
     ThemeEditor theme_editor;
     LayoutEditor layout_editor;
     i32 form_tab;          // selected section of a tabbed form (Settings)
