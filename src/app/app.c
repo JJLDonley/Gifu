@@ -1261,6 +1261,21 @@ bool app_init(App *app, const AppOptions *options) {
     if (!app->analysis) abort();
     app->exe_dir = os_executable_dir();
     app->root_dir = find_root_dir(string_sv(&app->exe_dir));
+#if !defined(_WIN32)
+    // Inside an AppImage the program's folder is a read-only mount: KataGo and its
+    // networks (the installer's downloads) live in a writable data folder instead.
+    const char *appimage = getenv("APPIMAGE");
+    if (appimage && *appimage) {
+        const char *xdg = getenv("XDG_DATA_HOME"), *home = getenv("HOME");
+        String base = xdg && *xdg ? string_from(sv(xdg)) : path_join(sv(home ? home : "."), SV(".local/share"));
+        string_free(&app->root_dir);
+        app->root_dir = path_join(string_sv(&base), SV("CataGui"));
+        string_free(&base);
+        String katago = path_join(string_sv(&app->root_dir), SV("katago"));
+        os_make_dirs(string_sv(&katago));
+        string_free(&katago);
+    }
+#endif
     String local_assets = path_join(string_sv(&app->exe_dir), SV("assets"));
     if (os_dir_exists(string_sv(&local_assets))) {
         app->assets_dir = local_assets;

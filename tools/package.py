@@ -2,13 +2,18 @@
 """Build release binaries and assemble distributable archives in dist/.
 
 Usage (from the repository root, on Linux/WSL):
-    python3 tools/package.py [linux] [windows]
+    python3 tools/package.py [linux] [windows] [appimage] [appdir]
 
 Builds the `linux-release` and/or `windows-release` (llvm-mingw cross) presets,
 installs each into dist/CataGui-<version>-<platform>/ and archives it
 (.tar.xz for Linux, .zip for Windows). KataGo is not bundled.
+
+`appimage` builds dist/CataGui-<version>-x86_64.AppImage with appimagetool
+(from PATH, $APPIMAGETOOL, or downloaded once into build/tools/). Inside the
+AppImage, KataGo is installed to ~/.local/share/CataGui/katago (the image is
+read-only).
 """
-import os, re, shutil, subprocess, sys, tarfile, zipfile
+import os, re, shutil, stat, subprocess, sys, tarfile, urllib.request, zipfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DIST = os.path.join(ROOT, "dist")
@@ -48,8 +53,52 @@ def package(platform):
     size = os.path.getsize(archive) / (1024 * 1024)
     print(f"-> {os.path.relpath(archive, ROOT)} ({size:.1f} MB)")
 
+APPIMAGETOOL_URL = "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
+
+def appimagetool():
+    tool = os.environ.get("APPIMAGETOOL") or shutil.which("appimagetool")
+    if tool:
+        return tool
+    tool = os.path.join(ROOT, "build", "tools", "appimagetool-x86_64.AppImage")
+    if not os.path.exists(tool):
+        os.makedirs(os.path.dirname(tool), exist_ok=True)
+        print(f"+ download {APPIMAGETOOL_URL}", flush=True)
+        urllib.request.urlretrieve(APPIMAGETOOL_URL, tool)
+        os.chmod(tool, os.stat(tool).st_mode | stat.S_IEXEC)
+    return tool
+
+def package_appimage(pack=True):
+    preset = "linux-release"
+    run(CMAKE, "--preset", preset)
+    run(CMAKE, "--build", os.path.join(ROOT, "build", preset), "--target", "catagui")
+    appdir = os.path.join(DIST, "CataGui.AppDir")
+    shutil.rmtree(appdir, ignore_errors=True)
+    app = os.path.join(appdir, "usr", "lib", "catagui")   # the program finds assets/ next to itself
+    run(CMAKE, "--install", os.path.join(ROOT, "build", preset), "--prefix", app)
+    with open(os.path.join(appdir, "AppRun"), "w") as f:
+        f.write('#!/bin/sh\nHERE="$(dirname "$(readlink -f "$0")")"\nexec "$HERE/usr/lib/catagui/catagui" "$@"\n')
+    os.chmod(os.path.join(appdir, "AppRun"), 0o755)
+    shutil.copy(os.path.join(ROOT, "packaging", "linux", "catagui.desktop"), os.path.join(appdir, "catagui.desktop"))
+    shutil.copy(os.path.join(ROOT, "assets", "icons", "catagui.png"), os.path.join(appdir, "catagui.png"))
+    print(f"-> {os.path.relpath(appdir, ROOT)} (AppDir)")
+    if not pack:
+        return
+    out = os.path.join(DIST, f"CataGui-{version()}-x86_64.AppImage")
+    env = dict(os.environ, ARCH="x86_64")
+    # --appimage-extract-and-run: works without FUSE (containers, WSL).
+    cmd = [appimagetool(), "--appimage-extract-and-run", "--no-appstream", appdir, out]
+    print("+", " ".join(cmd), flush=True)
+    subprocess.run(cmd, cwd=ROOT, check=True, env=env)
+    size = os.path.getsize(out) / (1024 * 1024)
+    print(f"-> {os.path.relpath(out, ROOT)} ({size:.1f} MB)")
+
 if __name__ == "__main__":
     targets = sys.argv[1:] or ["linux", "windows"]
     os.makedirs(DIST, exist_ok=True)
     for t in targets:
-        package(t)
+        if t == "appimage":
+            package_appimage()
+        elif t == "appdir":   # the AppImage's contents only (no appimagetool needed)
+            package_appimage(pack=False)
+        else:
+            package(t)
