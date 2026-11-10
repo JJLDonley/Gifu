@@ -54,6 +54,7 @@ static const ConfigField FIELDS[] = {
     BOOL("sgf.save_lz", sgf_save_lz, 0),
     BOOL("sgf.save_kt", sgf_save_kt, 0),
     STR("tsumego.attacker", tsumego_attacker, "auto"),
+    STR("tsumego.ko_threats", tsumego_ko_threats, "none"),
     INT("tsumego.margin", tsumego_margin, 2, 1, 5),
     INT("report.compare_rank", report_compare_rank, 11, 0, 11),
     INT("engine.max_processes", engine_max_processes, 1, 1, 4),

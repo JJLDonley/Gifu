@@ -1047,6 +1047,9 @@ bool app_tsumego_frame(App *app) {
         .attacker = sv_eq(attacker, SV("black")) ? STONE_BLACK : sv_eq(attacker, SV("white")) ? STONE_WHITE : STONE_EMPTY,
         .margin = app->config.tsumego_margin,
     };
+    StringView threats = string_sv(&app->config.tsumego_ko_threats);
+    options.ko_threat_attacker = sv_eq(threats, SV("attacker")) || sv_eq(threats, SV("both"));
+    options.ko_threat_defender = sv_eq(threats, SV("defender")) || sv_eq(threats, SV("both"));
     if (app->region.active) {   // the selected rectangle already leaves some room
         options.has_problem = true;
         options.margin = MAX(app->config.tsumego_margin - 1, 0);
@@ -1076,8 +1079,21 @@ bool app_tsumego_frame(App *app) {
     app_mark_edited(app);
     BoardRect a = frame->area;
     app_set_region(app, (BoardRegion){ true, a.x0, a.y0, a.x1, a.y1 });
-    app_set_status(app, "Tsumego frame added (%s attacks); analysis limited to the problem",
-                   frame->attacker == STONE_BLACK ? "Black" : "White");
+    // Ko threats: say what was placed (and when there was no room for one).
+    char threats_text[160] = "";
+    const bool asked[3] = { false, frame->attacker == STONE_BLACK ? options.ko_threat_attacker : options.ko_threat_defender,
+                            frame->attacker == STONE_WHITE ? options.ko_threat_attacker : options.ko_threat_defender };
+    for (Stone s = STONE_BLACK; s <= STONE_WHITE; ++s) {
+        if (!asked[s]) continue;
+        const TsumegoKoThreat *t = &frame->ko_threat[s];
+        isize len = (isize)strlen(threats_text);
+        char move[8];
+        point_to_gtp(t->move, game_tree_width(tree), game_tree_height(tree), move);
+        if (t->placed) snprintf(threats_text + len, sizeof(threats_text) - (usize)len, "; ko threat for %s at %s (%d stones)", s == STONE_BLACK ? "Black" : "White", move, t->stones);
+        else snprintf(threats_text + len, sizeof(threats_text) - (usize)len, "; no room for a %s ko threat", s == STONE_BLACK ? "Black" : "White");
+    }
+    app_set_status(app, "Tsumego frame added (%s attacks)%s; analysis limited to the problem", frame->attacker == STONE_BLACK ? "Black" : "White",
+                   threats_text);
     free(frame);
     return true;
 }

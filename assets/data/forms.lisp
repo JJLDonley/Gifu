@@ -79,7 +79,12 @@
       (option auto "Detect")
       (option black "Black")
       (option white "White"))
-    (number tsumego.margin :step 1 :format "%.0f lines" :label settings.tsumego_margin :fallback "Tsumego frame: empty lines around the problem")))
+    (number tsumego.margin :step 1 :format "%.0f lines" :label settings.tsumego_margin :fallback "Tsumego frame: empty lines around the problem")
+    (choice tsumego.ko_threats :columns 4 :label settings.tsumego_ko_threats :fallback "Tsumego frame: ko threat for"
+      (option none "Nobody")
+      (option attacker "Attacker")
+      (option defender "Defender")
+      (option both "Both"))))
 
 (form new_game :title command.file.new :fallback "New game"
   (section settings.board :fallback Board
