@@ -99,6 +99,8 @@ static void summary_column(DeepReport *d, Stone color) {
                  arena_format(&ui->frame, "%.0f%%", p->moves ? 100.0f * (f32)p->top3 / (f32)p->moves : 0.0f), c->text);
             stat_cell(ui, tr(ui, "report.avg_loss", "Avg loss"), arena_format(&ui->frame, "%.1f%%", p->avg_winrate_loss * 100.0f), c->text);
             stat_cell(ui, tr(ui, "report.avg_score_loss", "Avg points lost"), arena_format(&ui->frame, "%.2f", p->avg_score_loss), c->text);
+            stat_cell(ui, tr(ui, "report.agreement", "Engine agreement"),
+                      p->agreement_moves ? arena_format(&ui->frame, "%.0f%%", p->agreement) : SV("—"), c->text);
             stat_cell(ui, tr(ui, "report.errors", "Mistakes/Blunders"), arena_format(&ui->frame, "%d / %d", p->mistakes, p->blunders),
                  p->blunders ? c->candidate_bad : c->text);
         }
@@ -614,6 +616,7 @@ static void moves_page(DeepReport *d) {
         cell(ui, tr(ui, "report.win_loss", "Win rate lost"), FONT_UI, c->text_muted, 110, true);
         cell(ui, tr(ui, "report.points_lost", "Points lost"), FONT_UI, c->text_muted, 100, true);
         cell(ui, tr(ui, "report.accuracy_score", "accuracy"), FONT_UI, c->text_muted, 80, true);
+        cell(ui, tr(ui, "report.search_share", "Search share"), FONT_UI, c->text_muted, 100, true);
     }
     CLAY({ .id = CLAY_ID("MovesTable"), .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM },
            .clip = { .vertical = true, .childOffset = Clay_GetScrollOffset() } }) {
@@ -648,6 +651,8 @@ static void moves_page(DeepReport *d) {
                 cell(ui, arena_format(&ui->frame, "%+.1f%%", -wr_loss * 100.0f), FONT_MONO, wr_loss > 0.10f ? c->candidate_bad : c->text, 110, true);
                 cell(ui, has_points ? arena_format(&ui->frame, "%+.1f", -points) : SV("—"), FONT_MONO, loss_color, 100, true);
                 cell(ui, has_points ? arena_format(&ui->frame, "%.0f", move_accuracy(points)) : SV("—"), FONT_MONO, c->text, 80, true);
+                f32 share = 0;
+                cell(ui, node_played_share(node, &share) ? arena_format(&ui->frame, "%.0f%%", share * 100.0f) : SV("—"), FONT_MONO, c->text, 100, true);
             }
             if (over && ui->mouse_pressed) app_goto(ui->app, node);
         }

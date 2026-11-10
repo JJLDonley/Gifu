@@ -17,7 +17,7 @@ struct SgfProperty {
 };
 
 // Compact engine evaluation summary kept per node (for graphs / hawk-eye).
-enum { NODE_EVAL_TOP = 3 };
+enum { NODE_EVAL_TOP = 8 };   // candidates kept per node ("top 3" stats use the first three)
 
 typedef struct NodeEval {
     bool valid;
@@ -25,7 +25,8 @@ typedef struct NodeEval {
     f32 black_score;     // score lead from Black's point of view
     i32 visits;
     i32 top_count;
-    Point top[NODE_EVAL_TOP];   // engine's best moves for the side to play here
+    Point top[NODE_EVAL_TOP];       // engine's best moves for the side to play here, best first
+    f32 top_share[NODE_EVAL_TOP];   // each one's share of the search (visits / root visits); 0 = unknown
 } NodeEval;
 
 

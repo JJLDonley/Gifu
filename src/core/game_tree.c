@@ -335,9 +335,14 @@ bool node_eval_parse(StringView text, i32 width, i32 height, NodeEval *out) {
     e.black_winrate = (f32)CLAMP(wr, 0.0, 1.0);
     e.black_score = (f32)score;
     e.visits = (i32)visits;
+    // "pd dd" (older files) or "pd:0.452 dd:0.201" (move:share of the search).
     for (StringView tok = sv_chop_token(&rest); tok.len && e.top_count < NODE_EVAL_TOP; tok = sv_chop_token(&rest)) {
+        StringView coord = sv_chop_char(&tok, ':');
         Point p;
-        if (point_from_sgf(tok, width, height, &p)) e.top[e.top_count++] = p;
+        if (!point_from_sgf(coord, width, height, &p)) continue;
+        f64 share = 0;
+        e.top_share[e.top_count] = tok.len && sv_parse_f64(tok, &share) ? (f32)CLAMP(share, 0.0, 1.0) : 0.0f;
+        e.top[e.top_count++] = p;
     }
     *out = e;
     return true;
@@ -345,12 +350,13 @@ bool node_eval_parse(StringView text, i32 width, i32 height, NodeEval *out) {
 
 void game_node_store_eval(GameTree *tree, GameNode *node, const NodeEval *eval) {
     node->eval = *eval;
-    char buffer[96];
+    char buffer[256];
     i32 n = snprintf(buffer, sizeof(buffer), "%.4f,%.2f,%d,", eval->black_winrate, eval->black_score, eval->visits);
-    for (i32 i = 0; i < eval->top_count && n < (i32)sizeof(buffer) - 4; ++i) {
+    for (i32 i = 0; i < eval->top_count && n < (i32)sizeof(buffer) - 16; ++i) {
         char coord[3];
         point_to_sgf(eval->top[i], coord);
         n += snprintf(buffer + n, sizeof(buffer) - (usize)n, "%s%s", i ? " " : "", point_is_pass(eval->top[i]) ? "tt" : coord);
+        if (eval->top_share[i] > 0) n += snprintf(buffer + n, sizeof(buffer) - (usize)n, ":%.3f", eval->top_share[i]);
     }
     game_node_set_prop(tree, node, SV("CGE"), sv(buffer));
 }

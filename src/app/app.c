@@ -201,7 +201,10 @@ static void store_node_eval(GameNode *node, const AnalysisSnapshot *a) {
         .black_score = analysis_black_score(a, best->score_lead),
         .visits = a->total_visits,
     };
-    for (i32 i = 0; i < a->candidate_count && e.top_count < NODE_EVAL_TOP; ++i) e.top[e.top_count++] = a->candidates[i].move;
+    for (i32 i = 0; i < a->candidate_count && e.top_count < NODE_EVAL_TOP; ++i) {
+        e.top_share[e.top_count] = a->total_visits > 0 ? (f32)a->candidates[i].visits / (f32)a->total_visits : 0.0f;
+        e.top[e.top_count++] = a->candidates[i].move;
+    }
     node->eval = e;
 }
 

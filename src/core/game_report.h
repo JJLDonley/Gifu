@@ -13,6 +13,9 @@ i32 game_phase_start(i32 phase, i32 board_points);   // first move number of the
 // Accuracy of one move, 0..100, from the points it lost: 100 * exp(-loss / 8)
 // (1 point -> 88, 3 -> 69, 5 -> 54, 10 -> 29). Gains count as 100.
 f32 move_accuracy(f32 score_loss);
+// Share of the search (0..1) the played move got in the position before it;
+// false when the parent has no shares (older analysis). 0 if it was not a candidate.
+bool node_played_share(const GameNode *node, f32 *share);
 
 // Loss histogram buckets (upper bounds; the last bucket is open-ended).
 enum { LOSS_BUCKETS = 5 };
@@ -22,6 +25,8 @@ extern const f32 WINRATE_LOSS_BUCKETS[LOSS_BUCKETS - 1];   // 0.02 0.05 0.10 0.2
 typedef struct StageReport {
     i32 moves, top1, top3;
     i32 mistakes, blunders;
+    f32 agreement;         // 0..100, mean share of the search on the played move
+    i32 agreement_moves;   // moves where the shares are known
     f32 accuracy;          // 0..100, mean of move_accuracy
     f32 avg_winrate_loss;  // 0..1
     f32 avg_score_loss;    // points
@@ -35,6 +40,10 @@ typedef struct PlayerReport {
     f32 avg_winrate_loss; // 0..1
     f32 avg_score_loss;   // points
     f32 accuracy;         // 0..100, mean of move_accuracy
+    // Engine agreement (LizzieYzy's "accuracy"): how much of KataGo's search went
+    // to the move that was played, 0..100, over moves where the shares are known.
+    f32 agreement;
+    i32 agreement_moves;
     StageReport stage[GAME_PHASES];
     i32 score_hist[LOSS_BUCKETS];
     i32 winrate_hist[LOSS_BUCKETS];

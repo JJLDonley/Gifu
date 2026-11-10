@@ -21,6 +21,17 @@ i32 game_phase(i32 move_number, i32 board_points) {
 
 f32 move_accuracy(f32 score_loss) { return 100.0f * expf(-fmaxf(score_loss, 0.0f) / 8.0f); }
 
+bool node_played_share(const GameNode *node, f32 *share) {
+    if (!node->has_move || !node->parent || !node->parent->eval.valid) return false;
+    const NodeEval *e = &node->parent->eval;
+    if (e->top_count == 0 || e->top_share[0] <= 0) return false;
+    *share = 0;
+    for (i32 k = 0; k < e->top_count; ++k) {
+        if (point_eq(e->top[k], node->move.point)) *share = e->top_share[k];
+    }
+    return true;
+}
+
 static i32 bucket(const f32 *bounds, f32 value) {
     i32 b = 0;
     while (b < LOSS_BUCKETS - 1 && value >= bounds[b]) ++b;
@@ -44,6 +55,7 @@ static void insert_worst(PlayerReport *p, GameNode *node, f32 loss) {
 void game_report_compute(GameNode *const *line, isize count, GameReport *out) {
     memset(out, 0, sizeof(*out));
     f64 wr_sum[3] = { 0 }, score_sum[3] = { 0 }, acc_sum[3] = { 0 };
+    f64 agree_sum[3] = { 0 }, stage_agree[GAME_PHASES][3] = { 0 };
     f64 stage_wr[GAME_PHASES][3] = { 0 }, stage_score[GAME_PHASES][3] = { 0 }, stage_acc[GAME_PHASES][3] = { 0 };
     for (isize i = 0; i < count; ++i) {
         GameNode *n = line[i];
@@ -70,8 +82,13 @@ void game_report_compute(GameNode *const *line, isize count, GameReport *out) {
         p->winrate_hist[bucket(WINRATE_LOSS_BUCKETS, wr_loss)]++;
         if (wr_loss > 0.10f) p->blunders++, st->blunders++;
         else if (wr_loss > 0.05f) p->mistakes++, st->mistakes++;
+        f32 share = 0;
+        if (node_played_share(n, &share)) {
+            agree_sum[c] += share * 100.0f, p->agreement_moves++;
+            stage_agree[phase][c] += share * 100.0f, st->agreement_moves++;
+        }
         const NodeEval *before = &n->parent->eval;
-        for (i32 k = 0; k < before->top_count; ++k) {
+        for (i32 k = 0; k < before->top_count && k < 3; ++k) {
             if (!point_eq(before->top[k], n->move.point)) continue;
             if (k == 0) p->top1++, st->top1++;
             p->top3++;
@@ -87,12 +104,14 @@ void game_report_compute(GameNode *const *line, isize count, GameReport *out) {
             p->avg_score_loss = (f32)(score_sum[c] / p->moves);
             p->accuracy = (f32)(acc_sum[c] / p->moves);
         }
+        if (p->agreement_moves) p->agreement = (f32)(agree_sum[c] / p->agreement_moves);
         for (i32 ph = 0; ph < GAME_PHASES; ++ph) {
             StageReport *st = &p->stage[ph];
             if (!st->moves) continue;
             st->avg_winrate_loss = (f32)(stage_wr[ph][c] / st->moves);
             st->avg_score_loss = (f32)(stage_score[ph][c] / st->moves);
             st->accuracy = (f32)(stage_acc[ph][c] / st->moves);
+            if (st->agreement_moves) st->agreement = (f32)(stage_agree[ph][c] / st->agreement_moves);
         }
     }
 }

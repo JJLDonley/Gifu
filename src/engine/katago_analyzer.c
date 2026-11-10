@@ -89,7 +89,11 @@ static bool parse_root(JsonValue root, i32 width, i32 height, TurnResult *out) {
             JsonValue m = json_array_at(moves, i);
             if (json_int(json_get(m, "order"), -1) != rank) continue;
             Point p;
-            if (point_from_gtp(json_string(json_get(m, "move"), SV("")), width, height, &p)) out->eval.top[out->eval.top_count++] = p;
+            if (point_from_gtp(json_string(json_get(m, "move"), SV("")), width, height, &p)) {
+                f64 visits = json_number(json_get(m, "visits"), 0);
+                out->eval.top_share[out->eval.top_count] = out->eval.visits > 0 ? (f32)(visits / out->eval.visits) : 0.0f;
+                out->eval.top[out->eval.top_count++] = p;
+            }
             break;
         }
     }

@@ -40,10 +40,15 @@ bool lz_parse(StringView text, Stone to_play, i32 w, i32 h, NodeEval *out) {
     out->black_score = has_score ? (f32)(to_play == STONE_WHITE ? -score : score) : 0.0f;
     // Best moves, in order: every "move X" token.
     rest = line2;
-    for (StringView tok = next_token(&rest); tok.len && out->top_count < NODE_EVAL_TOP; tok = next_token(&rest)) {
-        if (!sv_eq(tok, SV("move"))) continue;
-        Point p;
-        if (point_from_gtp(next_token(&rest), w, h, &p)) out->top[out->top_count++] = p;
+    bool have_move = false;
+    for (StringView tok = next_token(&rest); tok.len; tok = next_token(&rest)) {
+        if (sv_eq(tok, SV("move"))) {
+            Point p;
+            have_move = out->top_count < NODE_EVAL_TOP && point_from_gtp(next_token(&rest), w, h, &p);
+            if (have_move) out->top[out->top_count++] = p;
+        } else if (sv_eq(tok, SV("visits")) && have_move && out->visits > 0) {   // share of the search
+            out->top_share[out->top_count - 1] = (f32)CLAMP((f64)parse_visits(next_token(&rest)) / out->visits, 0.0, 1.0);
+        }
     }
     out->valid = out->visits > 0;
     return out->valid;
@@ -85,7 +90,11 @@ bool kt_parse(const StringView *values, i32 count, i32 w, i32 h, NodeEval *out) 
                 while (json_object_iter_next(&it, &key, &m)) {
                     if (json_int(json_get(m, "order"), -1) != rank) continue;
                     Point p;
-                    if (point_from_gtp(json_string(json_get(m, "move"), key), w, h, &p)) out->top[out->top_count++] = p;
+                    if (point_from_gtp(json_string(json_get(m, "move"), key), w, h, &p)) {
+                        f64 visits = json_number(json_get(m, "visits"), 0);
+                        out->top_share[out->top_count] = out->visits > 0 ? (f32)CLAMP(visits / out->visits, 0.0, 1.0) : 0.0f;
+                        out->top[out->top_count++] = p;
+                    }
                     break;
                 }
             }
