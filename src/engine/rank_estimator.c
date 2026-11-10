@@ -1,6 +1,7 @@
 #include "engine/rank_estimator.h"
 
 #include "base/log.h"
+#include "core/game_report.h"
 
 #include <math.h>
 #include <stdarg.h>
@@ -71,18 +72,8 @@ bool rank_probs_parse(StringView text, f32 out[RANK_COUNT]) {
     return true;
 }
 
-i32 rank_phase_start(i32 phase, i32 board_points) {
-    f64 scale = (f64)(board_points > 0 ? board_points : 361) / 361.0;
-    if (phase <= RANK_PHASE_OPENING) return 1;
-    if (phase == RANK_PHASE_MIDDLE) return 1 + (i32)lround(50 * scale);
-    return 1 + (i32)lround(150 * scale);
-}
-
-i32 rank_phase(i32 move_number, i32 board_points) {
-    if (move_number >= rank_phase_start(RANK_PHASE_ENDGAME, board_points)) return RANK_PHASE_ENDGAME;
-    if (move_number >= rank_phase_start(RANK_PHASE_MIDDLE, board_points)) return RANK_PHASE_MIDDLE;
-    return RANK_PHASE_OPENING;
-}
+i32 rank_phase_start(i32 phase, i32 board_points) { return game_phase_start(phase, board_points); }
+i32 rank_phase(i32 move_number, i32 board_points) { return game_phase(move_number, board_points); }
 
 StringView rank_phase_name(i32 phase) {
     static const char *const NAMES[RANK_PHASES] = { "opening", "middle", "endgame" };

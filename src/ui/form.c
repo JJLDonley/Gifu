@@ -316,5 +316,6 @@ void ui_dialogs(Ui *ui) {
         case UI_DIALOG_NEW_GAME: ui_modal(ui, ui_form(ui, "new_game"), 520, new_game_footer, NULL); break;
         case UI_DIALOG_SETUP: engine_setup_dialog(ui); break;
         case UI_DIALOG_GAME_INFO: ui_modal(ui, ui_form(ui, "game_info"), 520, game_info_footer, NULL); break;
+        case UI_DIALOG_REPORT: deep_report_dialog(ui); break;
     }
 }

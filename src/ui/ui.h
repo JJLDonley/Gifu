@@ -56,6 +56,7 @@ typedef enum UiDialog {
     UI_DIALOG_NEW_GAME,
     UI_DIALOG_SETUP,
     UI_DIALOG_GAME_INFO,
+    UI_DIALOG_REPORT,
 } UiDialog;
 
 typedef struct Ui {
@@ -168,6 +169,8 @@ CustomElement *ui_custom(Ui *ui, CustomDrawFn draw, void *user);
 
 Clay_TextElementConfig *ui_text_style(Ui *ui, FontRole role, f32 size, Color color);
 void ui_label(Ui *ui, StringView text, FontRole role, f32 size, Color color);
+void ui_stone_dot(Ui *ui, Stone color);   // small stone marker (panels.c)
+void deep_report_dialog(Ui *ui);          // deep_report.c
 // Inserts line breaks so text fits max_width: breaks at spaces for Latin
 // words and between any two characters of CJK text. Result lives in the frame arena.
 StringView ui_wrap_text(Ui *ui, StringView text, FontRole role, f32 size, f32 max_width);

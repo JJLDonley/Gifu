@@ -3,7 +3,28 @@
 
 #include "core/game_tree.h"
 
-enum { REPORT_WORST = 5 };
+enum { REPORT_WORST = 10 };
+
+// Game phases by move number, scaled to the board (19x19: 1-50, 51-150, 151-).
+enum { GAME_PHASE_OPENING, GAME_PHASE_MIDDLE, GAME_PHASE_ENDGAME, GAME_PHASES };
+i32 game_phase(i32 move_number, i32 board_points);
+i32 game_phase_start(i32 phase, i32 board_points);   // first move number of the phase
+
+// Accuracy of one move, 0..100, from the points it lost: 100 * exp(-loss / 8)
+// (1 point -> 88, 3 -> 69, 5 -> 54, 10 -> 29). Gains count as 100.
+f32 move_accuracy(f32 score_loss);
+
+// Loss histogram buckets (upper bounds; the last bucket is open-ended).
+enum { LOSS_BUCKETS = 5 };
+extern const f32 SCORE_LOSS_BUCKETS[LOSS_BUCKETS - 1];     // points: 0.5 2 5 10
+extern const f32 WINRATE_LOSS_BUCKETS[LOSS_BUCKETS - 1];   // 0.02 0.05 0.10 0.20
+
+typedef struct StageReport {
+    i32 moves, top1, top3;
+    f32 accuracy;          // 0..100, mean of move_accuracy
+    f32 avg_winrate_loss;  // 0..1
+    f32 avg_score_loss;    // points
+} StageReport;
 
 typedef struct PlayerReport {
     i32 moves;            // moves with a known loss
@@ -12,6 +33,10 @@ typedef struct PlayerReport {
     i32 blunders;         // win-rate loss > 10%
     f32 avg_winrate_loss; // 0..1
     f32 avg_score_loss;   // points
+    f32 accuracy;         // 0..100, mean of move_accuracy
+    StageReport stage[GAME_PHASES];
+    i32 score_hist[LOSS_BUCKETS];
+    i32 winrate_hist[LOSS_BUCKETS];
     GameNode *worst[REPORT_WORST];   // biggest win-rate losses, worst first
     f32 worst_loss[REPORT_WORST];
     i32 worst_count;

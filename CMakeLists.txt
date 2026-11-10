@@ -141,6 +141,7 @@ add_executable(catagui
     src/ui/board_view.c
     src/ui/winrate_graph.c
     src/ui/panels.c
+    src/ui/deep_report.c
     src/ui/layout.c)
 target_link_libraries(catagui PRIVATE catagui_core raylib)
 catagui_warnings(catagui)

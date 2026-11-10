@@ -11,7 +11,7 @@ typedef void (*PanelFn)(Ui *ui);
 
 static StringView tr(Ui *ui, const char *key, const char *fallback) { return app_tr(ui->app, key, fallback); }
 
-static void stone_dot(Ui *ui, Stone color) {
+void ui_stone_dot(Ui *ui, Stone color) {
     const ThemeColors *c = &ui->theme->colors;
     Color fill = color == STONE_BLACK ? c->black_stone : c->white_stone;
     Color edge = color == STONE_BLACK ? c->black_stone_edge : c->white_stone_edge;
@@ -37,7 +37,7 @@ static void player_row(Ui *ui, Stone color, StringView name, i32 captures) {
     bool to_play = ui->app->tree->current->to_play == color;
     CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 8),
                        .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
-        stone_dot(ui, color);
+        ui_stone_dot(ui, color);
         StringView fallback = color == STONE_BLACK ? tr(ui, "label.black", "Black") : tr(ui, "label.white", "White");
         ui_label(ui, name.len ? name : fallback, to_play ? FONT_UI_BOLD : FONT_UI, 15, c->text);
         CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) } } }) {}
@@ -174,7 +174,7 @@ static void panel_move_list(Ui *ui) {
                     CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 34)), CLAY_SIZING_FIT(0) } } }) {
                         CLAY_TEXT(ui_fmt(ui, "%d", n->move_number), ui_text_style(ui, FONT_MONO, 12, c->text_muted));
                     }
-                    if (n->has_move) stone_dot(ui, n->move.color);
+                    if (n->has_move) ui_stone_dot(ui, n->move.color);
                     char coord[8] = "—";
                     if (n->has_move) point_to_gtp(n->move.point, n->board.width, n->board.height, coord);
                     CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 44)), CLAY_SIZING_FIT(0) } } }) {
@@ -293,7 +293,7 @@ static void report_player(Ui *ui, const PlayerReport *p, Stone color, StringView
     CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM,
                        .childGap = ui_u16(ui, 3), .padding = { 0, 0, ui_u16(ui, 2), ui_u16(ui, 4) } } }) {
         CLAY({ .layout = { .childGap = ui_u16(ui, 6), .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
-            stone_dot(ui, color);
+            ui_stone_dot(ui, color);
             ui_label(ui, name, FONT_UI_BOLD, 13, c->text);
             CLAY_TEXT(ui_fmt(ui, "· %d %s", p->moves, p->moves == 1 ? "move" : "moves"), ui_text_style(ui, FONT_UI, 11, c->text_muted));
         }
@@ -342,7 +342,7 @@ static void rank_chip(Ui *ui, Stone color) {
                        .padding = { ui_u16(ui, 6), ui_u16(ui, 6), ui_u16(ui, 2), ui_u16(ui, 2) } },
            .backgroundColor = color_to_clay(color_with_alpha(c->human_policy, 0.14f)),
            .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 4)) }) {
-        stone_dot(ui, color);
+        ui_stone_dot(ui, color);
         CLAY_TEXT(ui_fmt(ui, "≈ " SV_FMT, SV_ARG(rank_label(best))), ui_text_style(ui, FONT_UI_BOLD, 12, c->human_policy));
         CLAY_TEXT(ui_fmt(ui, "%.0f%%", post[best] * 100.0f), ui_text_style(ui, FONT_MONO, 10, c->text_muted));
     }
@@ -381,6 +381,7 @@ static void panel_report(Ui *ui) {
             }
             ui_command_button_ex(ui, SV("analysis.rank"), SV("@rank"), false, BUTTON_NORMAL, 0);
             ui_command_button(ui, SV("analysis.game"), SV("@chart"), BUTTON_NORMAL, 0);
+            ui_command_button_ex(ui, SV("analysis.report"), SV(""), true, BUTTON_PRIMARY, 2);
             ui_help_button(ui, SV("report"));
         }
         if (app_game_analysis_running(app) || app->rank_job) {
