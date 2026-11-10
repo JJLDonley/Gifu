@@ -64,6 +64,9 @@
     (number analysis.max_candidates :step 1 :format "%.0f" :label settings.max_candidates :fallback "Candidates shown")
     (number analysis.interval_cs :step 5 :format "%.0f cs" :label settings.interval :fallback "Update interval")
     (number analysis.game_visits :min 50 :max 5000 :step 50 :format "%.0f" :label settings.game_visits :fallback "Game analysis visits")
+    ;; Saved games also carry the analysis in other programs' formats.
+    (bool sgf.save_lz :label settings.save_lz :fallback "Also save analysis for Lizzie / LizzieYzy (LZ)")
+    (bool sgf.save_kt :label settings.save_kt :fallback "Also save analysis for KaTrain (KT)")
     ;; Analysis -> Tsumego frame (F).
     (choice tsumego.attacker :columns 3 :label settings.tsumego_attacker :fallback "Tsumego frame: attacker"
       (option auto "Detect")

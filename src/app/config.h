@@ -31,6 +31,8 @@ typedef struct Config {
     bool ai_human_style;      // engine moves come from the human network at ai.human_profile
     i32 engine_max_processes;
     i32 report_compare_rank;
+    bool sgf_save_lz;         // also write analysis as LZ[] (Lizzie / LizzieYzy)
+    bool sgf_save_kt;         // also write analysis as KT[] (KaTrain)
     String tsumego_attacker;  // "auto", "black" or "white" (Tsumego frame)
     i32 tsumego_margin;       // empty lines between the problem and the frame's wall
     // KataGo settings sent as -override-config (0 / -1 = keep the .cfg value).

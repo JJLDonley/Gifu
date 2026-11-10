@@ -48,6 +48,8 @@ static const ConfigField FIELDS[] = {
     INT("katago.analysis_threads", katago_analysis_threads, 12, 1, 256),
     INT("katago.analysis_search_threads", katago_analysis_search_threads, 2, 1, 256),
     STR("katago.overrides", katago_overrides, ""),
+    BOOL("sgf.save_lz", sgf_save_lz, 0),
+    BOOL("sgf.save_kt", sgf_save_kt, 0),
     STR("tsumego.attacker", tsumego_attacker, "auto"),
     INT("tsumego.margin", tsumego_margin, 2, 1, 5),
     INT("report.compare_rank", report_compare_rank, 11, 0, 11),

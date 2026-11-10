@@ -1,4 +1,5 @@
 #include "core/game_tree.h"
+#include "core/sgf_analysis.h"
 
 #include "base/log.h"
 
@@ -202,6 +203,16 @@ static void compute_node(GameTree *tree, GameNode *node) {
     StringView pl = game_node_prop(node, SV("PL"));
     if (sv_eq(pl, SV("B")) || sv_eq(pl, SV("b"))) node->to_play = STONE_BLACK;
     if (sv_eq(pl, SV("W")) || sv_eq(pl, SV("w"))) node->to_play = STONE_WHITE;
+
+    // No CGE[]: analysis written by KaTrain (KT[]) or Lizzie / LizzieYzy (LZ[]).
+    if (!node->eval.valid) {
+        SgfProperty *kt = game_node_find_prop(node, SV("KT"));
+        if (kt) kt_parse(kt->values, kt->value_count, board->width, board->height, &node->eval);
+    }
+    if (!node->eval.valid) {
+        StringView lz = game_node_prop(node, SV("LZ"));
+        if (lz.len) lz_parse(lz, node->to_play, board->width, board->height, &node->eval);
+    }
 }
 
 void game_tree_rebuild(GameTree *tree, GameNode *from) {

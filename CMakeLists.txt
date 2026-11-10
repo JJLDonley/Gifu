@@ -87,12 +87,14 @@ add_library(catagui_core STATIC
     src/base/sexpr.c
     src/base/kv.c
     src/base/zip.c
+    src/base/codec.c
     src/core/coord.c
     src/core/board.c
     src/core/game_tree.c
     src/core/sgf.c
     src/core/game_report.c
     src/core/tsumego_frame.c
+    src/core/sgf_analysis.c
     src/engine/process.c
     src/engine/line_channel.c
     src/engine/gtp_client.c
@@ -205,6 +207,7 @@ if(CATAGUI_BUILD_TESTS)
         tests/test_installer.c
         tests/test_theme.c
         tests/test_layout.c
+        tests/test_interop.c
         src/ui/theme.c
         src/ui/layout_model.c)   # pure data code: needs raylib's Color type, not the library
     target_link_libraries(catagui_tests PRIVATE catagui_core)

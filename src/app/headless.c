@@ -5,6 +5,8 @@
 // CGE[] properties and each file is saved in place or into --out.
 #include "app/headless.h"
 
+#include "core/sgf_analysis.h"
+
 #include "base/log.h"
 #include "core/game_report.h"
 #include "app/installer.h"
@@ -124,6 +126,7 @@ int headless_analyze(App *app) {
             failures++;
         } else {
             game_tree_store_evals(g->tree);
+            game_tree_store_interop(g->tree, app->config.sgf_save_lz, app->config.sgf_save_kt);
             String out = o->output_dir.len ? path_join(o->output_dir, path_basename(g->path)) : string_from(g->path);
             if (o->output_dir.len) os_make_dirs(o->output_dir);
             if (sgf_save_file(g->tree, string_sv(&out))) {

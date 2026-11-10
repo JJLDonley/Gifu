@@ -1,6 +1,7 @@
 #include "app/app.h"
 
 #include "app/file_dialog.h"
+#include "core/sgf_analysis.h"
 #include "core/tsumego_frame.h"
 #include "engine/line_channel.h"
 #include "base/log.h"
@@ -796,6 +797,7 @@ bool app_open_sgf(App *app, StringView path) {
 
 bool app_save_sgf(App *app, StringView path) {
     game_tree_store_evals(app->tree);   // persist analysis as CGE[] properties
+    game_tree_store_interop(app->tree, app->config.sgf_save_lz, app->config.sgf_save_kt);   // LizzieYzy / KaTrain
     if (!sgf_save_file(app->tree, path)) {
         app_set_status(app, "Cannot save " SV_FMT, SV_ARG(path));
         return false;
