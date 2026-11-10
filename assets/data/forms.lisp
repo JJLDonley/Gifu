@@ -64,6 +64,9 @@
     (number analysis.max_candidates :step 1 :format "%.0f" :label settings.max_candidates :fallback "Candidates shown")
     (number analysis.interval_cs :step 5 :format "%.0f cs" :label settings.interval :fallback "Update interval")
     (number analysis.game_visits :min 50 :max 5000 :step 50 :format "%.0f" :label settings.game_visits :fallback "Game analysis visits")
+    ;; Saving: automatic (to the game's file, or <config_dir>/autosave for new games).
+    (bool sgf.autosave :label settings.autosave :fallback "Save games automatically (with their analysis)")
+    (number sgf.autosave_seconds :step 10 :format "%.0f s" :label settings.autosave_seconds :fallback "Save analysis changes at most every")
     ;; Saved games also carry the analysis in other programs' formats.
     (bool sgf.save_lz :label settings.save_lz :fallback "Also save analysis for Lizzie / LizzieYzy (LZ)")
     (bool sgf.save_kt :label settings.save_kt :fallback "Also save analysis for KaTrain (KT)")

@@ -70,6 +70,11 @@ typedef struct App {
 
     GameTree *tree;
     String sgf_path;
+    // Automatic saving (sgf.autosave): to the game's file, or for a game that has
+    // none to <config_dir>/autosave/game-<date>.sgf.
+    u64 autosaved_revision;
+    f64 autosave_last;
+    String autosave_path;
     bool dirty;                 // unsaved edits (app_mark_edited); analysis alone never sets it
 
     // Engines: `main` drives analysis, the board and the graph; `second` is an

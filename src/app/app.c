@@ -609,7 +609,10 @@ static void second_update(App *app) {
     }
 }
 
+static void autosave_update(App *app);
+
 void app_update(App *app) {
+    autosave_update(app);
     flash_update(app);
     rank_update(app);
     second_update(app);
@@ -787,6 +790,9 @@ static void replace_tree(App *app, GameTree *tree) {
     game_tree_free(app->tree);
     app->tree = tree;
     app->human_policy_node = NULL;   // points into the freed tree (its memory may be reused)
+    string_free(&app->autosave_path);   // a new game gets its own auto-save file
+    app->autosaved_revision = tree->revision;
+    app->autosave_last = os_time_seconds();
     app_rank_stop(app);
     app->main.synced_node = NULL;
     app->analysis_valid = false;
@@ -819,10 +825,47 @@ bool app_open_sgf(App *app, StringView path) {
     return true;
 }
 
-bool app_save_sgf(App *app, StringView path) {
+// Writes the game and its analysis (CGE[], plus LZ / KT if enabled) to `path`.
+static bool write_game(App *app, StringView path) {
     game_tree_store_evals(app->tree);   // persist analysis as CGE[] properties
     game_tree_store_interop(app->tree, app->config.sgf_save_lz, app->config.sgf_save_kt);   // LizzieYzy / KaTrain
-    if (!sgf_save_file(app->tree, path)) {
+    bool ok = sgf_save_file(app->tree, path);
+    if (ok) {
+        app->autosaved_revision = app->tree->revision;   // nothing left for the auto-save
+        app->autosave_last = os_time_seconds();
+    }
+    return ok;
+}
+
+// sgf.autosave: edits are saved a few seconds after they happen, analysis at
+// most every sgf.autosave_seconds (it changes all the time while KataGo runs).
+static void autosave_now(App *app) {
+    if (app->sgf_path.len == 0 && app->autosave_path.len == 0) {
+        char name[64];
+        time_t now = time(NULL);
+        strftime(name, sizeof(name), "game-%Y%m%d-%H%M%S.sgf", localtime(&now));
+        String dir = path_join(string_sv(&app->config_dir), SV("autosave"));
+        os_make_dirs(string_sv(&dir));
+        app->autosave_path = path_join(string_sv(&dir), sv(name));
+        string_free(&dir);
+    }
+    StringView path = app->sgf_path.len ? string_sv(&app->sgf_path) : string_sv(&app->autosave_path);
+    if (write_game(app, path)) {
+        if (app->sgf_path.len) app->dirty = false;   // the game's own file is up to date
+    } else {
+        log_warn("auto-save to " SV_FMT " failed", SV_ARG(path));
+    }
+}
+
+static void autosave_update(App *app) {
+    if (!app->config.sgf_autosave || app->tree->revision == app->autosaved_revision) return;
+    if (!app->tree->root->first_child && !app->dirty) return;   // an empty board is not worth a file
+    f64 wait = app->dirty ? 3.0 : (f64)app->config.sgf_autosave_seconds;
+    if (os_time_seconds() - app->autosave_last >= wait) autosave_now(app);
+}
+
+bool app_save_sgf(App *app, StringView path) {
+    if (!write_game(app, path)) {
         app_set_status(app, "Cannot save " SV_FMT, SV_ARG(path));
         return false;
     }
@@ -1284,6 +1327,11 @@ bool app_init(App *app, const AppOptions *options) {
 }
 
 void app_shutdown(App *app) {
+    bool headless_run = app->options.screenshot.len > 0 || app->options.headless;
+    if (app->config.sgf_autosave && !headless_run && app->tree->revision != app->autosaved_revision &&
+        (app->tree->root->first_child || app->dirty)) {
+        autosave_now(app);   // nothing is lost on exit
+    }
     app_rank_stop(app);
     stop_engine(app);
     slot_clear(&app->second);
@@ -1309,6 +1357,7 @@ void app_shutdown(App *app) {
     string_free(&app->main.error);
     string_free(&app->status_message);
     string_free(&app->result);
+    string_free(&app->autosave_path);
     free(app->analysis);
     free(app->human_policy);
 }

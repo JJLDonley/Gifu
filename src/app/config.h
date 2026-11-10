@@ -31,6 +31,8 @@ typedef struct Config {
     bool ai_human_style;      // engine moves come from the human network at ai.human_profile
     i32 engine_max_processes;
     i32 report_compare_rank;
+    bool sgf_autosave;         // save the game (with its analysis) automatically
+    i32 sgf_autosave_seconds;  // how often analysis changes are saved (edits: a few seconds after)
     bool sgf_save_lz;         // also write analysis as LZ[] (Lizzie / LizzieYzy)
     bool sgf_save_kt;         // also write analysis as KT[] (KaTrain)
     String tsumego_attacker;  // "auto", "black" or "white" (Tsumego frame)
