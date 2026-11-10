@@ -25,6 +25,7 @@
     (button analysis.ownership)
     (button analysis.human_policy)
     (button view.coordinates)
+    (button sync.screen :icon @screen :label)
     (separator)
     (button game.ai_black :icon "@stone_black AI")
     (button game.ai_white :icon "@stone_white AI")

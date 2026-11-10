@@ -566,6 +566,40 @@ static String layout_path(const Ui *ui) {
     return path_join(string_sv(&ui->app->assets_dir), SV("data/layout.lisp"));
 }
 
+// The menubar of the app node (and the node before it in the child list).
+static Sexpr *find_menubar(Sexpr *app_node, Sexpr **prev) {
+    *prev = NULL;
+    for (Sexpr *c = app_node->first, *before = NULL; c; before = c, c = c->next) {
+        if (sexpr_is_list(c, "menubar")) {
+            *prev = before;
+            return c;
+        }
+    }
+    return NULL;
+}
+
+// A saved layout (Customize layout, drag and drop, presets) is a copy of the
+// whole file, but nothing in the app edits menus: take them from the built-in
+// layout so new commands always show up. A saved menubar with :custom is kept.
+static void use_builtin_menus(Ui *ui, Arena *arena, Sexpr *app_node) {
+    Sexpr *prev = NULL, *saved = find_menubar(app_node, &prev);
+    if (!saved || sexpr_flag(saved, "custom")) return;
+    String path = path_join(string_sv(&ui->app->assets_dir), SV("data/layout.lisp"));
+    String text = { 0 };
+    Sexpr *root = NULL;
+    SexprError err = { 0 };
+    if (os_read_file(string_sv(&path), &text) && sexpr_parse(arena, string_sv(&text), &root, &err) && sexpr_is_list(root->first, "app")) {
+        Sexpr *unused, *builtin = find_menubar(root->first, &unused);
+        if (builtin) {
+            builtin->next = saved->next;
+            if (prev) prev->next = builtin;
+            else app_node->first = builtin;
+        }
+    }
+    string_free(&text);
+    string_free(&path);
+}
+
 bool layout_load(Ui *ui) {
     String path = layout_path(ui);
     String text = { 0 };
@@ -581,6 +615,9 @@ bool layout_load(Ui *ui) {
         log_error("%s: the layout must be a single (app ...) form", string_cstr(&path));
         ok = false;
     }
+    String builtin = path_join(string_sv(&ui->app->assets_dir), SV("data/layout.lisp"));
+    if (ok && !sv_eq(string_sv(&path), string_sv(&builtin))) use_builtin_menus(ui, &arena, root->first);
+    string_free(&builtin);
     if (ok) {   // swap in the new tree (keep the old one on errors)
         arena_free(&ui->layout_arena);
         ui->layout_arena = arena;

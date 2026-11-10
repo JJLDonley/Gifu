@@ -15,10 +15,13 @@
 ;;   (button COMMAND :icon @name :label :style primary|ghost)
 ;;     icons: first prev next last prev2 next2 up down close plus stone_black
 ;;            stone_white gear folder save play pause chart menu check help rank clipboard
+;;            screen
 ;;   (panel NAME)  game_info winrate_summary winrate_graph variation_tree
 ;;                 candidates move_list report compare comment engine_log
 ;;   (tabs NAME... :grow)  one panel at a time in a fixed box
 ;;   (menu TITLE-KEY COMMAND... - COMMAND... :fallback "Text")   inside menubar
+;;   A copy in <config_dir> still gets the menus from this file (so new commands
+;;   show up); write (menubar :custom ...) there to keep your own menus.
 
 (app
   (menubar
@@ -44,6 +47,7 @@
     (button analysis.ownership)
     (button analysis.human_policy)
     (button view.coordinates)
+    (button sync.screen :icon @screen :label)
     (separator)
     (button game.ai_black :icon "@stone_black AI")
     (button game.ai_white :icon "@stone_white AI")

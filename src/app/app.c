@@ -1288,6 +1288,12 @@ static bool can_ai_move(const void *c) { return CAPP(c)->main.status == ENGINE_S
 
 static void cmd_sync_select(void *c) { app_sync_select(APP(c)); }
 static void cmd_sync_toggle(void *c) { app_sync_toggle(APP(c)); }
+// The toolbar button: pick the board on screen (always: the other window may have moved), or stop.
+static void cmd_sync_screen(void *c) {
+    App *app = APP(c);
+    if (app_sync_running(app)) app_sync_stop(app);
+    else app_sync_select(app);
+}
 static bool sync_on(const void *c) { return app_sync_running(CAPP(c)); }
 
 static const CommandDef APP_COMMANDS[] = {
@@ -1323,6 +1329,7 @@ static const CommandDef APP_COMMANDS[] = {
     { "game.write_result", "Save result", "Save result", cmd_write_result, has_result, NULL },
     { "sync.select", "Sync board from screen…", "Sync", cmd_sync_select, NULL, NULL },
     { "sync.toggle", "Board sync", "Sync", cmd_sync_toggle, NULL, sync_on },
+    { "sync.screen", "Sync board", "Sync", cmd_sync_screen, NULL, sync_on },
 };
 
 String app_katago_dir(const App *app) { return path_join(string_sv(&app->root_dir), SV("katago")); }

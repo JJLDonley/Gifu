@@ -127,6 +127,21 @@ static void icon_menu(Rectangle r, Color c, f32 w) {
     line(r, 0.24f, 0.5f, 0.76f, 0.5f, w, c);
     line(r, 0.24f, 0.7f, 0.76f, 0.7f, w, c);
 }
+// A monitor with a small board on it (board sync from the screen).
+static void icon_screen(Rectangle r, Color c, f32 w) {
+    line(r, 0.16f, 0.22f, 0.84f, 0.22f, w, c);
+    line(r, 0.84f, 0.22f, 0.84f, 0.66f, w, c);
+    line(r, 0.84f, 0.66f, 0.16f, 0.66f, w, c);
+    line(r, 0.16f, 0.66f, 0.16f, 0.22f, w, c);
+    line(r, 0.5f, 0.66f, 0.5f, 0.8f, w, c);
+    line(r, 0.34f, 0.8f, 0.66f, 0.8f, w, c);
+    f32 t = w * 0.6f;   // the board: a small 3x3 grid
+    for (i32 k = 0; k < 3; ++k) {
+        f32 p = 0.38f + 0.12f * (f32)k;
+        line(r, p, 0.32f, p, 0.56f, t, c);
+        line(r, 0.38f, 0.32f + 0.12f * (f32)k, 0.62f, 0.32f + 0.12f * (f32)k, t, c);
+    }
+}
 static void icon_check(Rectangle r, Color c, f32 w) {
     line(r, 0.24f, 0.52f, 0.42f, 0.7f, w, c);
     line(r, 0.42f, 0.7f, 0.76f, 0.32f, w, c);
@@ -142,6 +157,7 @@ static const struct {
     { "stone_white", icon_stone_white }, { "gear", icon_gear }, { "folder", icon_folder }, { "save", icon_save },
     { "play", icon_play }, { "pause", icon_pause }, { "chart", icon_chart }, { "menu", icon_menu },
     { "check", icon_check }, { "chevron_down", icon_down }, { "help", icon_help }, { "rank", icon_rank }, { "clipboard", icon_clipboard },
+    { "screen", icon_screen },
 };
 
 i32 icon_find(StringView name) {
