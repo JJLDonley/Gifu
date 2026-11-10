@@ -149,6 +149,7 @@ add_executable(catagui
     src/ui/text_edit.c
     src/ui/layout_model.c
     src/ui/layout_editor.c
+    src/ui/layout_drag.c
     src/ui/layout.c)
 target_link_libraries(catagui PRIVATE catagui_core raylib)
 catagui_warnings(catagui)

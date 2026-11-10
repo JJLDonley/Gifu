@@ -30,12 +30,8 @@ static bool load_model(Ui *ui) {
 static void apply(Ui *ui) {
     LayoutEditor *e = &ui->layout_editor;
     String text = layout_model_write(string_sv(&e->source), &e->model);
-    String path = user_layout_path(ui);
-    os_make_dirs(string_sv(&ui->app->config_dir));
-    if (!os_write_file(string_sv(&path), string_sv(&text))) app_set_status(ui->app, "Could not write %s", string_cstr(&path));
-    string_free(&path);
+    layout_write_user(ui, string_sv(&text));
     string_free(&text);
-    layout_load(ui);
     load_model(ui);   // positions refer to the new text
 }
 

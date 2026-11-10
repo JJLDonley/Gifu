@@ -35,6 +35,7 @@ static Clay_Sizing node_sizing(Ui *ui, const Sexpr *node, const LayoutCtx *ctx, 
     Clay_SizingAxis main = grow ? CLAY_SIZING_GROW(0) : CLAY_SIZING_FIT(0);
     Clay_SizingAxis cross = stretch_cross ? CLAY_SIZING_GROW(0) : CLAY_SIZING_FIT(0);
     Clay_Sizing s = ctx->horizontal ? (Clay_Sizing){ main, cross } : (Clay_Sizing){ cross, main };
+    if (node == ui->sidebar_column && w > 0) w = layout_drag_width(ui, (f32)w);   // live while dragging the divider
     if (w > 0) s.width = CLAY_SIZING_FIXED(ui_px(ui, (f32)w));
     if (h > 0) s.height = CLAY_SIZING_FIXED(ui_px(ui, (f32)h));
     return s;
@@ -244,12 +245,15 @@ static void tabs(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
     i32 count = 0;
     for (const Sexpr *a = sexpr_next_arg(node, NULL); a && count < (i32)countof(names); a = sexpr_next_arg(node, a)) names[count++] = a->text;
     if (count == 0) return;
+    bool sidebar = ui->in_sidebar_tabs;
+    if (sidebar) ui->sidebar_tabs_slot = slot, ui->sidebar_tab_count = count;
     i32 *selected = &ui->tab_selected[slot];
     *selected = ((*selected % count) + count) % count;   // view.next_tab wraps
     Clay_Sizing sizing = node_sizing(ui, node, ctx, true);
     if (sexpr_flag(node, "grow") && !ctx->horizontal) sizing.height = CLAY_SIZING_GROW(ui_px(ui, 160));
     CLAY({ .layout = { .sizing = sizing, .layoutDirection = CLAY_TOP_TO_BOTTOM, .childGap = ui_u16(ui, 6) } }) {
-        CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 2),
+        CLAY({ .id = CLAY_IDI("SidebarTabBar", (u32)slot),
+               .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 2),
                            .padding = CLAY_PADDING_ALL(ui_u16(ui, 3)) },
                .backgroundColor = color_to_clay(c->surface),
                .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, ui->theme->shape.radius)),
@@ -270,12 +274,16 @@ static void tabs(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
                                    .padding = { ui_u16(ui, 4), ui_u16(ui, 4), ui_u16(ui, 5), ui_u16(ui, 5) },
                                    .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER } },
                        .backgroundColor = color_to_clay(tab_bg),
-                       .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, ui->theme->shape.radius * 0.6f)) }) {
+                       .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, ui->theme->shape.radius * 0.6f)),
+                       .clip = { .horizontal = true } }) {   // many tabs: shrink (clip) instead of widening the sidebar
                     CLAY_TEXT(ui_str(ui, label), CLAY_TEXT_CONFIG({ .fontId = FONT_UI_BOLD, .fontSize = ui_u16(ui, 12),
                                                                     .textColor = color_to_clay(color_lerp(c->text_muted, c->accent_text, on)),
                                                                     .wrapMode = CLAY_TEXT_WRAP_NONE }));
                 }
-                if (over && ui->mouse_pressed && !ui->pointer_over_menu) *selected = t;
+                if (over && ui->mouse_pressed && !ui->pointer_over_menu) {
+                    *selected = t;
+                    if (sidebar) layout_drag_tab(ui, t, label);   // becomes a drag once the mouse moves
+                }
             }
         }
         // No clip here: clip containers stop Clay from compressing their
@@ -290,6 +298,67 @@ static void tabs(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
 
 // ---- Containers ------------------------------------------------------------------------------------------
 
+// The sidebar column's children: each stack item in a wrapper (drag source and
+// drop reference), a resize handle under items with a :height, and the tabs.
+static void render_sidebar_children(Ui *ui, const Sexpr *node, LayoutCtx *ctx, f32 gap) {
+    isize index = 0;
+    ui->sidebar_gap = gap;
+    for (const Sexpr *c = sexpr_next_child(node, NULL); c; c = sexpr_next_child(node, c)) {
+        if (sexpr_is_list(c, "tabs")) {
+            ui->in_sidebar_tabs = true;
+            render_node(ui, c, ctx);
+            ui->in_sidebar_tabs = false;
+            continue;
+        }
+        Clay_ElementId id = CLAY_IDI("SidebarItem", (u32)index);
+        f64 height = sexpr_prop_number(c, "height", 0);
+        Clay_SizingAxis h = sexpr_flag(c, "grow") ? CLAY_SIZING_GROW(0) : CLAY_SIZING_FIT(0);
+        CLAY({ .id = id, .layout = { .sizing = { CLAY_SIZING_GROW(0), h }, .layoutDirection = CLAY_TOP_TO_BOTTOM } }) {
+            ui->panel_stack_index = index;
+            render_node(ui, c, ctx);
+            ui->panel_stack_index = -1;
+            if (height > 0 && sexpr_is_list(c, "panel")) layout_drag_height_handle(ui, index, (f32)height, gap);
+        }
+        layout_drag_stack_item(ui, id, index, c);
+        index++;
+    }
+    ui->sidebar_stack_count = index;
+}
+
+static const Sexpr *child_list(const Sexpr *node, const char *head) {
+    for (const Sexpr *c = sexpr_next_child(node, NULL); c; c = sexpr_next_child(node, c)) {
+        if (sexpr_is_list(c, head)) return c;
+    }
+    return NULL;
+}
+
+static void render_container_children(Ui *ui, const Sexpr *node, LayoutCtx *ctx, f32 gap) {
+    if (node == ui->sidebar_column) {
+        render_sidebar_children(ui, node, ctx, gap);
+        return;
+    }
+    // The row holding the board and the sidebar (a column with tabs): a width divider between them.
+    const Sexpr *board_node = ctx->horizontal ? child_list(node, "board") : NULL, *column = NULL;
+    for (const Sexpr *c = board_node ? sexpr_next_child(node, NULL) : NULL; c && !column; c = sexpr_next_child(node, c)) {
+        if (sexpr_is_list(c, "column") && child_list(c, "tabs")) column = c;
+    }
+    if (!column) {
+        render_children(ui, node, ctx);
+        return;
+    }
+    ui->sidebar_column = column;
+    ui->sidebar_left = true;   // column before the board?
+    for (const Sexpr *c = sexpr_next_child(node, NULL); c != column; c = sexpr_next_child(node, c)) {
+        if (c == board_node) ui->sidebar_left = false;
+    }
+    f32 width = (f32)sexpr_prop_number(column, "width", 400);
+    for (const Sexpr *c = sexpr_next_child(node, NULL); c; c = sexpr_next_child(node, c)) {
+        if (c == column && !ui->sidebar_left) layout_drag_width_divider(ui, width);   // on the board's side
+        render_node(ui, c, ctx);
+        if (c == column && ui->sidebar_left) layout_drag_width_divider(ui, width);
+    }
+}
+
 static void container(Ui *ui, const Sexpr *node, LayoutCtx *ctx, bool horizontal) {
     Clay_Sizing sizing = node_sizing(ui, node, ctx, true);
     u16 gap = prop_px(ui, node, "gap", sexpr_flag(node, "padding") ? ui->theme->shape.gap : 0);
@@ -299,7 +368,7 @@ static void container(Ui *ui, const Sexpr *node, LayoutCtx *ctx, bool horizontal
     if (!sexpr_flag(node, "scroll")) {
         CLAY({ .layout = { .sizing = sizing, .padding = CLAY_PADDING_ALL(pad), .childGap = gap,
                            .layoutDirection = horizontal ? CLAY_LEFT_TO_RIGHT : CLAY_TOP_TO_BOTTOM } }) {
-            render_children(ui, node, &child);
+            render_container_children(ui, node, &child, gap);
         }
         ctx->counter = child.counter, ctx->tabs_index = child.tabs_index, ctx->menu_index = child.menu_index;
         return;
@@ -316,7 +385,7 @@ static void container(Ui *ui, const Sexpr *node, LayoutCtx *ctx, bool horizontal
         CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(inner_h) }, .padding = CLAY_PADDING_ALL(pad),
                            .childGap = gap, .layoutDirection = CLAY_TOP_TO_BOTTOM } }) {
             child.horizontal = false;
-            render_children(ui, node, &child);
+            render_container_children(ui, node, &child, gap);
         }
     }
     ctx->counter = child.counter, ctx->tabs_index = child.tabs_index, ctx->menu_index = child.menu_index;
@@ -527,6 +596,14 @@ bool layout_load(Ui *ui) {
     return ok;
 }
 
+void layout_write_user(Ui *ui, StringView text) {
+    String path = path_join(string_sv(&ui->app->config_dir), SV("layout.lisp"));
+    os_make_dirs(string_sv(&ui->app->config_dir));
+    if (!os_write_file(string_sv(&path), text)) app_set_status(ui->app, "Could not write %s", string_cstr(&path));
+    string_free(&path);
+    layout_load(ui);
+}
+
 void layout_free(Ui *ui) {
     arena_free(&ui->layout_arena);
     ui->layout_root = NULL;
@@ -540,8 +617,13 @@ void layout_build(Ui *ui) {
         ui->layout_checked = os_time_seconds();
         if (os_file_mtime(string_sv(&ui->layout_file)) != ui->layout_mtime) layout_load(ui);
     }
+    layout_drag_update(ui);   // uses last frame's sidebar
+    ui->sidebar_column = NULL;
+    ui->sidebar_stack_count = ui->sidebar_tab_count = 0;
+    ui->panel_stack_index = -1;
     LayoutCtx ctx = { 0 };
     if (ui->layout_root) render_node(ui, ui->layout_root, &ctx);
+    layout_drag_overlay(ui);
     ui_dialogs(ui);
 }
 

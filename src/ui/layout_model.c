@@ -211,3 +211,61 @@ void layout_vec_remove(StringVec *v, isize index) {
     for (isize i = index; i + 1 < v->len; ++i) v->items[i] = v->items[i + 1];
     v->len--;
 }
+
+// Inserts `item` (taken over) at `index` (clamped).
+static void vec_insert(StringVec *v, isize index, String item) {
+    vec_push(v, item);
+    index = index < 0 ? 0 : index > v->len - 1 ? v->len - 1 : index;
+    for (isize i = v->len - 1; i > index; --i) v->items[i] = v->items[i - 1];
+    v->items[index] = item;
+}
+
+bool layout_model_move_panel(LayoutModel *m, LayoutSlot from, LayoutSlot to) {
+    StringVec *src = from.tabs ? &m->tabs : &m->stack, *dst = to.tabs ? &m->tabs : &m->stack;
+    if (from.index < 0 || from.index >= src->len || to.index < 0 || to.index > dst->len) return false;
+    if (src == dst && (to.index == from.index || to.index == from.index + 1)) return false;   // drops onto itself
+    StringView item = string_sv(&src->items[from.index]);
+    StringView name = from.tabs ? item : layout_item_panel(item);
+    if (to.tabs && !from.tabs && name.len == 0) return false;   // separators etc. stay in the stack
+    if (from.tabs && !to.tabs && m->tabs.len <= 1) return false;   // keep one tab
+    String moved = from.tabs == to.tabs ? string_from(item)
+                   : to.tabs            ? string_from(name)
+                                        : string_format("(panel " SV_FMT ")", SV_ARG(name));
+    layout_vec_remove(src, from.index);
+    isize at = src == dst && to.index > from.index ? to.index - 1 : to.index;
+    vec_insert(dst, at, moved);
+    return true;
+}
+
+String layout_item_with_number(StringView item, StringView key, i32 value) {
+    String k = string_format(":" SV_FMT, SV_ARG(key));
+    StringView body = sv_trim(item);
+    isize at = -1;
+    for (isize from = 0; from < body.len;) {   // whole-token match of ":key"
+        isize f = sv_find(sv_drop(body, from), string_sv(&k));
+        if (f < 0) break;
+        f += from;
+        isize after = f + k.len;
+        if (after < body.len && (is_space(body.data[after]) || body.data[after] == ')')) {
+            at = f;
+            break;
+        }
+        from = after;
+    }
+    String out = { 0 };
+    if (at >= 0) {
+        isize v = at + k.len;
+        while (v < body.len && is_space(body.data[v])) ++v;
+        while (v < body.len && !is_space(body.data[v]) && body.data[v] != ')') ++v;
+        string_push(&out, sv_take(body, at));
+        string_pushf(&out, SV_FMT " %d", SV_ARG(string_sv(&k)), value);
+        string_push(&out, sv_drop(body, v));
+    } else if (body.len && body.data[body.len - 1] == ')') {
+        string_push(&out, sv_take(body, body.len - 1));
+        string_pushf(&out, " " SV_FMT " %d)", SV_ARG(string_sv(&k)), value);
+    } else {
+        string_push(&out, body);
+    }
+    string_free(&k);
+    return out;
+}

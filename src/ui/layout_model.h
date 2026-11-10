@@ -40,6 +40,20 @@ void layout_model_free(LayoutModel *model);
 bool layout_model_shows(const LayoutModel *model, StringView panel);   // in the stack or the tabs
 StringView layout_item_panel(StringView item);                          // "(panel x ...)" -> "x"
 StringView layout_item_command(StringView item);                        // "(button cmd ...)" -> "cmd"
+// A place in the sidebar: an item of the panel stack, or a tab of the tab group.
+// As a drop target, `index` is a gap (0..len), counted before the item is removed.
+typedef struct LayoutSlot {
+    bool tabs;
+    isize index;
+} LayoutSlot;
+// Moves a panel between / within the stack and the tab group (drag and drop).
+// Stack items keep their props when they stay in the stack; a panel entering
+// the stack becomes "(panel name)". Returns false when nothing changes or the
+// move is not allowed (a non-panel item into the tabs, the last tab out).
+bool layout_model_move_panel(LayoutModel *model, LayoutSlot from, LayoutSlot to);
+// `item` with ":key value" set (replaced, or added before the closing paren).
+String layout_item_with_number(StringView item, StringView key, i32 value);
+
 // Moves element `index` of `vec` by `delta` (clamped). Returns the new index.
 isize layout_vec_move(StringVec *vec, isize index, isize delta);
 void layout_vec_remove(StringVec *vec, isize index);

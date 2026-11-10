@@ -425,7 +425,7 @@ void ui_frame(Ui *ui) {
     Clay_SetPointerState((Clay_Vector2){ ui->mouse.x, ui->mouse.y }, ui->mouse_down);
     // Clay applies wheel deltas x10 with no easing, so it only gets drags here;
     // the wheel is handled by smooth_scroll().
-    Clay_UpdateScrollContainers(true, (Clay_Vector2){ 0, 0 }, GetFrameTime());
+    Clay_UpdateScrollContainers(ui->layout_drag.kind == LAYOUT_DRAG_NONE, (Clay_Vector2){ 0, 0 }, GetFrameTime());   // no drag-scroll while moving a panel
     smooth_scroll(ui);
 
     background_poll(&ui->background);   // paper generated in the background (board layer key includes its texture)

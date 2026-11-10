@@ -138,7 +138,7 @@ static void panel_winrate_summary(Ui *ui) {
 static void panel_winrate_graph(Ui *ui) {
     CLAY(ui_card(ui, CLAY_ID("PanelGraph"))) {
         ui_card_title_help(ui, tr(ui, "panel.winrate_graph", "Win rate"), SV("winrate_graph"));
-        winrate_graph_element(ui, (f32)sexpr_prop_number(ui->panel_node, "height", 150));
+        winrate_graph_element(ui, ui_panel_height(ui, 150));
     }
 }
 

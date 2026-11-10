@@ -78,6 +78,19 @@ typedef struct LayoutEditor {
     TextEdit preset_name;   // "Save as preset"
 } LayoutEditor;
 
+// Sidebar drag in the live window (layout_drag.c).
+typedef enum LayoutDragKind { LAYOUT_DRAG_NONE, LAYOUT_DRAG_PANEL, LAYOUT_DRAG_WIDTH, LAYOUT_DRAG_HEIGHT } LayoutDragKind;
+typedef struct LayoutDrag {
+    LayoutDragKind kind;
+    bool active;              // panel drags: moved past the threshold
+    LayoutSlot from;          // panel being moved / stack item being resized
+    Vector2 press;
+    f32 start_value, value;   // width / height in layout units
+    LayoutSlot target;        // drop gap
+    bool has_target;
+    char label[64];
+} LayoutDrag;
+
 typedef struct Ui {
     App *app;
     FontCache *fonts;
@@ -146,6 +159,16 @@ typedef struct Ui {
     GameNode *move_list_scrolled_to;
     i32 tab_selected[16];   // per tab group (sidebar entry index)
     bool in_tab;            // panels inside a tab group skip their card title
+
+    // The sidebar as laid out this frame (for drag and drop).
+    LayoutDrag layout_drag;
+    const Sexpr *sidebar_column;   // (column ... (tabs ...)) next to the board
+    bool sidebar_left;
+    bool in_sidebar_tabs;          // rendering the sidebar's tab group
+    i32 sidebar_tabs_slot, sidebar_tab_count;
+    isize sidebar_stack_count;
+    f32 sidebar_gap;
+    isize panel_stack_index;       // stack index of the panel being rendered (-1 = not in the stack)
 
     AnimStore anim;
     // Smooth wheel scrolling: the hovered scroll container glides to a target.
@@ -259,5 +282,16 @@ void panels_render(Ui *ui, StringView name);
 bool layout_load(Ui *ui);    // (re)reads the layout file; keeps the old tree on errors
 void layout_free(Ui *ui);
 void layout_build(Ui *ui);   // hot-reloads, renders the tree and open dialogs
+void layout_write_user(Ui *ui, StringView text);   // saves <config_dir>/layout.lisp and reloads it
+
+// layout_drag.c: drag panels / tabs and the sidebar dividers in the live window.
+void layout_drag_update(Ui *ui);    // before the layout
+void layout_drag_overlay(Ui *ui);   // after it (insertion marker, dragged label)
+void layout_drag_stack_item(Ui *ui, Clay_ElementId id, isize index, const Sexpr *item);
+void layout_drag_tab(Ui *ui, i32 index, StringView label);
+void layout_drag_width_divider(Ui *ui, f32 width);
+void layout_drag_height_handle(Ui *ui, isize index, f32 height, f32 gap);
+f32 layout_drag_width(const Ui *ui, f32 width);
+f32 ui_panel_height(const Ui *ui, f32 fallback);   // the panel's :height (live while being resized)
 bool layout_component_exists(StringView name);
 void layout_visit(const Sexpr *node, void (*visit)(const Sexpr *node, void *user), void *user);
