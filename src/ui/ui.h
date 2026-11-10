@@ -82,6 +82,7 @@ typedef struct Ui {
     f32 scale;
     bool debug;
     char help_topic[32];   // open "?" popover (empty = none)
+    i32 deep_report_tab;
     bool help_button_hovered;   // a "?" button is under the mouse (this frame)
 
     // Input for this frame.

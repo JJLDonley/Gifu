@@ -250,10 +250,12 @@ static void legend_dot(Ui *ui, Color color, StringView text) {
 
 // ---- Distribution ------------------------------------------------------------------------------------
 
-static void distribution(DeepReport *d) {
+static void distribution(DeepReport *d, bool winrate) {
     Ui *ui = d->ui;
     const ThemeColors *c = &ui->theme->colors;
-    static const char *const LABELS[LOSS_BUCKETS] = { "< 0.5", "0.5–2", "2–5", "5–10", "≥ 10" };
+    static const char *const SCORE_LABELS[LOSS_BUCKETS] = { "< 0.5", "0.5–2", "2–5", "5–10", "≥ 10" };
+    static const char *const WR_LABELS[LOSS_BUCKETS] = { "< 2%", "2–5%", "5–10%", "10–20%", "≥ 20%" };
+    const char *const *LABELS = winrate ? WR_LABELS : SCORE_LABELS;
     CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM,
                        .childGap = ui_u16(ui, 5) } }) {
         for (i32 b = 0; b < LOSS_BUCKETS; ++b) {
@@ -264,14 +266,15 @@ static void distribution(DeepReport *d) {
                 }
                 for (Stone color = STONE_BLACK; color <= STONE_WHITE; ++color) {
                     const PlayerReport *p = &d->report.player[color];
-                    f32 share = p->moves ? (f32)p->score_hist[b] / (f32)p->moves : 0.0f;
+                    const i32 *hist = winrate ? p->winrate_hist : p->score_hist;
+                    f32 share = p->moves ? (f32)hist[b] / (f32)p->moves : 0.0f;
                     Color col = b >= 3 ? c->candidate_bad : b == 2 ? mid_loss_color(c) : (color == STONE_BLACK ? c->winrate_black : c->score_line);
                     CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(ui_px(ui, 14)) }, .childGap = ui_u16(ui, 6),
                                        .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
                         CLAY({ .layout = { .sizing = { CLAY_SIZING_PERCENT(fmaxf(share * 0.8f, 0.004f)), CLAY_SIZING_GROW(0) } },
                                .backgroundColor = color_to_clay(color_with_alpha(col, 0.8f)),
                                .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 2)) }) {}
-                        CLAY_TEXT(ui_fmt(ui, "%d · %.0f%%", p->score_hist[b], share * 100.0f), ui_text_style(ui, FONT_MONO, 11, c->text_muted));
+                        CLAY_TEXT(ui_fmt(ui, "%d · %.0f%%", hist[b], share * 100.0f), ui_text_style(ui, FONT_MONO, 11, c->text_muted));
                     }
                 }
             }
@@ -377,38 +380,67 @@ static void body(Ui *ui, void *user) {
         ui_command_button_ex(ui, SV("analysis.game"), SV("@chart"), true, BUTTON_NORMAL, 11);
         ui_help_button(ui, SV("deep_report"));
     }
-    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 12) } }) {
-        summary_column(d, STONE_BLACK);
-        summary_column(d, STONE_WHITE);
+    // Tabs: one kind of data per page.
+    enum { TAB_OVERVIEW, TAB_GRAPHS, TAB_DISTRIBUTION, TAB_MISTAKES, TAB_COUNT };
+    static const char *const TAB_KEYS[TAB_COUNT] = { "report.tab_overview", "report.tab_graphs", "report.tab_distribution", "report.tab_mistakes" };
+    static const char *const TAB_FALLBACK[TAB_COUNT] = { "Overview", "Graphs", "Distribution", "Mistakes" };
+    i32 tab = CLAMP(ui->deep_report_tab, 0, TAB_COUNT - 1);
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 4),
+                       .padding = { 0, 0, 0, ui_u16(ui, 6) } },
+           .border = { .color = color_to_clay(c->border), .width = { .bottom = 1 } } }) {
+        for (i32 t = 0; t < TAB_COUNT; ++t) {
+            if (ui_button(ui, CLAY_IDI("DeepTab", (u32)t), tr(ui, TAB_KEYS[t], TAB_FALLBACK[t]), BUTTON_GHOST, t == tab, true)) {
+                ui->deep_report_tab = t;
+            }
+        }
     }
-    block(ui, tr(ui, "report.by_phase", "BY PHASE"), SV(""));
-    phase_table(d);
-
-    block(ui, tr(ui, "report.points_per_move", "POINTS LOST PER MOVE"), SV("loss_graph"));
-    CLAY({ .layout = { .childGap = ui_u16(ui, 12) } }) {
-        legend_dot(ui, c->text_muted, tr(ui, "report.legend_small", "< 2 points"));
-        legend_dot(ui, mid_loss_color(c), tr(ui, "report.legend_mistake", "2–5 points"));
-        legend_dot(ui, c->candidate_bad, tr(ui, "report.legend_blunder", "≥ 5 points"));
-        ui_label(ui, tr(ui, "report.legend_sides", "Black above the line, White below"), FONT_UI, 11, c->text_muted);
+    // Fixed-height page so switching tabs never resizes the dialog; long pages scroll inside.
+    f32 page_h = fminf(ui_px(ui, 540), (f32)GetScreenHeight() * 0.62f);
+    CLAY({ .id = CLAY_ID("DeepPage"),
+           .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(page_h) }, .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                       .childGap = ui_u16(ui, 12) },
+           .clip = { .vertical = true, .childOffset = Clay_GetScrollOffset() } }) {
+        switch (tab) {
+            case TAB_OVERVIEW:
+                CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 12) } }) {
+                    summary_column(d, STONE_BLACK);
+                    summary_column(d, STONE_WHITE);
+                }
+                block(ui, tr(ui, "report.by_phase", "BY PHASE"), SV(""));
+                phase_table(d);
+                break;
+            case TAB_GRAPHS:
+                block(ui, tr(ui, "report.points_per_move", "POINTS LOST PER MOVE"), SV("loss_graph"));
+                CLAY({ .layout = { .childGap = ui_u16(ui, 12) } }) {
+                    legend_dot(ui, c->text_muted, tr(ui, "report.legend_small", "< 2 points"));
+                    legend_dot(ui, mid_loss_color(c), tr(ui, "report.legend_mistake", "2–5 points"));
+                    legend_dot(ui, c->candidate_bad, tr(ui, "report.legend_blunder", "≥ 5 points"));
+                    ui_label(ui, tr(ui, "report.legend_sides", "Black above the line, White below"), FONT_UI, 11, c->text_muted);
+                }
+                graph(d, false, 0, 210);
+                block(ui, tr(ui, "report.accuracy_trend", "ACCURACY TREND (LAST 10 MOVES)"), SV(""));
+                CLAY({ .layout = { .childGap = ui_u16(ui, 12) } }) {
+                    legend_dot(ui, c->winrate_black, player_name(ui, STONE_BLACK));
+                    legend_dot(ui, c->score_line, player_name(ui, STONE_WHITE));
+                }
+                graph(d, true, 1, 170);
+                break;
+            case TAB_DISTRIBUTION:
+                CLAY({ .layout = { .childGap = ui_u16(ui, 12) } }) {
+                    legend_dot(ui, c->winrate_black, player_name(ui, STONE_BLACK));
+                    legend_dot(ui, c->score_line, player_name(ui, STONE_WHITE));
+                }
+                block(ui, tr(ui, "report.distribution", "POINTS LOST PER MOVE"), SV(""));
+                distribution(d, false);
+                block(ui, tr(ui, "report.distribution_wr", "WIN RATE LOST PER MOVE"), SV(""));
+                distribution(d, true);
+                break;
+            default:
+                block(ui, tr(ui, "report.biggest", "BIGGEST MISTAKES"), SV(""));
+                mistakes(d);
+                break;
+        }
     }
-    graph(d, false, 0, 140);
-
-    block(ui, tr(ui, "report.accuracy_trend", "ACCURACY TREND (LAST 10 MOVES)"), SV(""));
-    CLAY({ .layout = { .childGap = ui_u16(ui, 12) } }) {
-        legend_dot(ui, c->winrate_black, player_name(ui, STONE_BLACK));
-        legend_dot(ui, c->score_line, player_name(ui, STONE_WHITE));
-    }
-    graph(d, true, 1, 120);
-
-    block(ui, tr(ui, "report.distribution", "POINTS LOST PER MOVE — DISTRIBUTION"), SV(""));
-    CLAY({ .layout = { .childGap = ui_u16(ui, 12) } }) {
-        legend_dot(ui, c->winrate_black, player_name(ui, STONE_BLACK));
-        legend_dot(ui, c->score_line, player_name(ui, STONE_WHITE));
-    }
-    distribution(d);
-
-    block(ui, tr(ui, "report.biggest", "BIGGEST MISTAKES"), SV(""));
-    mistakes(d);
 }
 
 void deep_report_dialog(Ui *ui) {
