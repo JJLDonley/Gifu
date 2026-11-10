@@ -87,3 +87,60 @@ void text_edit_select_all(TextEdit *e) {
     e->anchor = 0;
     e->caret = e->text.len;
 }
+
+// ---- Keys -------------------------------------------------------------------------------------------
+
+TextInputResult text_edit_apply_keys(TextEdit *e, const TextKeys *k, const TextEditHost *host) {
+    TextInputResult result = TEXT_INPUT_NONE;
+    for (i32 i = 0; i < k->char_count; ++i) {
+        u32 cp = k->chars[i];
+        if (cp < 0x20 || cp == 0x7F) continue;   // control characters (Ctrl+letter on some platforms)
+        char utf8[4];
+        text_edit_insert(e, sv_from_parts(utf8, utf8_encode(cp, utf8)));
+        result = TEXT_INPUT_CHANGED;
+    }
+    if (k->backspace) {
+        text_edit_backspace(e, k->ctrl);
+        result = TEXT_INPUT_CHANGED;
+    }
+    if (k->del) {
+        text_edit_delete_forward(e);
+        result = TEXT_INPUT_CHANGED;
+    }
+    if (k->left) text_edit_left(e, k->shift);
+    if (k->right) text_edit_right(e, k->shift);
+    isize caret = e->caret;
+    if (k->up != k->down) caret = host->vertical(host->user, e, k->up ? -1 : 1);
+    if (k->home || k->end) {
+        isize start = 0, end = e->text.len;
+        if (!k->ctrl) host->line_bounds(host->user, e, caret, &start, &end);
+        caret = k->home ? start : end;
+    }
+    if (caret != e->caret) text_edit_move_to(e, caret, k->shift);
+
+    if (k->select_all) text_edit_select_all(e);
+    if ((k->copy || k->cut) && text_edit_has_selection(e)) {
+        host->set_clipboard(host->user, text_edit_selection(e));
+        if (k->cut) {
+            text_edit_delete_selection(e);
+            result = TEXT_INPUT_CHANGED;
+        }
+    }
+    if (k->paste) {
+        StringView clip = host->get_clipboard(host->user);
+        if (clip.len) {
+            text_edit_insert(e, clip);
+            result = TEXT_INPUT_CHANGED;
+        }
+    }
+    if (k->enter) {
+        if (e->multiline && !k->ctrl) {
+            text_edit_insert(e, SV("\n"));
+            result = TEXT_INPUT_CHANGED;
+        } else {
+            result = TEXT_INPUT_COMMITTED;
+        }
+    }
+    if (k->escape) result = TEXT_INPUT_CANCELLED;
+    return result;
+}

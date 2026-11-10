@@ -152,6 +152,7 @@ add_executable(catagui
     src/ui/deep_report.c
     src/ui/theme_editor.c
     src/ui/text_edit.c
+    src/ui/stone_anim.c
     src/ui/layout_model.c
     src/ui/layout_editor.c
     src/ui/layout_drag.c
@@ -219,8 +220,10 @@ if(CATAGUI_BUILD_TESTS)
         tests/test_text_edit.c
     tests/test_image.c
     tests/test_board_reader.c
+    tests/test_stone_anim.c
         src/ui/theme.c
         src/ui/layout_model.c
+        src/ui/stone_anim.c
         src/ui/text_edit.c)   # pure data code: needs raylib's Color type, not the library
     target_link_libraries(catagui_tests PRIVATE catagui_core)
     target_include_directories(catagui_tests PRIVATE third_party/raylib/src)

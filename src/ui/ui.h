@@ -26,23 +26,13 @@ typedef struct BoardGeometry {
 
 // ---- Text editing ----------------------------------------------------------------------------
 
-#include "ui/text_edit.h"   // TextEdit (editing model, no raylib)
+#include "ui/text_edit.h"
+#include "ui/stone_anim.h"   // TextEdit (editing model, no raylib)
 
-typedef enum TextInputResult {
-    TEXT_INPUT_NONE,
-    TEXT_INPUT_CHANGED,
-    TEXT_INPUT_COMMITTED,   // focus left (click outside, Enter on single-line, Ctrl+Enter)
-    TEXT_INPUT_CANCELLED,   // Escape
-} TextInputResult;
 
 
 // ---- Ui --------------------------------------------------------------------------------------
 
-typedef struct StoneGhost {   // a removed stone fading out
-    Point point;
-    Stone color;
-    f64 born;
-} StoneGhost;
 
 typedef enum UiDialog {
     UI_DIALOG_NONE,
@@ -180,13 +170,7 @@ typedef struct Ui {
     // in a render texture and rebuilt only when its inputs change.
     RenderTexture2D board_layer;
     u64 board_layer_key;
-    // Stone animations: board seen last frame, per-point appear time, and
-    // fading "ghosts" of removed stones.
-    u8 prev_cells[BOARD_MAX_POINTS];
-    i32 prev_width, prev_height;
-    f64 stone_born[BOARD_MAX_POINTS];
-    StoneGhost ghosts[64];
-    i32 ghost_count;
+    StoneAnim stone_anim;   // stones easing in / fading out (stone_anim.c)
     u64 candidates_position;
 
     // Board interaction (computed from last layout).

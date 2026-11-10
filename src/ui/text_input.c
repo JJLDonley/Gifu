@@ -125,68 +125,56 @@ static isize offset_at_x(Ui *ui, const TextEdit *edit, const TextLayout *layout,
 
 static bool key(i32 k) { return IsKeyPressed(k) || IsKeyPressedRepeat(k); }
 
+typedef struct KeyHost {
+    Ui *ui;
+    const TextLayout *layout;
+} KeyHost;
+
+static isize host_vertical(void *user, const TextEdit *e, i32 direction) {
+    const KeyHost *h = user;
+    i32 line = line_of(h->layout, e->caret), target = line + direction;
+    if (target < 0) return 0;
+    if (target >= h->layout->count) return e->text.len;
+    return offset_at_x(h->ui, e, h->layout, target, x_of(h->ui, e, h->layout, line, e->caret));
+}
+
+static void host_line_bounds(void *user, const TextEdit *e, isize caret, isize *start, isize *end) {
+    UNUSED(e);
+    const KeyHost *h = user;
+    VisualLine l = h->layout->lines[line_of(h->layout, caret)];
+    *start = l.start, *end = l.end;
+}
+
+static void host_set_clipboard(void *user, StringView text) {
+    UNUSED(user);
+    String copy = string_from(text);
+    SetClipboardText(string_cstr(&copy));
+    string_free(&copy);
+}
+
+static StringView host_get_clipboard(void *user) {
+    UNUSED(user);
+    const char *clip = GetClipboardText();
+    return sv(clip ? clip : "");
+}
+
+// Reads this frame's keys from raylib; the editing itself is text_edit_apply_keys (unit-tested).
 static TextInputResult handle_keys(Ui *ui, TextEdit *e, const TextLayout *layout) {
-    TextInputResult result = TEXT_INPUT_NONE;
-    StringView text = string_sv(&e->text);
-    bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
-    bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
-
+    TextKeys k = { 0 };
+    k.ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
+    k.shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
     for (i32 cp = GetCharPressed(); cp > 0; cp = GetCharPressed()) {
-        if (cp < 0x20 || cp == 0x7F) continue;
-        char utf8[4];
-        text_edit_insert(e, sv_from_parts(utf8, utf8_encode((u32)cp, utf8)));
-        result = TEXT_INPUT_CHANGED;
+        if (k.char_count < (i32)countof(k.chars)) k.chars[k.char_count++] = (u32)cp;
     }
-    if (key(KEY_BACKSPACE)) {
-        text_edit_backspace(e, ctrl);
-        result = TEXT_INPUT_CHANGED;
-    }
-    if (key(KEY_DELETE)) {
-        text_edit_delete_forward(e);
-        result = TEXT_INPUT_CHANGED;
-    }
-    text = string_sv(&e->text);
-    if (key(KEY_LEFT)) text_edit_left(e, shift);
-    if (key(KEY_RIGHT)) text_edit_right(e, shift);
-    // Line-based moves need the wrapped layout.
-    isize caret = e->caret;
-    if (key(KEY_UP) || key(KEY_DOWN)) {
-        i32 line = line_of(layout, caret);
-        i32 target = key(KEY_UP) ? line - 1 : line + 1;
-        if (target >= 0 && target < layout->count) caret = offset_at_x(ui, e, layout, target, x_of(ui, e, layout, line, caret));
-        else caret = target < 0 ? 0 : text.len;
-    }
-    if (key(KEY_HOME)) caret = ctrl ? 0 : layout->lines[line_of(layout, caret)].start;
-    if (key(KEY_END)) caret = ctrl ? text.len : layout->lines[line_of(layout, caret)].end;
-    if (caret != e->caret) text_edit_move_to(e, caret, shift);
-
-    if (ctrl && IsKeyPressed(KEY_A)) text_edit_select_all(e);
-    if (ctrl && (IsKeyPressed(KEY_C) || IsKeyPressed(KEY_X)) && text_edit_has_selection(e)) {
-        String copy = string_from(text_edit_selection(e));
-        SetClipboardText(string_cstr(&copy));
-        string_free(&copy);
-        if (IsKeyPressed(KEY_X)) {
-            text_edit_delete_selection(e);
-            result = TEXT_INPUT_CHANGED;
-        }
-    }
-    if (ctrl && IsKeyPressed(KEY_V)) {
-        const char *clip = GetClipboardText();
-        if (clip && *clip) {
-            text_edit_insert(e, sv(clip));
-            result = TEXT_INPUT_CHANGED;
-        }
-    }
-    if (key(KEY_ENTER) || key(KEY_KP_ENTER)) {
-        if (e->multiline && !ctrl) {
-            text_edit_insert(e, SV("\n"));
-            result = TEXT_INPUT_CHANGED;
-        } else {
-            result = TEXT_INPUT_COMMITTED;
-        }
-    }
-    if (IsKeyPressed(KEY_ESCAPE)) result = TEXT_INPUT_CANCELLED;
-    return result;
+    k.backspace = key(KEY_BACKSPACE), k.del = key(KEY_DELETE);
+    k.left = key(KEY_LEFT), k.right = key(KEY_RIGHT), k.up = key(KEY_UP), k.down = key(KEY_DOWN);
+    k.home = key(KEY_HOME), k.end = key(KEY_END);
+    k.enter = key(KEY_ENTER) || key(KEY_KP_ENTER), k.escape = IsKeyPressed(KEY_ESCAPE);
+    k.select_all = k.ctrl && IsKeyPressed(KEY_A);
+    k.copy = k.ctrl && IsKeyPressed(KEY_C), k.cut = k.ctrl && IsKeyPressed(KEY_X), k.paste = k.ctrl && IsKeyPressed(KEY_V);
+    KeyHost h = { ui, layout };
+    TextEditHost host = { &h, host_vertical, host_line_bounds, host_set_clipboard, host_get_clipboard };
+    return text_edit_apply_keys(e, &k, &host);
 }
 
 // ---- Drawing ------------------------------------------------------------------------------------

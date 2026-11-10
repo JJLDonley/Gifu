@@ -290,42 +290,9 @@ static void rebuild_layer(Ui *ui, Rectangle bounds, const Board *board) {
     EndTextureMode();
 }
 
-// ---- Stone animations ---------------------------------------------------------------------------------
-
-enum { ANIM_MAX_CHANGES = 12 };   // bigger jumps (open file, go to start) snap without animation
-static const f64 STONE_IN_SECONDS = 0.16, STONE_OUT_SECONDS = 0.24;
-
-static void update_stone_animations(Ui *ui, const Board *board) {
-    f64 now = GetTime();
-    i32 n = board->width * board->height;
-    bool resized = board->width != ui->prev_width || board->height != ui->prev_height;
-    i32 changes = 0;
-    if (!resized) {
-        for (i32 i = 0; i < n; ++i) changes += board->cells[i] != ui->prev_cells[i];
-    }
-    bool animate = !resized && changes <= ANIM_MAX_CHANGES;
-    for (i32 i = 0; i < n; ++i) {
-        u8 before = resized ? STONE_EMPTY : ui->prev_cells[i], after = board->cells[i];
-        if (before == after) continue;
-        ui->stone_born[i] = animate ? now : 0.0;
-        if (animate && before != STONE_EMPTY && ui->ghost_count < (i32)countof(ui->ghosts)) {
-            ui->ghosts[ui->ghost_count++] = (StoneGhost){ board_point(board, i), (Stone)before, now };
-        }
-    }
-    memcpy(ui->prev_cells, board->cells, (usize)n);
-    ui->prev_width = board->width;
-    ui->prev_height = board->height;
-    // Drop finished ghosts.
-    i32 kept = 0;
-    for (i32 i = 0; i < ui->ghost_count; ++i) {
-        if (now - ui->ghosts[i].born < STONE_OUT_SECONDS) ui->ghosts[kept++] = ui->ghosts[i];
-    }
-    ui->ghost_count = kept;
-}
-
 void board_view_prepare(Ui *ui) {
     const Board *board = &ui->app->tree->current->board;
-    update_stone_animations(ui, board);
+    stone_anim_update(&ui->stone_anim, board, GetTime());
     Clay_ElementData data = Clay_GetElementData(CLAY_ID("Board"));
     if (!data.found) return;
     Rectangle bounds = { roundf(data.boundingBox.x), roundf(data.boundingBox.y), roundf(data.boundingBox.width),
@@ -405,19 +372,18 @@ static void draw_board(void *user, Rectangle bounds) {
 
     // Stones: newly placed ones ease in (slight overshoot), removed ones fade out.
     f32 r = g.cell * 0.48f;
-    for (i32 i = 0; i < ui->ghost_count; ++i) {
-        f32 t = (f32)((now - ui->ghosts[i].born) / STONE_OUT_SECONDS);
-        if (ui->ghosts[i].point.x >= board->width || ui->ghosts[i].point.y >= board->height) continue;
-        if (board_at(board, ui->ghosts[i].point) != STONE_EMPTY) continue;
-        draw_stone(ui->theme, point_center(&g, ui->ghosts[i].point), r * (1.0f - 0.12f * ease_out_cubic(t)), ui->ghosts[i].color,
-                   1.0f - ease_out_cubic(t));
+    const StoneAnim *sa = &ui->stone_anim;
+    for (i32 i = 0; i < sa->ghost_count; ++i) {
+        const StoneGhost *gh = &sa->ghosts[i];
+        if (gh->point.x >= board->width || gh->point.y >= board->height) continue;
+        if (board_at(board, gh->point) != STONE_EMPTY) continue;
+        StoneLook look = stone_anim_ghost(gh, now);
+        draw_stone(ui->theme, point_center(&g, gh->point), r * look.scale, gh->color, look.alpha);
     }
     for (i32 i = 0; i < board->width * board->height; ++i) {
         if (board->cells[i] == STONE_EMPTY) continue;
-        f32 t = ui->stone_born[i] > 0 ? (f32)((now - ui->stone_born[i]) / STONE_IN_SECONDS) : 1.0f;
-        f32 scale = t < 1.0f ? 0.82f + 0.18f * ease_out_back(t) : 1.0f;
-        f32 alpha = t < 1.0f ? ease_out_cubic(t * 1.6f) : 1.0f;
-        draw_stone(ui->theme, point_center(&g, board_point(board, i)), r * scale, (Stone)board->cells[i], alpha);
+        StoneLook look = stone_anim_placed(sa, i, now);
+        draw_stone(ui->theme, point_center(&g, board_point(board, i)), r * look.scale, (Stone)board->cells[i], look.alpha);
     }
     // Move numbers (stones still on the board, latest number wins), else last-move marker.
     if (app->config.show_move_numbers) {
@@ -438,9 +404,7 @@ static void draw_board(void *user, Rectangle bounds) {
         }
     } else if (node->has_move && !point_is_pass(node->move.point)) {
         i32 i = board_index(board, node->move.point);
-        f32 t = ui->stone_born[i] > 0 ? (f32)((now - ui->stone_born[i]) / STONE_IN_SECONDS) : 1.0f;
-        DrawCircleV(point_center(&g, node->move.point), g.cell * 0.16f * ease_out_back(CLAMP(t * 1.2f - 0.2f, 0.0f, 1.0f)),
-                    ui->theme->colors.last_move);
+        DrawCircleV(point_center(&g, node->move.point), g.cell * 0.16f * stone_anim_marker(&ui->stone_anim, i, now), ui->theme->colors.last_move);
     }
 
     // Candidate preview: hovered on the board or in the candidates panel.

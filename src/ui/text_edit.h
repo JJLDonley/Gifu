@@ -29,5 +29,35 @@ void text_edit_left(TextEdit *edit, bool extend);    // collapses a selection to
 void text_edit_right(TextEdit *edit, bool extend);
 void text_edit_select_all(TextEdit *edit);
 
+typedef enum TextInputResult {
+    TEXT_INPUT_NONE,
+    TEXT_INPUT_CHANGED,
+    TEXT_INPUT_COMMITTED,   // focus left (click outside, Enter on single-line, Ctrl+Enter)
+    TEXT_INPUT_CANCELLED,   // Escape
+} TextInputResult;
+
+// The keys of one frame (presses and auto-repeats), gathered by the UI.
+typedef struct TextKeys {
+    u32 chars[32];   // typed / IME-committed code points, in order
+    i32 char_count;
+    bool ctrl, shift;
+    bool backspace, del, left, right, up, down, home, end, enter, escape;
+    bool select_all, copy, cut, paste;   // Ctrl+A / C / X / V
+} TextKeys;
+
+// What needs fonts or the system: line moves on the wrapped layout, the clipboard.
+typedef struct TextEditHost {
+    void *user;
+    isize (*vertical)(void *user, const TextEdit *edit, i32 direction);   // caret one visual line up (-1) / down (+1)
+    void (*line_bounds)(void *user, const TextEdit *edit, isize caret, isize *start, isize *end);   // visual line of caret
+    void (*set_clipboard)(void *user, StringView text);
+    StringView (*get_clipboard)(void *user);
+} TextEditHost;
+
+// Applies a frame of keys: typing, deleting, caret moves (Shift extends, Ctrl+Home/End
+// go to the ends), Ctrl+A/C/X/V, Enter (new line in multi-line edits, Ctrl+Enter or a
+// single-line edit commits), Escape (cancels).
+TextInputResult text_edit_apply_keys(TextEdit *edit, const TextKeys *keys, const TextEditHost *host);
+
 isize utf8_next_boundary(StringView s, isize i);
 isize utf8_prev_boundary(StringView s, isize i);
