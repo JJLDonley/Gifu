@@ -38,6 +38,9 @@ typedef struct Config {
     bool sgf_save_kt;         // also write analysis as KT[] (KaTrain)
     String tsumego_attacker;  // "auto", "black" or "white" (Tsumego frame)
     i32 tsumego_margin;       // empty lines between the problem and the frame's wall
+    String sync_capture;         // screen capture backend for board sync: auto, gdi, x11, portal, grim, command
+    String sync_capture_command; // "command" backend: writes a PNG to stdout, or to %f
+    i32 sync_interval_ms;        // board sync: time between captures
     String tsumego_ko_threats;   // "none", "attacker", "defender" or "both": who gets a ko threat in the frame
     // KataGo settings sent as -override-config (0 / -1 = keep the .cfg value).
     i32 katago_search_threads, katago_max_visits, katago_gpu, katago_nn_batch, katago_nn_cache_power;

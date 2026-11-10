@@ -88,6 +88,7 @@ add_library(catagui_core STATIC
     src/base/kv.c
     src/base/zip.c
     src/base/codec.c
+    src/base/image.c
     src/core/coord.c
     src/core/board.c
     src/core/game_tree.c
@@ -111,7 +112,8 @@ add_library(catagui_core STATIC
     src/app/keymap.c
     src/app/config.c
     src/app/i18n.c
-    src/app/installer.c)
+    src/app/installer.c
+    src/app/screen_capture.c)
 target_include_directories(catagui_core PUBLIC src)
 target_link_libraries(catagui_core PUBLIC third_party_misc)
 if(WIN32)
@@ -211,6 +213,7 @@ if(CATAGUI_BUILD_TESTS)
         tests/test_layout.c
         tests/test_interop.c
         tests/test_text_edit.c
+    tests/test_image.c
         src/ui/theme.c
         src/ui/layout_model.c
         src/ui/text_edit.c)   # pure data code: needs raylib's Color type, not the library

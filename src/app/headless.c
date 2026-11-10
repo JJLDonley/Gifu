@@ -11,6 +11,8 @@
 #include "core/game_report.h"
 #include "app/installer.h"
 #include "engine/game_job.h"
+#include "app/screen_capture.h"
+#include "base/image.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -394,4 +396,45 @@ int headless_rank(App *app) {
     free(spec);
     engine_destroy(engine);
     return failures ? 1 : 0;
+}
+
+int headless_capture(App *app) {
+    const AppOptions *o = &app->options;
+    ScreenRect area = { 0 }, *rect = NULL;
+    if (o->capture_area.len) {
+        StringView rest = o->capture_area;
+        i64 v[4];
+        for (i32 i = 0; i < 4; ++i) {
+            if (!sv_parse_i64(sv_trim(sv_chop_char(&rest, ',')), &v[i])) {
+                fprintf(stderr, "--capture-area: expected X,Y,W,H\n");
+                return 2;
+            }
+        }
+        area = (ScreenRect){ (i32)v[0], (i32)v[1], (i32)v[2], (i32)v[3] };
+        rect = &area;
+    }
+    String err = { 0 };
+    ScreenCapture *capture = screen_capture_open(string_sv(&app->config.sync_capture), string_sv(&app->config.sync_capture_command), &err);
+    if (!capture) {
+        fprintf(stderr, "screen capture: %s\n", string_cstr(&err));
+        string_free(&err);
+        return 2;
+    }
+    RgbaImage image;
+    f64 started = os_time_seconds();
+    bool ok = screen_capture_grab(capture, rect, &image, &err);
+    f64 took = os_time_seconds() - started;
+    if (ok) {
+        String png = { 0 };
+        png_encode(&image, &png);
+        ok = os_write_file(o->capture, string_sv(&png));
+        printf(SV_FMT ": %dx%d in %.0f ms -> " SV_FMT "\n", SV_ARG(screen_capture_name(capture)), image.width, image.height, took * 1000.0, SV_ARG(o->capture));
+        string_free(&png);
+        rgba_image_free(&image);
+    } else {
+        fprintf(stderr, "screen capture (" SV_FMT "): %s\n", SV_ARG(screen_capture_name(capture)), string_cstr(&err));
+    }
+    string_free(&err);
+    screen_capture_close(capture);
+    return ok ? 0 : 1;
 }

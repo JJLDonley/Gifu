@@ -10,3 +10,5 @@ int headless_analyze(App *app);
 int headless_install(App *app);
 // --rank FILE.sgf...: human-network rank estimate per player.
 int headless_rank(App *app);
+// --capture OUT.png [--capture-area X,Y,W,H]: one screen capture (tests the capture backend).
+int headless_capture(App *app);

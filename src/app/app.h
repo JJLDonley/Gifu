@@ -33,6 +33,10 @@ typedef struct AppOptions {
     bool headless;                   // no window, no interactive engine
     bool rank;                       // --rank: estimate ranks of analyze_files instead
     StringView region;               // --region A1:G7 (tsumego focus)
+    StringView capture;              // --capture FILE.png: save a screen capture (headless)
+    bool window_pos_set;             // --window-pos X,Y
+    i32 window_x, window_y;
+    StringView capture_area;         // --capture-area X,Y,W,H (pixels of the full-screen image)
     StringView install;              // --install engine,network,human (headless)
     StringView install_backend;      // --backend opencl|eigenavx2|eigen|cuda12.8-cudnn9.8.0
     StringView install_dir;          // --install-dir (default <root>/katago)
