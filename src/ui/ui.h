@@ -80,6 +80,8 @@ typedef struct Ui {
     void *clay_memory;
     f32 scale;
     bool debug;
+    char help_topic[32];   // open "?" popover (empty = none)
+    bool help_button_hovered;   // a "?" button is under the mouse (this frame)
 
     // Input for this frame.
     Vector2 mouse;
@@ -192,6 +194,10 @@ Clay_ElementDeclaration ui_card(Ui *ui, Clay_ElementId id);
 // read for the element being opened.
 Clay_ElementDeclaration ui_scroll_area(Ui *ui, Clay_ElementId id, f32 height);
 void ui_card_title(Ui *ui, StringView title);
+// Card title with a "?" button at the right that explains the panel
+// (l10n keys help.<topic>.title / help.<topic>.text); shown in tabs too.
+void ui_card_title_help(Ui *ui, StringView title, StringView topic);
+void ui_help_button(Ui *ui, StringView topic);
 
 // ---- Pieces (board_view.c, winrate_graph.c, panels.c, layout.c) ----------------------------------
 

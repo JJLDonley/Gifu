@@ -4,6 +4,7 @@
 #include "ui/ui.h"
 
 #include <math.h>
+#include <stdio.h>
 
 enum { TREE_MAX_NODES = 6000 };
 
@@ -92,6 +93,14 @@ static void draw_tree(void *user, Rectangle r) {
             DrawCircleV(p, radius, color_with_alpha(s == STONE_BLACK ? c->black_stone : c->white_stone, alpha));
             DrawRing(p, radius - 1.0f, radius, 0, 360, 24, color_with_alpha(s == STONE_BLACK ? c->black_stone_edge : c->white_stone_edge, alpha));
         }
+        // Move numbers once the nodes are big enough to hold them.
+        if (it->node->has_move && v->spacing >= ui_px(ui, 22)) {
+            char num[8];
+            snprintf(num, sizeof(num), "%d", it->node->move_number);
+            f32 size = radius * (it->node->move_number >= 100 ? 0.95f : 1.15f);
+            Color ink = it->node->move.color == STONE_BLACK ? c->white_stone : c->black_stone;
+            font_draw_centered(ui->fonts, FONT_UI_BOLD, size, sv(num), p, color_with_alpha(ink, alpha));
+        }
         if (game_node_find_prop(it->node, SV("C"))) DrawCircleV((Vector2){ p.x + radius, p.y - radius }, radius * 0.35f, c->accent);
         if (it->node == ui->app->tree->current) DrawRing(p, radius + 2.0f, radius + 3.5f, 0, 360, 32, c->accent);
     }
@@ -101,11 +110,19 @@ void variation_tree_element(Ui *ui, f32 height) {
     TreeView *view = arena_new(&ui->frame, TreeView);
     view->ui = ui;
     view->items = arena_new_array(&ui->frame, TreeItem, TREE_MAX_NODES);
-    view->spacing = ui_px(ui, 16);
     build(view, ui->app->tree->root);
 
     Clay_ElementId clip_id = CLAY_ID("VariationTreeClip");
     Clay_ElementId canvas_id = CLAY_ID("VariationTree");
+    // Node size: as large as the area allows (last frame's size), within limits;
+    // long games scroll instead of shrinking below readable.
+    f32 min_spacing = ui_px(ui, 26), max_spacing = ui_px(ui, 40);
+    view->spacing = min_spacing;
+    Clay_ElementData area = Clay_GetElementData(clip_id);
+    if (area.found && view->cols > 0 && view->rows > 0) {
+        f32 fit = fminf(area.boundingBox.width / (f32)view->cols, area.boundingBox.height / (f32)view->rows);
+        view->spacing = CLAMP(fit, min_spacing, max_spacing);
+    }
     f32 width = view->spacing * (f32)view->cols, content_h = view->spacing * (f32)view->rows;
     f32 visible_h = fminf(ui_px(ui, height), content_h + ui_px(ui, 4));
     CLAY({ .id = clip_id,

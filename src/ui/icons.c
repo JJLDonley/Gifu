@@ -56,6 +56,18 @@ static void icon_stone_black(Rectangle r, Color c, f32 w) {
 static void icon_stone_white(Rectangle r, Color c, f32 w) {
     DrawRing(at(r, 0.5f, 0.5f), r.width * 0.30f - w, r.width * 0.30f, 0, 360, 32, c);
 }
+static void icon_help(Rectangle r, Color c, f32 w) {   // circled question mark
+    Vector2 o = at(r, 0.5f, 0.5f);
+    DrawRing(o, r.width * 0.36f - w, r.width * 0.36f, 0, 360, 36, c);
+    DrawRing(at(r, 0.5f, 0.42f), r.width * 0.11f - w * 0.5f, r.width * 0.11f + w * 0.5f, 180, 450, 16, c);
+    line(r, 0.5f, 0.53f, 0.5f, 0.58f, w, c);
+    DrawCircleV(at(r, 0.5f, 0.70f), w * 0.8f, c);
+}
+static void icon_rank(Rectangle r, Color c, f32 w) {   // rising bars
+    line(r, 0.28f, 0.74f, 0.28f, 0.58f, w, c);
+    line(r, 0.5f, 0.74f, 0.5f, 0.44f, w, c);
+    line(r, 0.72f, 0.74f, 0.72f, 0.28f, w, c);
+}
 static void icon_gear(Rectangle r, Color c, f32 w) {
     Vector2 o = at(r, 0.5f, 0.5f);
     f32 R = r.width * 0.30f;
@@ -115,7 +127,7 @@ static const struct {
     { "close", icon_close }, { "plus", icon_plus }, { "stone_black", icon_stone_black },
     { "stone_white", icon_stone_white }, { "gear", icon_gear }, { "folder", icon_folder }, { "save", icon_save },
     { "play", icon_play }, { "pause", icon_pause }, { "chart", icon_chart }, { "menu", icon_menu },
-    { "check", icon_check }, { "chevron_down", icon_down },
+    { "check", icon_check }, { "chevron_down", icon_down }, { "help", icon_help }, { "rank", icon_rank },
 };
 
 i32 icon_find(StringView name) {

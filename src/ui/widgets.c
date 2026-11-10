@@ -142,6 +142,68 @@ void ui_card_title(Ui *ui, StringView title) {
                                                     .letterSpacing = 1, .wrapMode = CLAY_TEXT_WRAP_NONE }));
 }
 
+// ---- Help popovers ----
+
+void ui_help_button(Ui *ui, StringView topic) {
+    const ThemeColors *c = &ui->theme->colors;
+    bool open = sv_eq(sv(ui->help_topic), topic);
+    Clay_ElementId id = Clay_GetElementIdWithIndex(CLAY_STRING("HelpButton"), (u32)(topic.len ? (u8)topic.data[0] * 131u + (u32)topic.len * 7u + (u8)topic.data[topic.len - 1] : 0));
+    bool over = Clay_PointerOver(id);
+    if (over) ui->help_button_hovered = true;
+    f32 size = ui_px(ui, 18);
+    CLAY({ .id = id, .layout = { .sizing = { CLAY_SIZING_FIXED(size), CLAY_SIZING_FIXED(size) } } }) {
+        ui_icon(ui, icon_find(SV("help")), 18, open || over ? c->accent : c->text_muted);
+        if (open) {
+            // Popover below the button, right-aligned with it.
+            f32 width = ui_px(ui, 300);
+            char key[64];
+            snprintf(key, sizeof(key), "help." SV_FMT ".title", SV_ARG(topic));
+            StringView title = app_tr(ui->app, key, "");
+            snprintf(key, sizeof(key), "help." SV_FMT ".text", SV_ARG(topic));
+            StringView text = app_tr(ui->app, key, "");
+            // Opens upwards when the button is in the lower half of the window.
+            Clay_ElementData button = Clay_GetElementData(id);
+            bool up = button.found && button.boundingBox.y > (f32)GetScreenHeight() * 0.5f;
+            Clay_FloatingAttachPoints attach = up ? (Clay_FloatingAttachPoints){ .element = CLAY_ATTACH_POINT_RIGHT_BOTTOM, .parent = CLAY_ATTACH_POINT_RIGHT_TOP }
+                                                  : (Clay_FloatingAttachPoints){ .element = CLAY_ATTACH_POINT_RIGHT_TOP, .parent = CLAY_ATTACH_POINT_RIGHT_BOTTOM };
+            CLAY({ .id = CLAY_ID("HelpPopover"),
+                   .floating = { .attachTo = CLAY_ATTACH_TO_PARENT, .zIndex = 150, .offset = { 0, up ? -ui_px(ui, 6) : ui_px(ui, 6) },
+                                 .attachPoints = attach },
+                   .layout = { .sizing = { CLAY_SIZING_FIXED(width), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                               .padding = CLAY_PADDING_ALL(ui_u16(ui, 12)), .childGap = ui_u16(ui, 6) },
+                   .backgroundColor = color_to_clay(c->surface),
+                   .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 6)),
+                   .border = { .color = color_to_clay(c->accent), .width = CLAY_BORDER_OUTSIDE(1) } }) {
+                if (title.len) ui_label(ui, title, FONT_UI_BOLD, 13, c->text);
+                // Paragraphs separated by blank lines ("\n\n" in the l10n file).
+                StringView rest = text;
+                while (rest.len > 0) {
+                    isize gap = sv_find(rest, SV("\n\n"));
+                    StringView para = gap >= 0 ? sv_take(rest, gap) : rest;
+                    rest = gap >= 0 ? sv_drop(rest, gap + 2) : SV("");
+                    StringView wrapped = ui_wrap_text(ui, para, FONT_UI, 12, width - ui_px(ui, 24));
+                    CLAY_TEXT(ui_str(ui, wrapped), CLAY_TEXT_CONFIG({ .fontId = FONT_UI, .fontSize = ui_u16(ui, 12),
+                                                                      .textColor = color_to_clay(c->text_muted), .lineHeight = ui_u16(ui, 17) }));
+                }
+            }
+        }
+    }
+    if (over && ui->mouse_pressed) {
+        if (open) {
+            ui->help_topic[0] = '\0';
+        } else {
+            snprintf(ui->help_topic, sizeof(ui->help_topic), SV_FMT, SV_ARG(topic));
+        }
+    }
+}
+
+void ui_card_title_help(Ui *ui, StringView title, StringView topic) {
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
+        CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) } } }) { ui_card_title(ui, title); }
+        ui_help_button(ui, topic);
+    }
+}
+
 static bool is_cjk(u32 cp) {
     return (cp >= 0x2E80 && cp <= 0x9FFF) || (cp >= 0xAC00 && cp <= 0xD7AF) || (cp >= 0xF900 && cp <= 0xFAFF) ||
            (cp >= 0xFF00 && cp <= 0xFFEF) || (cp >= 0x20000 && cp <= 0x2FFFF);

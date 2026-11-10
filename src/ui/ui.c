@@ -374,6 +374,11 @@ void ui_frame(Ui *ui) {
     ui->mouse_released = IsMouseButtonReleased(MOUSE_BUTTON_LEFT);
     ui->mouse_down = IsMouseButtonDown(MOUSE_BUTTON_LEFT);
     ui->wheel = GetMouseWheelMove();
+    // A click outside an open help popover (and its button) closes it; uses last frame's layout.
+    if (ui->help_topic[0] && ui->mouse_pressed && !Clay_PointerOver(CLAY_ID("HelpPopover")) && !ui->help_button_hovered) {
+        ui->help_topic[0] = '\0';
+    }
+    ui->help_button_hovered = false;
 
     if (ui->language_version != ui->app->language_version) {
         ui->language_version = ui->app->language_version;
