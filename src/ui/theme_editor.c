@@ -513,9 +513,43 @@ static void body(Ui *ui, void *user) {
     }
 }
 
+// The base theme's file in <config_dir>/themes, if it is a user theme (empty otherwise).
+static String user_theme_file(const Ui *ui) {
+    const Theme *base = &ui->themes.items[ui->theme_editor.base_index];
+    String file = string_format(SV_FMT "/themes/" SV_FMT ".theme", SV_ARG(string_sv(&ui->app->config_dir)), SV_ARG(string_sv(&base->id)));
+    if (!os_file_exists(string_sv(&file))) string_clear(&file);
+    return file;
+}
+
+static void delete_theme(Ui *ui) {
+    String file = user_theme_file(ui);
+    if (file.len == 0) return;
+    bool ok = os_remove(string_sv(&file));
+    app_set_status(ui->app, ok ? "Theme deleted: %s" : "Could not delete %s", string_cstr(&file));
+    string_free(&file);
+    if (!ok) return;
+    ThemeEditor *e = &ui->theme_editor;
+    e->open = false;
+    e->background_stale = false;
+    theme_free(&e->edit);
+    ui_reload_themes(ui);
+    string_clear(&ui->background.built_for);
+    isize index = themes_find(&ui->themes, SV("cream"));
+    ui_apply_theme(ui, index >= 0 ? index : 0);
+    changed(ui);
+    ui_close_dialog(ui);
+}
+
 static void footer(Ui *ui, void *user) {
     UNUSED(user);
     const ThemeColors *c = &ui->theme->colors;
+    String own = user_theme_file(ui);
+    if (own.len && ui_button(ui, CLAY_ID("ThemeDelete"), tr(ui, "theme_editor.delete", "Delete this theme"), BUTTON_GHOST, false, true)) {
+        string_free(&own);
+        delete_theme(ui);
+        return;
+    }
+    string_free(&own);
     CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) } } }) {
         ui_label(ui, tr(ui, "theme_editor.hint", "Changes show everywhere right away; Save keeps them as a new theme."), FONT_UI, 12, c->text_muted);
     }
