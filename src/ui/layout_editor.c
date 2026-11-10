@@ -278,7 +278,7 @@ static void body(Ui *ui, void *user) {
             for (isize i = 0; i < m->stack.len; ++i) {
                 StringView item = string_sv(&m->stack.items[i]);
                 StringView panel = layout_item_panel(item);
-                RowAction a = row(ui, (u32)i, panel.len ? panel_label(ui, panel) : item, tr(ui, "layout_editor.to_tabs", "→ Tabs"),
+                RowAction a = row(ui, (u32)i, panel.len ? panel_label(ui, panel) : item, arena_format(&ui->frame, "@next " SV_FMT, SV_ARG(tr(ui, "layout_editor.to_tabs", "Tabs"))),
                                   i > 0, i + 1 < m->stack.len);
                 if (a == ROW_UP) layout_vec_move(&m->stack, i, -1), changed = true;
                 if (a == ROW_DOWN) layout_vec_move(&m->stack, i, 1), changed = true;
@@ -296,7 +296,7 @@ static void body(Ui *ui, void *user) {
             column_title(ui, tr(ui, "layout_editor.tabs", "TABS"));
             for (isize i = 0; i < m->tabs.len && !changed; ++i) {
                 StringView name = string_sv(&m->tabs.items[i]);
-                RowAction a = row(ui, 100 + (u32)i, panel_label(ui, name), tr(ui, "layout_editor.to_sidebar", "← Sidebar"), i > 0, i + 1 < m->tabs.len);
+                RowAction a = row(ui, 100 + (u32)i, panel_label(ui, name), arena_format(&ui->frame, "@prev " SV_FMT, SV_ARG(tr(ui, "layout_editor.to_sidebar", "Sidebar"))), i > 0, i + 1 < m->tabs.len);
                 if (a == ROW_UP) layout_vec_move(&m->tabs, i, -1), changed = true;
                 if (a == ROW_DOWN) layout_vec_move(&m->tabs, i, 1), changed = true;
                 if (a == ROW_MOVE) {

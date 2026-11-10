@@ -33,20 +33,6 @@ typedef struct DrawState {
 
 // ---- UTF-8 helpers ------------------------------------------------------------------------
 
-static isize next_boundary(StringView s, isize i) {
-    if (i >= s.len) return s.len;
-    ++i;
-    while (i < s.len && ((u8)s.data[i] & 0xC0) == 0x80) ++i;
-    return i;
-}
-
-static isize prev_boundary(StringView s, isize i) {
-    if (i <= 0) return 0;
-    --i;
-    while (i > 0 && ((u8)s.data[i] & 0xC0) == 0x80) --i;
-    return i;
-}
-
 static bool is_cjk_cp(u32 cp) {
     return (cp >= 0x2E80 && cp <= 0x9FFF) || (cp >= 0xAC00 && cp <= 0xD7AF) || (cp >= 0xF900 && cp <= 0xFAFF) ||
            (cp >= 0xFF00 && cp <= 0xFFEF) || (cp >= 0x20000 && cp <= 0x2FFFF);
@@ -76,10 +62,10 @@ static TextLayout layout_text(Ui *ui, const TextEdit *edit, f32 font_px, f32 max
             continue;
         }
         if (!edit->multiline) {   // single line: never wrap
-            i = next_boundary(text, i);
+            i = utf8_next_boundary(text, i);
             continue;
         }
-        isize next = next_boundary(text, i);
+        isize next = utf8_next_boundary(text, i);
         StringView ch = sv_slice(text, i, next);
         StringView probe = ch;
         u32 cp = utf8_next(&probe);
@@ -126,7 +112,7 @@ static isize offset_at_x(Ui *ui, const TextEdit *edit, const TextLayout *layout,
     VisualLine l = layout->lines[line];
     f32 pen = 0;
     for (isize i = l.start; i < l.end;) {
-        isize next = next_boundary(text, i);
+        isize next = utf8_next_boundary(text, i);
         f32 w = font_measure(ui->fonts, FONT_UI, layout->font_px, sv_slice(text, i, next)).x;
         if (x < pen + w * 0.5f) return i;
         pen += w;
@@ -136,36 +122,6 @@ static isize offset_at_x(Ui *ui, const TextEdit *edit, const TextLayout *layout,
 }
 
 // ---- Editing -----------------------------------------------------------------------------------
-
-static bool has_selection(const TextEdit *e) { return e->caret != e->anchor; }
-
-static void delete_selection(TextEdit *e) {
-    isize a = MIN(e->caret, e->anchor), b = MAX(e->caret, e->anchor);
-    if (a == b) return;
-    memmove(e->text.data + a, e->text.data + b, (usize)(e->text.len - b));
-    e->text.len -= b - a;
-    e->text.data[e->text.len] = '\0';
-    e->caret = e->anchor = a;
-}
-
-static void insert_text(TextEdit *e, StringView s) {
-    delete_selection(e);
-    string_reserve(&e->text, e->text.len + s.len);
-    memmove(e->text.data + e->caret + s.len, e->text.data + e->caret, (usize)(e->text.len - e->caret));
-    memcpy(e->text.data + e->caret, s.data, (usize)s.len);
-    e->text.len += s.len;
-    e->text.data[e->text.len] = '\0';
-    e->caret += s.len;
-    e->anchor = e->caret;
-}
-
-void text_edit_set(TextEdit *e, StringView text) {
-    string_clear(&e->text);
-    string_push(&e->text, text);
-    e->caret = e->anchor = e->text.len;
-}
-
-void text_edit_free(TextEdit *e) { string_free(&e->text); }
 
 static bool key(i32 k) { return IsKeyPressed(k) || IsKeyPressedRepeat(k); }
 
@@ -178,25 +134,22 @@ static TextInputResult handle_keys(Ui *ui, TextEdit *e, const TextLayout *layout
     for (i32 cp = GetCharPressed(); cp > 0; cp = GetCharPressed()) {
         if (cp < 0x20 || cp == 0x7F) continue;
         char utf8[4];
-        insert_text(e, sv_from_parts(utf8, utf8_encode((u32)cp, utf8)));
+        text_edit_insert(e, sv_from_parts(utf8, utf8_encode((u32)cp, utf8)));
         result = TEXT_INPUT_CHANGED;
     }
-    text = string_sv(&e->text);
-
     if (key(KEY_BACKSPACE)) {
-        if (!has_selection(e)) e->anchor = ctrl ? 0 : prev_boundary(text, e->caret);
-        delete_selection(e);
+        text_edit_backspace(e, ctrl);
         result = TEXT_INPUT_CHANGED;
     }
     if (key(KEY_DELETE)) {
-        if (!has_selection(e)) e->anchor = next_boundary(text, e->caret);
-        delete_selection(e);
+        text_edit_delete_forward(e);
         result = TEXT_INPUT_CHANGED;
     }
     text = string_sv(&e->text);
+    if (key(KEY_LEFT)) text_edit_left(e, shift);
+    if (key(KEY_RIGHT)) text_edit_right(e, shift);
+    // Line-based moves need the wrapped layout.
     isize caret = e->caret;
-    if (key(KEY_LEFT)) caret = has_selection(e) && !shift ? MIN(e->caret, e->anchor) : prev_boundary(text, caret);
-    if (key(KEY_RIGHT)) caret = has_selection(e) && !shift ? MAX(e->caret, e->anchor) : next_boundary(text, caret);
     if (key(KEY_UP) || key(KEY_DOWN)) {
         i32 line = line_of(layout, caret);
         i32 target = key(KEY_UP) ? line - 1 : line + 1;
@@ -205,42 +158,28 @@ static TextInputResult handle_keys(Ui *ui, TextEdit *e, const TextLayout *layout
     }
     if (key(KEY_HOME)) caret = ctrl ? 0 : layout->lines[line_of(layout, caret)].start;
     if (key(KEY_END)) caret = ctrl ? text.len : layout->lines[line_of(layout, caret)].end;
-    if (caret != e->caret) {
-        e->caret = caret;
-        if (!shift) e->anchor = caret;
-    }
+    if (caret != e->caret) text_edit_move_to(e, caret, shift);
 
-    if (ctrl && IsKeyPressed(KEY_A)) {
-        e->anchor = 0;
-        e->caret = e->text.len;
-    }
-    if (ctrl && (IsKeyPressed(KEY_C) || IsKeyPressed(KEY_X)) && has_selection(e)) {
-        isize a = MIN(e->caret, e->anchor), b = MAX(e->caret, e->anchor);
-        String copy = string_from(sv_slice(string_sv(&e->text), a, b));
+    if (ctrl && IsKeyPressed(KEY_A)) text_edit_select_all(e);
+    if (ctrl && (IsKeyPressed(KEY_C) || IsKeyPressed(KEY_X)) && text_edit_has_selection(e)) {
+        String copy = string_from(text_edit_selection(e));
         SetClipboardText(string_cstr(&copy));
         string_free(&copy);
         if (IsKeyPressed(KEY_X)) {
-            delete_selection(e);
+            text_edit_delete_selection(e);
             result = TEXT_INPUT_CHANGED;
         }
     }
     if (ctrl && IsKeyPressed(KEY_V)) {
         const char *clip = GetClipboardText();
         if (clip && *clip) {
-            String clean = { 0 };
-            for (const char *p = clip; *p; ++p) {
-                if (*p == '\r') continue;
-                if (*p == '\n' && !e->multiline) continue;
-                string_push_char(&clean, *p);
-            }
-            insert_text(e, string_sv(&clean));
-            string_free(&clean);
+            text_edit_insert(e, sv(clip));
             result = TEXT_INPUT_CHANGED;
         }
     }
     if (key(KEY_ENTER) || key(KEY_KP_ENTER)) {
         if (e->multiline && !ctrl) {
-            insert_text(e, SV("\n"));
+            text_edit_insert(e, SV("\n"));
             result = TEXT_INPUT_CHANGED;
         } else {
             result = TEXT_INPUT_COMMITTED;

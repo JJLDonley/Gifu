@@ -26,12 +26,7 @@ typedef struct BoardGeometry {
 
 // ---- Text editing ----------------------------------------------------------------------------
 
-typedef struct TextEdit {
-    String text;
-    isize caret, anchor;   // byte offsets; anchor == caret means no selection
-    bool multiline;
-    f64 blink_start;
-} TextEdit;
+#include "ui/text_edit.h"   // TextEdit (editing model, no raylib)
 
 typedef enum TextInputResult {
     TEXT_INPUT_NONE,
@@ -40,8 +35,6 @@ typedef enum TextInputResult {
     TEXT_INPUT_CANCELLED,   // Escape
 } TextInputResult;
 
-void text_edit_set(TextEdit *edit, StringView text);
-void text_edit_free(TextEdit *edit);
 
 // ---- Ui --------------------------------------------------------------------------------------
 
