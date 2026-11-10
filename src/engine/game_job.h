@@ -6,6 +6,7 @@
 
 typedef struct GameJob {
     String id;
+    GameTree *tree;        // results go to its nodes (game_node_update_eval)
     PositionSpec *spec;    // setup + moves of the line (heap)
     GameNode **nodes;      // every node from the base position to the end of the line
     i32 *turn_of;          // turn index for each entry of `nodes`

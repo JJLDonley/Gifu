@@ -9,6 +9,7 @@ static bool has_setup_props(const GameNode *node) {
 
 void game_job_build(GameJob *job, GameTree *tree, GameNode *end, StringView id, StringView rules) {
     memset(job, 0, sizeof(*job));
+    job->tree = tree;
     job->id = string_from(id);
     job->spec = malloc(sizeof(PositionSpec));
     if (!job->spec) abort();
@@ -75,7 +76,7 @@ bool game_job_apply(GameJob *job, const TurnResult *r) {
     }
     if (r->turn < 0 || r->turn >= job->turns) return true;
     for (isize k = 0; k < job->node_count; ++k) {
-        if (job->turn_of[k] == r->turn) job->nodes[k]->eval = r->eval;
+        if (job->turn_of[k] == r->turn) game_node_update_eval(job->tree, job->nodes[k], &r->eval);
     }
     if (!job->seen[r->turn]) {
         job->seen[r->turn] = true;

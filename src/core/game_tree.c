@@ -63,6 +63,7 @@ void game_tree_free(GameTree *tree) {
 }
 
 GameNode *game_tree_append_child(GameTree *tree, GameNode *parent) {
+    tree->revision++;
     GameNode *node = arena_new(&tree->arena, GameNode);
     node->parent = parent;
     if (parent->last_child) parent->last_child->next_sibling = node;
@@ -95,6 +96,7 @@ static SgfProperty *new_prop(GameTree *tree, GameNode *node, StringView ident) {
 }
 
 void game_node_set_prop(GameTree *tree, GameNode *node, StringView ident, StringView value) {
+    tree->revision++;
     SgfProperty *p = game_node_find_prop(node, ident);
     if (!p) p = new_prop(tree, node, ident);
     p->values = arena_new_array(&tree->arena, StringView, 1);
@@ -103,6 +105,7 @@ void game_node_set_prop(GameTree *tree, GameNode *node, StringView ident, String
 }
 
 void game_node_add_prop_value(GameTree *tree, GameNode *node, StringView ident, StringView value) {
+    tree->revision++;
     SgfProperty *p = game_node_find_prop(node, ident);
     if (!p) p = new_prop(tree, node, ident);
     StringView *values = arena_new_array(&tree->arena, StringView, p->value_count + 1);
@@ -112,7 +115,8 @@ void game_node_add_prop_value(GameTree *tree, GameNode *node, StringView ident, 
     p->value_count++;
 }
 
-void game_node_remove_prop(GameNode *node, StringView ident) {
+void game_node_remove_prop(GameTree *tree, GameNode *node, StringView ident) {
+    tree->revision++;
     SgfProperty *prev = NULL;
     for (SgfProperty *p = node->props; p; prev = p, p = p->next) {
         if (!sv_eq(p->ident, ident)) continue;
@@ -216,6 +220,7 @@ static void compute_node(GameTree *tree, GameNode *node) {
 }
 
 void game_tree_rebuild(GameTree *tree, GameNode *from) {
+    tree->revision++;
     if (!from) from = tree->root;
     // Iterative pre-order walk of the subtree rooted at `from`.
     GameNode *node = from;
@@ -305,6 +310,7 @@ void game_tree_goto(GameTree *tree, GameNode *node) {
 bool game_tree_delete_node(GameTree *tree, GameNode *node) {
     GameNode *parent = node->parent;
     if (!parent) return false;
+    tree->revision++;
     GameNode *prev = NULL;
     for (GameNode *c = parent->first_child; c; prev = c, c = c->next_sibling) {
         if (c != node) continue;
@@ -348,7 +354,15 @@ bool node_eval_parse(StringView text, i32 width, i32 height, NodeEval *out) {
     return true;
 }
 
+bool game_node_update_eval(GameTree *tree, GameNode *node, const NodeEval *eval) {
+    if (!eval->valid || (node->eval.valid && eval->visits < node->eval.visits)) return false;
+    node->eval = *eval;
+    tree->revision++;
+    return true;
+}
+
 void game_node_store_eval(GameTree *tree, GameNode *node, const NodeEval *eval) {
+    tree->revision++;
     node->eval = *eval;
     char buffer[256];
     i32 n = snprintf(buffer, sizeof(buffer), "%.4f,%.2f,%d,", eval->black_winrate, eval->black_score, eval->visits);

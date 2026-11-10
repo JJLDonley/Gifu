@@ -146,7 +146,7 @@ void game_tree_store_interop(GameTree *tree, bool lz, bool kt) {
             if (kt) {
                 String parts[3];
                 kt_format(&node->eval, w, h, parts);
-                game_node_remove_prop(node, SV("KT"));
+                game_node_remove_prop(tree, node, SV("KT"));
                 for (i32 i = 0; i < 3; ++i) {
                     game_node_add_prop_value(tree, node, SV("KT"), string_sv(&parts[i]));
                     string_free(&parts[i]);

@@ -192,7 +192,7 @@ void app_set_analysis(App *app, bool enabled) {
     }
 }
 
-static void store_node_eval(GameNode *node, const AnalysisSnapshot *a) {
+static void store_node_eval(GameTree *tree, GameNode *node, const AnalysisSnapshot *a) {
     const Candidate *best = analysis_best(a);
     if (!best) return;
     NodeEval e = {
@@ -205,7 +205,7 @@ static void store_node_eval(GameNode *node, const AnalysisSnapshot *a) {
         e.top_share[e.top_count] = a->total_visits > 0 ? (f32)a->candidates[i].visits / (f32)a->total_visits : 0.0f;
         e.top[e.top_count++] = a->candidates[i].move;
     }
-    node->eval = e;
+    game_node_update_eval(tree, node, &e);   // keeps a deeper stored evaluation
 }
 
 // ---- Whole-game analysis ------------------------------------------------------------------
@@ -472,6 +472,11 @@ void app_rank_start(App *app) {
     app->rank_job = rank_estimator_start(slot->engine, spec, string_sv(&app->config.human_profile));
     app->rank_slot = slot;
     app->rank_end = line[n - 1];
+    app->rank_stored = 0;
+    // A new estimate replaces the old one: its moves fill in as they are scored.
+    for (isize i = 0; i < n; ++i) {
+        if (game_node_find_prop(line[i], SV(RANK_SGF_PROP))) game_node_remove_prop(app->tree, line[i], SV(RANK_SGF_PROP));
+    }
     app_set_status(app, "Estimating ranks with %s", string_cstr(&slot->profile->name));
     free(spec);
     free(line);
@@ -491,8 +496,16 @@ static GameNode *active_line_end(const GameTree *tree) {
     return end;
 }
 
-void app_rank_refresh(App *app) {
-    app->rank_line_end = active_line_end(app->tree);
+// The rank summary is derived from the CGR[] of the active line. It is cached
+// on (tree, revision, end of the active line): any change to the tree (a scored
+// move, a loaded game, an edit, another variation) recomputes it; nothing has
+// to remember to refresh it.
+static void rank_sync(App *app) {
+    GameNode *end = active_line_end(app->tree);
+    if (app->rank_tree == app->tree && app->rank_revision == app->tree->revision && app->rank_line_end == end) return;
+    app->rank_tree = app->tree;
+    app->rank_revision = app->tree->revision;
+    app->rank_line_end = end;
     memset(&app->rank, 0, sizeof(app->rank));
     app->rank_valid = false;
     enum { MAX_LINE = 4096 };
@@ -512,21 +525,27 @@ void app_rank_refresh(App *app) {
 }
 
 static void rank_update(App *app) {
-    if (active_line_end(app->tree) != app->rank_line_end) app_rank_refresh(app);   // other variation, edits
     if (app->rank_pending && human_slot(app)) app_rank_start(app);
-    if (!app->rank_job) return;
-    rank_estimator_update(app->rank_job);
-    const RankProgress *p = rank_estimator_progress(app->rank_job);
-    if (!p->finished) return;
-    if (p->failed) {
-        app_set_status(app, "Rank estimate failed: %s", string_cstr(&p->error));
-    } else {
-        if (rank_progress_store(p, app->tree, app->rank_end) > 0) app->dirty = true;   // saved with the game
-        app_rank_refresh(app);
-        app_set_status(app, "Estimated ranks: Black " SV_FMT ", White " SV_FMT, SV_ARG(rank_label(rank_tally_best(&p->tally[STONE_BLACK]))),
-                       SV_ARG(rank_label(rank_tally_best(&p->tally[STONE_WHITE]))));
+    if (app->rank_job) {
+        rank_estimator_update(app->rank_job);
+        const RankProgress *p = rank_estimator_progress(app->rank_job);
+        // Every scored move goes into the tree right away (CGR[]): the sidebar,
+        // the graph and the Deep report all follow the job as it runs.
+        if (p->done != app->rank_stored) {
+            app->rank_stored = p->done;
+            if (rank_progress_store(p, app->tree, app->rank_end) > 0) app->dirty = true;
+        }
+        if (p->finished) {
+            if (p->failed) {
+                app_set_status(app, "Rank estimate failed: %s", string_cstr(&p->error));
+            } else {
+                app_set_status(app, "Estimated ranks: Black " SV_FMT ", White " SV_FMT, SV_ARG(rank_label(rank_tally_best(&p->tally[STONE_BLACK]))),
+                               SV_ARG(rank_label(rank_tally_best(&p->tally[STONE_WHITE]))));
+            }
+            app_rank_stop(app);
+        }
     }
-    app_rank_stop(app);
+    rank_sync(app);
 }
 
 static void second_update(App *app) {
@@ -603,7 +622,7 @@ void app_update(App *app) {
                 break;
             case ENGINE_EVENT_ANALYSIS:
                 if (ev.analysis->position_id != app->main.synced_position_id || !app->main.synced_node) break;
-                store_node_eval(app->main.synced_node, ev.analysis);
+                store_node_eval(app->tree, app->main.synced_node, ev.analysis);
                 if (app->main.synced_node == app->tree->current) {
                     memcpy(app->analysis, ev.analysis, sizeof(AnalysisSnapshot));
                     app->analysis_valid = true;
@@ -766,7 +785,6 @@ static void replace_tree(App *app, GameTree *tree) {
     app->tree = tree;
     app->human_policy_node = NULL;
     app_rank_stop(app);
-    app_rank_refresh(app);   // CGR[] loaded with the game
     app->main.synced_node = NULL;
     app->analysis_valid = false;
     app->dirty = false;
@@ -855,7 +873,7 @@ void app_game_info_apply(App *app) {
         StringView value = sv_trim(string_sv(field));
         if (sv_eq(value, game_node_prop(tree->root, ident))) continue;
         if (value.len) game_node_set_prop(tree, tree->root, ident, value);
-        else game_node_remove_prop(tree->root, ident);
+        else game_node_remove_prop(tree, tree->root, ident);
         changed = true;
     }
     f64 komi = sgf_normalize_komi(app->config.game_info_komi);

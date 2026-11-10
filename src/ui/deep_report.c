@@ -680,9 +680,13 @@ static void body(Ui *ui, void *user) {
         CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) } } }) {
             isize done = 0, total = 0;
             app_game_analysis_progress(ui->app, &done, &total);
+            i32 rank_done = 0, rank_total = 0;
             if (app_game_analysis_running(ui->app)) {
                 CLAY_TEXT(ui_fmt(ui, SV_FMT " %td / %td", SV_ARG(tr(ui, "label.analyzing", "Analyzing")), done, total),
                           ui_text_style(ui, FONT_UI, 13, c->text_muted));
+            } else if (app_rank_progress(ui->app, &rank_done, &rank_total)) {   // results fill in live
+                CLAY_TEXT(ui_fmt(ui, SV_FMT " %d / %d", SV_ARG(tr(ui, "report.rank_running", "Estimating ranks")), rank_done, rank_total),
+                          ui_text_style(ui, FONT_UI, 13, c->human_policy));
             } else {
                 CLAY_TEXT(ui_fmt(ui, "%d / %d " SV_FMT, d->report.analysed_nodes, (i32)d->count, SV_ARG(tr(ui, "report.analysed", "positions analysed"))),
                           ui_text_style(ui, FONT_UI, 13, c->text_muted));

@@ -101,8 +101,11 @@ typedef struct App {
     bool rank_pending;          // requested while the engine was starting: runs once it is ready
     bool restart_main_pending, restart_second_pending;   // engine settings changed, not applied yet
     GameNode *rank_end;         // last node of the line the job is scoring
-    GameNode *rank_line_end;    // active line `rank` was computed for
-    RankSummary rank;           // from the CGR[] of the active line (app_rank_refresh)
+    const GameTree *rank_tree;  // `rank` is derived from the CGR[] of this tree's active line...
+    u64 rank_revision;          // ...at this revision...
+    GameNode *rank_line_end;    // ...ending at this node (recomputed when any of them changes)
+    RankSummary rank;
+    i32 rank_stored;            // scored moves already written to the tree by the running job
     bool rank_valid;            // some move on the active line has a rank estimate
     bool human_available;       // some available profile has a human network (set when profiles load)
     bool flash_running;
@@ -154,8 +157,6 @@ void app_apply_engine_settings(App *app);
 bool app_engine_settings_pending(const App *app);
 // The user's KataGo settings (Settings -> KataGo) for engine_create / batch_analyzer_create.
 KataGoTuning app_katago_tuning(const App *app);
-// Recomputes app->rank from the CGR[] properties on the active line.
-void app_rank_refresh(App *app);
 // Game info dialog: copies the root SGF properties (players, ranks, komi,
 // result, event, date) into the transient game_info.* settings, and back.
 void app_game_info_load(App *app);

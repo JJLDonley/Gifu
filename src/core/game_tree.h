@@ -54,13 +54,21 @@ typedef struct GameTree {
     GameNode *root;
     GameNode *current;
     BoardRules rules;
+    // Bumped by every change to nodes, properties or evaluations. Anything
+    // derived from the tree (rank summary, reports...) keys its cache on it, so
+    // there is nothing to keep in sync by hand.
+    u64 revision;
     bool komi_fixed;   // the loader corrected a Fox-style KM[] (see sgf_fix_komi)
 } GameTree;
 
 GameTree *game_tree_new(i32 width, i32 height, f64 komi);
 // Evals persist in SGF as CGE[winrate,score,visits,top1 top2 top3] (SGF coords),
 // e.g. CGE[0.4812,-1.3,1200,pd dp qq].
-void game_node_store_eval(GameTree *tree, GameNode *node, const NodeEval *eval);
+void game_node_store_eval(GameTree *tree, GameNode *node, const NodeEval *eval);   // eval + CGE[]
+// In-memory evaluation update (CGE[] is written on save). Keeps the deeper of the
+// stored and the new evaluation, so browsing with live analysis never replaces a
+// game analysis made with more visits. Returns true if it changed.
+bool game_node_update_eval(GameTree *tree, GameNode *node, const NodeEval *eval);
 bool node_eval_parse(StringView text, i32 width, i32 height, NodeEval *out);
 // Writes CGE[] for every node with a valid eval (call before saving).
 void game_tree_store_evals(GameTree *tree);
@@ -87,7 +95,7 @@ SgfProperty *game_node_find_prop(const GameNode *node, StringView ident);
 StringView game_node_prop(const GameNode *node, StringView ident);   // first value or ""
 void game_node_set_prop(GameTree *tree, GameNode *node, StringView ident, StringView value);
 void game_node_add_prop_value(GameTree *tree, GameNode *node, StringView ident, StringView value);
-void game_node_remove_prop(GameNode *node, StringView ident);
+void game_node_remove_prop(GameTree *tree, GameNode *node, StringView ident);
 
 // ---- Derived state ---------------------------------------------------------------
 void game_tree_rebuild(GameTree *tree, GameNode *from);

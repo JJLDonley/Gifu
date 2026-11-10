@@ -456,7 +456,7 @@ static void commit_comment(Ui *ui) {
     StringView text = string_sv(&ui->comment.text);
     if (sv_eq(old, text)) return;
     if (text.len) game_node_set_prop(ui->app->tree, node, SV("C"), text);
-    else game_node_remove_prop(node, SV("C"));
+    else game_node_remove_prop(ui->app->tree, node, SV("C"));
     ui->app->dirty = true;
 }
 
