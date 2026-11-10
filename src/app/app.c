@@ -872,10 +872,14 @@ void app_game_info_apply(App *app) {
 bool app_tsumego_frame(App *app) {
     GameTree *tree = app->tree;
     GameNode *cur = tree->current;
-    TsumegoFrameOptions options = { .attacker = STONE_EMPTY, .margin = 2 };
+    StringView attacker = string_sv(&app->config.tsumego_attacker);
+    TsumegoFrameOptions options = {
+        .attacker = sv_eq(attacker, SV("black")) ? STONE_BLACK : sv_eq(attacker, SV("white")) ? STONE_WHITE : STONE_EMPTY,
+        .margin = app->config.tsumego_margin,
+    };
     if (app->region.active) {   // the selected rectangle already leaves some room
         options.has_problem = true;
-        options.margin = 1;
+        options.margin = MAX(app->config.tsumego_margin - 1, 0);
         options.problem = (BoardRect){ app->region.x0, app->region.y0, app->region.x1, app->region.y1 };
     }
     TsumegoFrame *frame = malloc(sizeof(TsumegoFrame));
