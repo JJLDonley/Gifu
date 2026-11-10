@@ -114,15 +114,13 @@ void variation_tree_element(Ui *ui, f32 height) {
 
     Clay_ElementId clip_id = CLAY_ID("VariationTreeClip");
     Clay_ElementId canvas_id = CLAY_ID("VariationTree");
-    // Node size: as large as the area allows (last frame's size), within limits;
-    // long games scroll instead of shrinking below readable.
-    f32 min_spacing = ui_px(ui, 26), max_spacing = ui_px(ui, 40);
-    view->spacing = min_spacing;
+    // Node size: the variations (rows) fill the area's height (last frame's size),
+    // within limits. The length of the game never shrinks the nodes: moves run
+    // left to right and the view scrolls to keep the current one in sight.
+    f32 min_spacing = ui_px(ui, 30), max_spacing = ui_px(ui, 48);
+    view->spacing = max_spacing;
     Clay_ElementData area = Clay_GetElementData(clip_id);
-    if (area.found && view->cols > 0 && view->rows > 0) {
-        f32 fit = fminf(area.boundingBox.width / (f32)view->cols, area.boundingBox.height / (f32)view->rows);
-        view->spacing = CLAMP(fit, min_spacing, max_spacing);
-    }
+    if (area.found && view->rows > 0) view->spacing = CLAMP(area.boundingBox.height / (f32)view->rows, min_spacing, max_spacing);
     f32 width = view->spacing * (f32)view->cols, content_h = view->spacing * (f32)view->rows;
     f32 visible_h = fminf(ui_px(ui, height), content_h + ui_px(ui, 4));
     CLAY({ .id = clip_id,

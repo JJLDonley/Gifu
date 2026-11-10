@@ -25,7 +25,6 @@ void app_sync_stop(App *app) {
     if (app->area_picker) {
         line_channel_stop(app->area_picker, SV(""));
         app->area_picker = NULL;
-        app->window_request = APP_WINDOW_RESTORE;
     }
     if (!app->board_sync) return;
     board_sync_stop(app->board_sync);
@@ -43,6 +42,8 @@ static void start_sync(App *app, ScreenRect area) {
     };
     app->board_sync = board_sync_start(&s);
     app->board_sync_state = BOARD_SYNC_STARTING;
+    app->sync_node = app->tree->current;   // continue from what the user sees now
+    app->sync_tree = app->tree;
     app_set_status(app, "Board sync: looking for the board in %dx%d at %d,%d", area.width, area.height, area.x, area.y);
 }
 
@@ -71,7 +72,6 @@ void app_sync_select(App *app) {
         string_free(&err);
         return;
     }
-    app->window_request = APP_WINDOW_MINIMIZE;   // out of the way of the other program
     app_set_status(app, "Board sync: drag a box around the board");
 }
 
@@ -85,11 +85,25 @@ void app_sync_toggle(App *app) {
     else app_sync_select(app);
 }
 
-// A setup node (AB / AW / AE) that turns the current position into the reading.
-static void apply_setup(App *app, const BoardReading *r) {
+static bool tree_contains(const GameNode *node, const GameNode *wanted) {
+    for (const GameNode *c = node; c; c = c->next_sibling) {   // siblings iteratively, children recursively
+        if (c == wanted || (c->first_child && tree_contains(c->first_child, wanted))) return true;
+    }
+    return false;
+}
+
+// Where the next reading continues: the node sync wrote last, while it is still
+// in the open game (another file, a deleted node: from where the user is).
+static GameNode *sync_anchor(App *app) {
+    if (app->sync_node && app->sync_tree == app->tree && tree_contains(app->tree->root, app->sync_node)) return app->sync_node;
+    return app->tree->current;
+}
+
+// A setup node (AB / AW / AE) after `at` that turns its position into the reading.
+static GameNode *add_setup(App *app, GameNode *at, const BoardReading *r) {
     GameTree *tree = app->tree;
-    GameNode *node = game_tree_append_child(tree, tree->current);
-    const Board *b = &tree->current->board;
+    GameNode *node = game_tree_append_child(tree, at);
+    const Board *b = &at->board;
     i32 black = 0, white = 0;
     char coord[3];
     for (i32 i = 0; i < r->size * r->size; ++i) {
@@ -103,26 +117,40 @@ static void apply_setup(App *app, const BoardReading *r) {
     game_node_set_prop(tree, node, SV("PL"), black > white ? SV("W") : SV("B"));
     game_node_set_prop(tree, node, SV("C"), SV("Board sync"));
     game_tree_rebuild(tree, node);
-    game_tree_goto(tree, node);
+    return node;
 }
 
+// The game continues after where sync left off, whatever the user is looking
+// at; the view moves along only when it was on that node (following the game).
 static void apply_reading(App *app, const BoardReading *r) {
-    SyncPlan plan = board_sync_plan(app->tree, r);
+    GameNode *at = sync_anchor(app), *next = at;
+    bool following = app->tree->current == at;
+    SyncPlan plan = board_sync_plan(at, r);
     switch (plan.change) {
-        case SYNC_SAME: return;
+        case SYNC_SAME: break;
         case SYNC_MOVES:
-            for (i32 i = 0; i < plan.move_count; ++i) game_tree_play(app->tree, plan.moves[i]);
+            for (i32 i = 0; i < plan.move_count && next; ++i) next = game_tree_play_at(app->tree, next, plan.moves[i], NULL);
+            if (!next) next = at;
             break;
-        case SYNC_BACK: app_goto(app, (GameNode *)plan.node); return;
+        case SYNC_BACK: next = (GameNode *)plan.node; break;
+        case SYNC_SETUP: next = add_setup(app, at, r); break;
         case SYNC_NEW_GAME: {
             NewGameSpec spec = { .size = r->size, .komi = app->config.new_game_komi, .rules = SV("") };
-            app_start_game(app, &spec);
-            if (board_sync_plan(app->tree, r).change != SYNC_SAME) apply_setup(app, r);
+            app_start_game(app, &spec);   // the view has to move: the old game is gone
+            next = app->tree->root;
+            if (board_sync_plan(next, r).change != SYNC_SAME) next = add_setup(app, next, r);
+            following = true;
             break;
         }
-        case SYNC_SETUP: apply_setup(app, r); break;
     }
-    app_mark_edited(app);
+    if (plan.change != SYNC_SAME && plan.change != SYNC_BACK) app_mark_edited(app);
+    static const char *const CHANGES[] = { "same", "moves", "back", "setup", "new game" };
+    if (plan.change != SYNC_SAME) {
+        log_info("board sync: %s -> move %d%s", CHANGES[plan.change], next->move_number, following ? " (view follows)" : "");
+    }
+    app->sync_node = next;
+    app->sync_tree = app->tree;
+    if (following && next != app->tree->current) app_goto(app, next);
 }
 
 void app_sync_update(App *app) {
@@ -135,13 +163,11 @@ void app_sync_update(App *app) {
                 app->config.sync_area = string_from(string_sv(&line.text));
                 line_channel_stop(app->area_picker, SV(""));
                 app->area_picker = NULL;
-                app->window_request = APP_WINDOW_RESTORE;
-                start_sync(app, area);
+                        start_sync(app, area);
             } else if (line.kind == LINE_EXITED) {
                 line_channel_stop(app->area_picker, SV(""));
                 app->area_picker = NULL;
-                app->window_request = APP_WINDOW_RESTORE;
-                app_set_status(app, "Board sync: no area picked");
+                        app_set_status(app, "Board sync: no area picked");
             }
             line_free(&line);
         }

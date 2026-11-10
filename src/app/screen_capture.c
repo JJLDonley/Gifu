@@ -32,6 +32,16 @@ struct ScreenCapture {
     u32 serial;
 };
 
+// Replaces *error (the caller may reuse one String across calls).
+static void set_error(String *error, String message) {
+    if (error) {
+        string_free(error);
+        *error = message;
+    } else {
+        string_free(&message);
+    }
+}
+
 static const char *const NAMES[] = { "gdi", "x11", "portal", "grim", "command" };
 
 StringView screen_capture_name(const ScreenCapture *c) { return sv(NAMES[c->kind]); }
@@ -45,7 +55,7 @@ static bool crop_to(RgbaImage *full, const ScreenRect *rect, RgbaImage *out, Str
     }
     bool ok = rgba_image_crop(full, rect->x, rect->y, rect->width, rect->height, out);
     rgba_image_free(full);
-    if (!ok && error) *error = string_from(SV("the area is outside the screen"));
+    if (!ok) set_error(error, string_from(SV("the area is outside the screen")));
     return ok;
 }
 
@@ -63,7 +73,7 @@ static bool run_tool(const StringView *argv, isize argc, String *out, String *er
     if (!process_wait(p, 10000, &code)) process_kill(p), process_wait(p, -1, &code);
     process_destroy(p);
     if (code != 0) {
-        if (error) *error = string_format(SV_FMT " failed (exit code %d)", SV_ARG(argv[0]), code);
+        set_error(error, string_format(SV_FMT " failed (exit code %d)", SV_ARG(argv[0]), code));
         return false;
     }
     return true;
@@ -72,7 +82,7 @@ static bool run_tool(const StringView *argv, isize argc, String *out, String *er
 static bool decode_png(StringView bytes, RgbaImage *out, String *error, StringView source) {
     const char *why = NULL;
     if (png_decode(bytes, out, &why)) return true;
-    if (error) *error = string_format(SV_FMT ": %s", SV_ARG(source), why ? why : "bad image");
+    set_error(error, string_format(SV_FMT ": %s", SV_ARG(source), why ? why : "bad image"));
     return false;
 }
 
@@ -97,7 +107,7 @@ static bool grab_tool(ScreenCapture *c, RgbaImage *full, String *error) {
         }
         if (argc == 0) {
             string_free(&file);
-            if (error) *error = string_from(SV("sync.capture_command is empty"));
+            set_error(error, string_from(SV("sync.capture_command is empty")));
             return false;
         }
     }
@@ -106,7 +116,7 @@ static bool grab_tool(ScreenCapture *c, RgbaImage *full, String *error) {
         string_clear(&bytes);
         ok = os_read_file(string_sv(&file), &bytes);
         os_remove(string_sv(&file));
-        if (!ok && error) *error = string_format("the capture command wrote no %s", string_cstr(&file));
+        if (!ok) set_error(error, string_format("the capture command wrote no %s", string_cstr(&file)));
     }
     ok = ok && decode_png(string_sv(&bytes), full, error, argv[0]);
     string_free(&bytes);
@@ -177,7 +187,7 @@ static bool grab_portal(ScreenCapture *c, RgbaImage *full, String *error) {
         }
         line_free(&line);
         if (!path.len) {
-            if (error) *error = string_from(SV("the desktop refused the screenshot (portal)"));
+            set_error(error, string_from(SV("the desktop refused the screenshot (portal)")));
             return false;
         }
         ok = os_read_file(string_sv(&path), &bytes) && decode_png(string_sv(&bytes), full, error, SV("portal"));
@@ -186,7 +196,7 @@ static bool grab_portal(ScreenCapture *c, RgbaImage *full, String *error) {
         string_free(&path);
         return ok;
     }
-    if (error) *error = string_from(SV("no answer from the screenshot portal"));
+    set_error(error, string_from(SV("no answer from the screenshot portal")));
     return false;
 }
 
@@ -199,7 +209,7 @@ static bool grab_gdi(const ScreenRect *rect, RgbaImage *out, String *error) {
     ScreenRect r = rect ? *rect : (ScreenRect){ vx, vy, vw, vh };   // desktop coordinates (may be negative)
     i32 x0 = MAX(r.x, vx), y0 = MAX(r.y, vy), x1 = MIN(r.x + r.width, vx + vw), y1 = MIN(r.y + r.height, vy + vh);
     if (x1 <= x0 || y1 <= y0 || !rgba_image_alloc(out, x1 - x0, y1 - y0)) {
-        if (error) *error = string_from(SV("the area is outside the screen"));
+        set_error(error, string_from(SV("the area is outside the screen")));
         return false;
     }
     HDC screen = GetDC(NULL), mem = CreateCompatibleDC(screen);
@@ -225,7 +235,7 @@ static bool grab_gdi(const ScreenRect *rect, RgbaImage *out, String *error) {
     ReleaseDC(NULL, screen);
     if (!ok) {
         rgba_image_free(out);
-        if (error) *error = string_from(SV("BitBlt failed"));
+        set_error(error, string_from(SV("BitBlt failed")));
     }
     return ok;
 }
@@ -304,7 +314,7 @@ static bool grab_x11(ScreenCapture *c, const ScreenRect *rect, RgbaImage *out, S
         c->display = XOpenDisplay(NULL);
     }
     if (!c->display) {
-        if (error) *error = string_from(SV("cannot open the X display"));
+        set_error(error, string_from(SV("cannot open the X display")));
         return false;
     }
     Window root = DefaultRootWindow(c->display);
@@ -313,7 +323,7 @@ static bool grab_x11(ScreenCapture *c, const ScreenRect *rect, RgbaImage *out, S
     ScreenRect r = rect ? *rect : (ScreenRect){ 0, 0, attr.width, attr.height };
     i32 x0 = MAX(r.x, 0), y0 = MAX(r.y, 0), x1 = MIN(r.x + r.width, attr.width), y1 = MIN(r.y + r.height, attr.height);
     if (x1 <= x0 || y1 <= y0 || !rgba_image_alloc(out, x1 - x0, y1 - y0)) {
-        if (error) *error = string_from(SV("the area is outside the screen"));
+        set_error(error, string_from(SV("the area is outside the screen")));
         return false;
     }
     if (!c->rootless) {
@@ -332,7 +342,7 @@ static bool grab_x11(ScreenCapture *c, const ScreenRect *rect, RgbaImage *out, S
     for (isize i = 0; i < (isize)out->width * out->height; ++i) out->pixels[i * 4 + 3] = 255;   // uncovered: black
     if (composite_windows(c->display, root, x0, y0, out)) return true;
     rgba_image_free(out);
-    if (error) *error = string_from(SV("no X window could be read here (on Wayland, use sync.capture=portal or grim)"));
+    set_error(error, string_from(SV("no X window could be read here (on Wayland, use sync.capture=portal or grim)")));
     return false;
 }
 #endif
@@ -375,7 +385,7 @@ ScreenCapture *screen_capture_open(StringView backend, StringView command, Strin
             if (sv_eq(backend, sv(NAMES[i]))) kind = (CaptureKind)i, found = true;
         }
         if (!found) {
-            if (error) *error = string_format("unknown capture backend '" SV_FMT "'", SV_ARG(backend));
+            set_error(error, string_format("unknown capture backend '" SV_FMT "'", SV_ARG(backend)));
             return NULL;
         }
     }
@@ -384,7 +394,7 @@ ScreenCapture *screen_capture_open(StringView backend, StringView command, Strin
 #else
     if (kind == CAPTURE_GDI) {
 #endif
-        if (error) *error = string_format("the %s capture is not available on this system", NAMES[kind]);
+        set_error(error, string_format("the %s capture is not available on this system", NAMES[kind]));
         return NULL;
     }
     ScreenCapture *c = calloc(1, sizeof(ScreenCapture));

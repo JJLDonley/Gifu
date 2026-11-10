@@ -182,8 +182,28 @@ static void register_ui_commands(Ui *ui) {
 
 // ---- Lifecycle ----------------------------------------------------------------------------------
 
+// Clay reports errors once per occurrence, often every frame: log at most once a
+// second, with what the UI was doing (enough to find the cause from a user's log).
 static void clay_error(Clay_ErrorData error) {
-    log_warn("clay: %.*s", (int)error.errorText.length, error.errorText.chars);
+    static f64 last;
+    static i32 suppressed;
+    f64 now = GetTime();
+    if (now - last < 1.0) {
+        suppressed++;
+        return;
+    }
+    last = now;
+    const Ui *ui = error.userData;
+    if (!ui || !ui->app) {
+        log_warn("clay: %.*s", (int)error.errorText.length, error.errorText.chars);
+        return;
+    }
+    const App *app = ui->app;
+    log_warn("clay: %.*s [type %d; %d more in the last second; window %dx%d%s; dialog %d, menu %d, drag %d; sync %s; %d moves]",
+             (int)error.errorText.length, error.errorText.chars, (int)error.errorType, suppressed, GetScreenWidth(), GetScreenHeight(),
+             IsWindowMinimized() ? " minimized" : "", (int)ui->dialog, ui->open_menu, (int)ui->layout_drag.kind,
+             app->board_sync ? "on" : app->area_picker ? "picking" : "off", app->tree->current->move_number);
+    suppressed = 0;
 }
 
 // Warns about layout nodes / command ids that nothing registered.
@@ -259,7 +279,7 @@ bool ui_init(Ui *ui, App *app) {
     ui->clay_memory = malloc(memory_size);
     if (!ui->clay_memory) abort();
     Clay_Arena arena = Clay_CreateArenaWithCapacityAndMemory(memory_size, ui->clay_memory);
-    Clay_Initialize(arena, (Clay_Dimensions){ (f32)GetScreenWidth(), (f32)GetScreenHeight() }, (Clay_ErrorHandler){ clay_error, 0 });
+    Clay_Initialize(arena, (Clay_Dimensions){ (f32)GetScreenWidth(), (f32)GetScreenHeight() }, (Clay_ErrorHandler){ clay_error, ui });
     Clay_SetMeasureTextFunction(clay_measure_text, ui->fonts);
     // Culling drops off-screen clip containers but not their scrolled children,
     // which then render unclipped. The layout is small, so render everything.
@@ -390,8 +410,8 @@ static void update_title(Ui *ui) {
     }
 }
 
-// Board sync needs the whole desktop (every monitor) for its picker, and asks
-// for the window to get out of the way while the user picks.
+// Board sync needs the whole desktop (every monitor) for its picker. (The window
+// stays as it is: the picker is on top, and the other board must stay visible anyway.)
 static void sync_window(Ui *ui) {
     App *app = ui->app;
     i32 x0 = 0, y0 = 0, x1 = 0, y1 = 0;
@@ -404,9 +424,6 @@ static void sync_window(Ui *ui) {
         if (m == 0 || my + mh > y1) y1 = my + mh;
     }
     app->desktop = (ScreenRect){ x0, y0, x1 - x0, y1 - y0 };
-    if (app->window_request == APP_WINDOW_MINIMIZE) MinimizeWindow();
-    if (app->window_request == APP_WINDOW_RESTORE) RestoreWindow();
-    app->window_request = APP_WINDOW_NONE;
 }
 
 void ui_frame(Ui *ui) {

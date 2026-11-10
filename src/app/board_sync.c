@@ -153,9 +153,8 @@ static bool explains(const Board *from, const Move *moves, i32 count, const Boar
     return same_cells(&b, r);
 }
 
-SyncPlan board_sync_plan(const GameTree *tree, const BoardReading *r) {
+SyncPlan board_sync_plan(const GameNode *cur, const BoardReading *r) {
     SyncPlan plan = { SYNC_SETUP };
-    const GameNode *cur = tree->current;
     const Board *b = &cur->board;
     if (b->width != r->size || b->height != r->size) return (SyncPlan){ SYNC_NEW_GAME };
     if (same_cells(b, r)) return (SyncPlan){ SYNC_SAME };

@@ -48,6 +48,6 @@ typedef struct SyncPlan {
     const GameNode *node;
 } SyncPlan;
 
-// Explains `reading` from the tree's current node: up to two moves (alternating
-// colours, captures included), an earlier position on the line, or a setup.
-SyncPlan board_sync_plan(const GameTree *tree, const BoardReading *reading);
+// Explains `reading` from node `from` (where sync left off): up to two moves
+// (alternating colours, captures included), an earlier position on its line, or a setup.
+SyncPlan board_sync_plan(const GameNode *from, const BoardReading *reading);

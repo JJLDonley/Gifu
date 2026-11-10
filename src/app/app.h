@@ -132,8 +132,9 @@ typedef struct App {
     BoardSync *board_sync;
     BoardSyncState board_sync_state;
     struct LineChannel *area_picker;   // `catagui --select-area` helper while picking
+    GameNode *sync_node;               // where sync left off (new moves go after it, wherever the user looks)
+    const GameTree *sync_tree;         // ...in this tree
     ScreenRect desktop;                // every monitor (filled by the UI each frame)
-    i32 window_request;                // APP_WINDOW_*: the UI minimizes / restores the window
 
     // Play vs AI: which colours the engine plays (indexed by Stone).
     bool ai_plays[3];
@@ -209,7 +210,6 @@ void app_config_changed(App *app, StringView key);
 void app_batch_start(App *app);   // analyse the active line from the start
 
 // Board sync (app_sync.c): pick the board area on screen, then follow it.
-enum { APP_WINDOW_NONE, APP_WINDOW_MINIMIZE, APP_WINDOW_RESTORE };
 void app_sync_select(App *app);    // runs the on-screen picker, then starts syncing
 void app_sync_toggle(App *app);    // start with the saved area (or pick one) / stop
 void app_sync_stop(App *app);

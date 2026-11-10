@@ -107,6 +107,9 @@ StringView game_tree_info(const GameTree *tree, StringView ident);   // root pro
 // ---- Navigation / editing ----------------------------------------------------------
 // Plays at the current node: reuses a matching child or creates a new variation.
 MoveError game_tree_play(GameTree *tree, Move move);
+// Plays `move` after `at` (reusing an existing child with that move) without
+// changing the current node. NULL (and *error) if illegal there.
+GameNode *game_tree_play_at(GameTree *tree, GameNode *at, Move move, MoveError *error);
 bool game_tree_forward(GameTree *tree);
 bool game_tree_back(GameTree *tree);
 void game_tree_to_start(GameTree *tree);

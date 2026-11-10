@@ -250,23 +250,26 @@ StringView game_tree_info(const GameTree *tree, StringView ident) { return game_
 
 // ---- Navigation / editing -----------------------------------------------------------
 
-MoveError game_tree_play(GameTree *tree, Move move) {
-    GameNode *cur = tree->current;
-    MoveError err = board_check(&cur->board, move, tree->rules);
-    if (err != MOVE_OK) return err;
-    for (GameNode *c = cur->first_child; c; c = c->next_sibling) {
-        if (c->has_move && c->move.color == move.color && point_eq(c->move.point, move.point)) {
-            tree->current = c;
-            return MOVE_OK;
-        }
+GameNode *game_tree_play_at(GameTree *tree, GameNode *at, Move move, MoveError *error) {
+    MoveError err = board_check(&at->board, move, tree->rules);
+    if (error) *error = err;
+    if (err != MOVE_OK) return NULL;
+    for (GameNode *c = at->first_child; c; c = c->next_sibling) {
+        if (c->has_move && c->move.color == move.color && point_eq(c->move.point, move.point)) return c;
     }
-    GameNode *node = game_tree_append_child(tree, cur);
+    GameNode *node = game_tree_append_child(tree, at);
     char coord[3];
     point_to_sgf(move.point, coord);
     game_node_set_prop(tree, node, move.color == STONE_BLACK ? SV("B") : SV("W"), sv(coord));
     compute_node(tree, node);
-    tree->current = node;
-    return MOVE_OK;
+    return node;
+}
+
+MoveError game_tree_play(GameTree *tree, Move move) {
+    MoveError err;
+    GameNode *node = game_tree_play_at(tree, tree->current, move, &err);
+    if (node) tree->current = node;
+    return err;
 }
 
 bool game_tree_forward(GameTree *tree) {
