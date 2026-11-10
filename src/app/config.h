@@ -14,6 +14,7 @@ typedef struct Config {
     String theme;          // theme id, e.g. "light", "dark", "cream", "coffee-paper"
     String language;       // "en", "zh_CN", "zh_TW", "ja", "ko"
     f32 ui_scale;
+    bool ui_scale_with_window;   // shrink / grow the interface with the window (around 1400x900)
     String engine;         // engine profile id
     String engine2;
     String install_backend;

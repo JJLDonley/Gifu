@@ -21,6 +21,7 @@
       (option ja "日本語")
       (option ko "한국어"))
     (number ui_scale :min 0.75 :max 2.0 :step 0.05 :format "%.2f×" :label settings.ui_scale :fallback "Interface scale")
+    (bool ui_scale_with_window :label settings.scale_with_window :fallback "Scale the interface with the window size")
     (command view.theme_editor)
     (command view.layout_editor))
   (section settings.board :fallback Board

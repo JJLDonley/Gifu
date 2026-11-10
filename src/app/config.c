@@ -23,6 +23,7 @@ static const ConfigField FIELDS[] = {
     STR("theme", theme, "cream"),
     STR("language", language, "en"),
     FLOAT("ui_scale", ui_scale, 1.0, 0.5, 3.0),
+    BOOL("ui_scale_with_window", ui_scale_with_window, 1),
     STR("engine", engine, ""),
     STR("engine2", engine2, ""),
     STR("install.backend", install_backend, "opencl"),

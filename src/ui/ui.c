@@ -433,7 +433,15 @@ void ui_frame(Ui *ui) {
     // displays). Glyphs are rasterized at the final pixel size, so text stays
     // sharp; re-measure text when the scale changes (e.g. moved to another monitor).
     Vector2 dpi = GetWindowScaleDPI();
-    f32 scale = ui->app->config.ui_scale * CLAMP(dpi.x, 1.0f, 4.0f);
+    f32 dpi_scale = CLAMP(dpi.x, 1.0f, 4.0f);
+    f32 scale = ui->app->config.ui_scale * dpi_scale;
+    if (ui->app->config.ui_scale_with_window) {
+        // Smaller windows get a smaller interface (and larger ones a larger one), measured
+        // against the default 1400x900 window in logical pixels. Steps of 0.05, so dragging
+        // the window edge does not re-measure every text each frame.
+        f32 fit = fminf((f32)GetScreenWidth() / (1400.0f * dpi_scale), (f32)GetScreenHeight() / (900.0f * dpi_scale));
+        scale *= roundf(CLAMP(fit, 0.65f, 1.25f) * 20.0f) / 20.0f;
+    }
     if (scale != ui->scale) Clay_ResetMeasureTextCache();
     ui->scale = scale;
     ui->mouse = GetMousePosition();
