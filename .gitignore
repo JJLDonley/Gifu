@@ -14,3 +14,7 @@
 .DS_Store
 Thumbs.db
 /dist/
+
+# Local helper downloads (JDK + CFR decompiler for studying readboard)
+/tools/jdk/
+/tools/cfr/

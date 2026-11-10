@@ -19,6 +19,7 @@ static void usage(void) {
             "               [--screenshot out.png [--delay SECONDS]] [--verbose]\n"
             "       catagui --analyze FILE.sgf... [--out DIR] [--engine ID] [--set analysis.game_visits=N]\n"
             "       catagui --rank FILE.sgf...   (estimate player ranks with the human SL network)\n"
+            "       catagui --read-board FILE.png|screen [--capture-area X,Y,W,H] [--size 19]   (board recognition)\n"
             "       catagui --capture OUT.png [--capture-area X,Y,W,H] [--set sync.capture=auto|gdi|x11|portal|grim|command]\n"
             "       catagui --install engine,network,human|all [--backend opencl|eigenavx2|eigen|cuda12.8-cudnn9.8.0] [--install-dir DIR]\n");
 }
@@ -37,6 +38,7 @@ static bool parse_args(int argc, char **argv, AppOptions *opts) {
         else if (sv_eq(a, SV("--region")) && has_value) opts->region = sv(argv[++i]);
         else if (sv_eq(a, SV("--capture")) && has_value) opts->capture = sv(argv[++i]), opts->headless = true;
         else if (sv_eq(a, SV("--capture-area")) && has_value) opts->capture_area = sv(argv[++i]);
+        else if (sv_eq(a, SV("--read-board")) && has_value) opts->read_board = sv(argv[++i]), opts->headless = true;
         else if (sv_eq(a, SV("--window-pos")) && has_value) {
             StringView rest = sv(argv[++i]);
             i64 x = 0, y = 0;
@@ -90,6 +92,7 @@ int main(int argc, char **argv) {
         if (!app || !app_init(app, &options)) return 1;
         int code = options.install.len   ? headless_install(app)
                    : options.capture.len ? headless_capture(app)
+                   : options.read_board.len ? headless_read_board(app)
                    : options.rank        ? headless_rank(app)
                                          : headless_analyze(app);
         app_shutdown(app);

@@ -95,6 +95,7 @@ add_library(catagui_core STATIC
     src/core/sgf.c
     src/core/game_report.c
     src/core/tsumego_frame.c
+    src/core/board_reader.c
     src/core/sgf_analysis.c
     src/engine/process.c
     src/engine/line_channel.c
@@ -214,6 +215,7 @@ if(CATAGUI_BUILD_TESTS)
         tests/test_interop.c
         tests/test_text_edit.c
     tests/test_image.c
+    tests/test_board_reader.c
         src/ui/theme.c
         src/ui/layout_model.c
         src/ui/text_edit.c)   # pure data code: needs raylib's Color type, not the library

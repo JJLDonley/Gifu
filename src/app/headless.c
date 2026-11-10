@@ -13,6 +13,7 @@
 #include "engine/game_job.h"
 #include "app/screen_capture.h"
 #include "base/image.h"
+#include "core/board_reader.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -398,19 +399,23 @@ int headless_rank(App *app) {
     return failures ? 1 : 0;
 }
 
+static bool parse_area(StringView text, ScreenRect *out) {
+    i64 v[4];
+    for (i32 i = 0; i < 4; ++i) {
+        if (!sv_parse_i64(sv_trim(sv_chop_char(&text, ',')), &v[i])) return false;
+    }
+    *out = (ScreenRect){ (i32)v[0], (i32)v[1], (i32)v[2], (i32)v[3] };
+    return true;
+}
+
 int headless_capture(App *app) {
     const AppOptions *o = &app->options;
     ScreenRect area = { 0 }, *rect = NULL;
     if (o->capture_area.len) {
-        StringView rest = o->capture_area;
-        i64 v[4];
-        for (i32 i = 0; i < 4; ++i) {
-            if (!sv_parse_i64(sv_trim(sv_chop_char(&rest, ',')), &v[i])) {
-                fprintf(stderr, "--capture-area: expected X,Y,W,H\n");
-                return 2;
-            }
+        if (!parse_area(o->capture_area, &area)) {
+            fprintf(stderr, "--capture-area: expected X,Y,W,H\n");
+            return 2;
         }
-        area = (ScreenRect){ (i32)v[0], (i32)v[1], (i32)v[2], (i32)v[3] };
         rect = &area;
     }
     String err = { 0 };
@@ -437,4 +442,52 @@ int headless_capture(App *app) {
     string_free(&err);
     screen_capture_close(capture);
     return ok ? 0 : 1;
+}
+
+int headless_read_board(App *app) {
+    const AppOptions *o = &app->options;
+    RgbaImage image = { 0 };
+    String err = { 0 };
+    if (sv_eq(o->read_board, SV("screen"))) {
+        ScreenRect area;
+        if (!parse_area(o->capture_area, &area)) {
+            fprintf(stderr, "--read-board screen needs --capture-area X,Y,W,H\n");
+            return 2;
+        }
+        ScreenCapture *capture = screen_capture_open(string_sv(&app->config.sync_capture), string_sv(&app->config.sync_capture_command), &err);
+        bool ok = capture && screen_capture_grab(capture, &area, &image, &err);
+        screen_capture_close(capture);
+        if (!ok) {
+            fprintf(stderr, "screen capture: %s\n", string_cstr(&err));
+            string_free(&err);
+            return 1;
+        }
+    } else {
+        String bytes = { 0 };
+        const char *why = "cannot read the file";
+        bool ok = os_read_file(o->read_board, &bytes) && png_decode(string_sv(&bytes), &image, &why);
+        string_free(&bytes);
+        if (!ok) {
+            fprintf(stderr, SV_FMT ": %s\n", SV_ARG(o->read_board), why);
+            return 1;
+        }
+    }
+    BoardGrid grid;
+    f64 started = os_time_seconds();
+    bool found = board_grid_detect(&image, o->window_width, &grid);   // --size N (width) picks the board size
+    if (!found) {
+        fprintf(stderr, "no board grid found in the %dx%d picture\n", image.width, image.height);
+        rgba_image_free(&image);
+        return 1;
+    }
+    BoardReading reading;
+    board_read_stones(&image, &grid, &reading);
+    printf("%dx%d picture: %dx%d grid at (%.1f, %.1f), step %.2f x %.2f, score %.2f, %d uncertain, %.0f ms\n", image.width, image.height,
+           grid.size, grid.size, grid.x0, grid.y0, grid.step_x, grid.step_y, grid.score, reading.uncertain, (os_time_seconds() - started) * 1000.0);
+    for (i32 y = 0; y < grid.size; ++y) {
+        for (i32 x = 0; x < grid.size; ++x) printf(" %c", ".XO"[reading.cells[y * grid.size + x]]);
+        printf("\n");
+    }
+    rgba_image_free(&image);
+    return 0;
 }

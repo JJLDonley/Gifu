@@ -36,7 +36,8 @@ typedef struct AppOptions {
     StringView capture;              // --capture FILE.png: save a screen capture (headless)
     bool window_pos_set;             // --window-pos X,Y
     i32 window_x, window_y;
-    StringView capture_area;         // --capture-area X,Y,W,H (pixels of the full-screen image)
+    StringView capture_area;         // --capture-area X,Y,W,H (desktop coordinates)
+    StringView read_board;           // --read-board FILE.png | screen: print the board read from a picture
     StringView install;              // --install engine,network,human (headless)
     StringView install_backend;      // --backend opencl|eigenavx2|eigen|cuda12.8-cudnn9.8.0
     StringView install_dir;          // --install-dir (default <root>/katago)

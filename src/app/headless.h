@@ -12,3 +12,5 @@ int headless_install(App *app);
 int headless_rank(App *app);
 // --capture OUT.png [--capture-area X,Y,W,H]: one screen capture (tests the capture backend).
 int headless_capture(App *app);
+// --read-board FILE.png | screen [--capture-area ...]: prints the grid and stones it finds.
+int headless_read_board(App *app);
