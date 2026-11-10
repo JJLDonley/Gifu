@@ -313,7 +313,7 @@ static void report_player(Ui *ui, const PlayerReport *p, Stone color, StringView
             ui_stone_dot(ui, color);
             ui_label(ui, name, FONT_UI_BOLD, 13, c->text);
             CLAY_TEXT(ui_fmt(ui, "· %d %s", p->moves, p->moves == 1 ? "move" : "moves"), ui_text_style(ui, FONT_UI, 11, c->text_muted));
-            if (ui->app->rank_valid && !ui->app->rank_job) rank_chip(ui, color);   // human-network rank estimate
+            if (ui->app->rank_valid && !ui->app->rank_job && !ui->app->rank_batch) rank_chip(ui, color);   // human-network rank estimate
         }
         CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 8) } }) {
             report_stat(ui, tr(ui, "report.accuracy", "Best move"), arena_format(&ui->frame, "%.0f%%", player_accuracy(p) * 100.0f), c->text);
@@ -380,11 +380,13 @@ static void panel_report(Ui *ui) {
             ui_command_button_ex(ui, SV("analysis.report"), SV("@clipboard"), false, BUTTON_NORMAL, 2);
             ui_help_button(ui, SV("report"));
         }
-        if (app_game_analysis_running(app) || app->rank_job) {
+        if (app_game_analysis_running(app) || app->rank_job || app->rank_batch) {
             isize done = 0, total = 0;
             i32 rd = 0, rt = 0;
             app_game_analysis_progress(app, &done, &total);
-            f32 progress = app_rank_progress(app, &rd, &rt) ? (rt ? (f32)rd / (f32)rt : 0.0f) : (total ? (f32)done / (f32)total : 0.0f);
+            // Game analysis first: ranks scored alongside it are queued behind its search.
+            bool ranks = !app_game_analysis_running(app) && app_rank_progress(app, &rd, &rt);
+            f32 progress = ranks ? (rt ? (f32)rd / (f32)rt : 0.0f) : (total ? (f32)done / (f32)total : 0.0f);
             f32 shown = anim_towards(&ui->anim, 0x9B07u, progress, 8.0f, progress);
             CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(ui_px(ui, 3)) } },
                    .backgroundColor = color_to_clay(c->surface_alt), .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 2)) }) {

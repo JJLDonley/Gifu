@@ -268,6 +268,7 @@ BatchAnalyzer *batch_analyzer_create(const EngineProfile *profile, const KataGoT
         .model = string_sv(&profile->model),
         .config = string_sv(&profile->analysis_config),
         .working_dir = working_dir,
+        .human_model = string_sv(&profile->human_model),
     };
     String overrides = { 0 };
     katago_tuning_overrides(tuning, true, string_sv(&profile->program), &overrides);

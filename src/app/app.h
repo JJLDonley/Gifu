@@ -99,11 +99,12 @@ typedef struct App {
     bool batch_restore_analysis;   // analysis_enabled before the batch started
     GameNode **batch_nodes;        // GTP walk
     isize batch_count, batch_index;
-    BatchAnalyzer *analyzer;       // JSON analyzer (started on first use)
+    BatchAnalyzer *analyzer;       // JSON analyzer (started on first use, released when idle)
     GameJob flash_job;
 
     // Human rank estimate (human SL network, own KataGo process).
-    RankEstimator *rank_job;
+    RankEstimator *rank_job;    // over GTP, inside a running engine...
+    RankBatch *rank_batch;      // ...or on the JSON analyzer (with Analyze game, or when a process slot is free)
     EngineSlot *rank_slot;      // engine lent to the rank job (not polled by the app meanwhile)
     char human_profile_effective[48];   // app_human_profile's buffer
     bool rank_pending;          // requested while the engine was starting: runs once it is ready

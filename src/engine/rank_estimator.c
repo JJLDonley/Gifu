@@ -212,3 +212,136 @@ void rank_estimator_destroy(RankEstimator *j) {
     free(j->prefix);
     free(j);
 }
+
+// ---- Batched ----------------------------------------------------------------------------------
+
+struct RankBatch {
+    PositionSpec *game;
+    String prefix;              // "<id_prefix>.r"
+    i32 *turns;                 // scoreable move indices (turn t = position before moves[t])
+    i32 turn_count;
+    u16 *received;              // per move: bit r = rank r answered
+    i32 answers, scored;        // (turn, rank) answers; fully scored moves
+    RankProgress progress;
+};
+
+static void batch_fail(RankBatch *b, StringView message) {
+    if (b->progress.finished) return;
+    b->progress.failed = b->progress.finished = true;
+    b->progress.error = string_from(message);
+    log_warn("rank estimate: " SV_FMT, SV_ARG(message));
+}
+
+RankBatch *rank_batch_create(const PositionSpec *game, StringView id_prefix) {
+    RankBatch *b = calloc(1, sizeof(RankBatch));
+    if (!b) abort();
+    b->game = malloc(sizeof(PositionSpec));
+    if (!b->game) abort();
+    memcpy(b->game, game, sizeof(PositionSpec));
+    b->prefix = string_format(SV_FMT ".r", SV_ARG(id_prefix));
+    usize n = (usize)MAX(game->move_count, 1);
+    b->turns = malloc(sizeof(i32) * n);
+    b->received = calloc(n, sizeof(u16));
+    b->progress.move_count = game->move_count;
+    b->progress.move_p = calloc(n, sizeof(*b->progress.move_p));
+    b->progress.move_scored = calloc(n, sizeof(bool));
+    if (!b->turns || !b->received || !b->progress.move_p || !b->progress.move_scored) abort();
+    for (i32 i = 0; i < game->move_count; ++i) {
+        if (scoreable(game, i)) b->turns[b->turn_count++] = i;
+    }
+    b->progress.total = b->turn_count;
+    b->progress.finished = b->turn_count == 0;
+    return b;
+}
+
+bool rank_batch_submit(RankBatch *b, BatchAnalyzer *analyzer) {
+    const PositionSpec *g = b->game;
+    for (i32 r = 0; r < RANK_COUNT && b->turn_count > 0; ++r) {
+        String id = string_format(SV_FMT "%d", SV_ARG(string_sv(&b->prefix)), r);
+        AnalysisJob job = {
+            .id = string_sv(&id),
+            .width = g->width,
+            .height = g->height,
+            .komi = g->komi,
+            .rules = g->rules,
+            .setup = g->setup,
+            .setup_count = g->setup_count,
+            .moves = g->moves,
+            .move_count = g->move_count,
+            .first_player = g->move_count > 0 ? g->moves[0].color : g->to_play,
+            .max_visits = 1,   // only the human network's policy is needed
+            .turns = b->turns,
+            .turn_count = b->turn_count,
+            .human_profile = rank_profile(r),
+            .include_human_policy = true,
+        };
+        bool ok = batch_analyzer_submit(analyzer, &job);
+        string_free(&id);
+        if (!ok) {
+            batch_fail(b, SV("cannot send to the analysis engine"));
+            return false;
+        }
+    }
+    return true;
+}
+
+// Rank index from a job id "<prefix><r>", or -1 if it is not ours.
+static i32 batch_rank_of(const RankBatch *b, StringView id) {
+    StringView prefix = string_sv(&b->prefix);
+    if (id.len <= prefix.len || !sv_eq(sv_take(id, prefix.len), prefix)) return -1;
+    i64 r = 0;
+    if (!sv_parse_i64(sv_drop(id, prefix.len), &r) || r < 0 || r >= RANK_COUNT) return -1;
+    return (i32)r;
+}
+
+bool rank_batch_apply(RankBatch *b, const TurnResult *res) {
+    i32 r = batch_rank_of(b, string_sv(&res->job_id));
+    if (r < 0) return false;
+    if (b->progress.finished) return true;
+    if (!res->ok) {
+        batch_fail(b, string_sv(&res->error));
+        return true;
+    }
+    i32 i = res->turn;
+    if (i < 0 || i >= b->game->move_count || !scoreable(b->game, i)) return true;
+    if (!res->human_policy) {
+        batch_fail(b, SV("the analysis engine returned no human policy (is -human-model loaded?)"));
+        return true;
+    }
+    u16 bit = (u16)(1u << r);
+    if (b->received[i] & bit) return true;
+    b->received[i] |= bit;
+    Point pt = b->game->moves[i].point;
+    b->progress.move_p[i][r] = res->human_policy[pt.y * b->game->width + pt.x];
+    // KataGo works through the ranks roughly one query at a time: progress counts answers.
+    b->progress.done = ++b->answers / RANK_COUNT;
+    if (b->received[i] == (1u << RANK_COUNT) - 1) {
+        b->progress.move_scored[i] = true;
+        rank_tally_add(&b->progress.tally[b->game->moves[i].color], b->progress.move_p[i]);
+        if (++b->scored >= b->progress.total) b->progress.finished = true;
+    }
+    return true;
+}
+
+void rank_batch_cancel(RankBatch *b, BatchAnalyzer *analyzer) {
+    if (b->progress.finished) return;
+    for (i32 r = 0; r < RANK_COUNT; ++r) {
+        String id = string_format(SV_FMT "%d", SV_ARG(string_sv(&b->prefix)), r);
+        batch_analyzer_cancel(analyzer, string_sv(&id));
+        string_free(&id);
+    }
+}
+
+const RankProgress *rank_batch_progress(const RankBatch *b) { return &b->progress; }
+
+void rank_batch_destroy(RankBatch *b) {
+    if (!b) return;
+    string_free(&b->prefix);
+    string_free(&b->progress.error);
+    free(b->progress.move_p);
+    free(b->progress.move_scored);
+    free(b->received);
+    free(b->turns);
+    free(b->game);
+    free(b);
+}

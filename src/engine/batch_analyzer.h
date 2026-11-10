@@ -18,6 +18,10 @@ typedef struct AnalysisJob {
     i32 move_count;
     Stone first_player;          // who plays moves[0] (matters with setup stones)
     i32 max_visits;
+    const i32 *turns;            // turns to analyse (NULL = all, 0..move_count)
+    i32 turn_count;
+    StringView human_profile;    // humanSLProfile for this query (needs a human model; "" = config's)
+    bool include_human_policy;   // fill TurnResult.human_policy (needs a human model)
 } AnalysisJob;
 
 typedef struct TurnResult {
@@ -25,6 +29,8 @@ typedef struct TurnResult {
     i32 turn;                    // 0 = before moves[0]; k = after k moves
     bool ok;
     NodeEval eval;               // Black's perspective, with top moves
+    f32 *human_policy;           // owned, width*height row-major from the top-left (illegal = 0), or NULL
+    f32 human_pass;              // human policy of passing
     String error;
 } TurnResult;
 
@@ -55,6 +61,7 @@ void turn_result_free(TurnResult *r);
 // KataGo JSON analysis engine (`katago analysis -model M -config C`).
 typedef struct KataGoAnalyzerSettings {
     StringView program, model, config, working_dir;
+    StringView human_model;       // optional -human-model (human SL network)
     const StringView *launcher;   // optional prefix (ssh ...)
     isize launcher_count;
     StringView overrides;         // extra ",key=value" pairs (katago_tuning_overrides)

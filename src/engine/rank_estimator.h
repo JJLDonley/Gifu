@@ -6,7 +6,7 @@
 // highest total log-likelihood is the estimate.
 #pragma once
 
-#include "engine/engine.h"
+#include "engine/batch_analyzer.h"
 
 enum { RANK_COUNT = 12 };
 StringView rank_label(i32 index);     // "20k" ... "9d"
@@ -69,3 +69,19 @@ const RankProgress *rank_estimator_progress(const RankEstimator *job);
 // (the node the job's PositionSpec was built from). Returns the count.
 i32 rank_progress_store(const RankProgress *progress, GameTree *tree, const GameNode *end);
 void rank_estimator_destroy(RankEstimator *job);
+
+// ---- Batched on the JSON analyzer -------------------------------------------------------------
+// The same scores from KataGo's analysis engine started with -human-model: one
+// 1-visit query per rank (humanSLProfile override, includePolicy) covering every
+// scoreable turn. The engine batches them on the GPU with whatever else is queued
+// (a whole-game analysis), so this is far faster than replaying over GTP.
+typedef struct RankBatch RankBatch;
+
+// `game` is copied. Job ids are "<id_prefix>.r<rank>".
+RankBatch *rank_batch_create(const PositionSpec *game, StringView id_prefix);
+bool rank_batch_submit(RankBatch *batch, BatchAnalyzer *analyzer);
+// Takes a result if it belongs to this batch (returns true then).
+bool rank_batch_apply(RankBatch *batch, const TurnResult *result);
+void rank_batch_cancel(RankBatch *batch, BatchAnalyzer *analyzer);
+const RankProgress *rank_batch_progress(const RankBatch *batch);
+void rank_batch_destroy(RankBatch *batch);

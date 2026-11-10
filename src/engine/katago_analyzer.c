@@ -15,6 +15,8 @@
 void turn_result_free(TurnResult *r) {
     string_free(&r->job_id);
     string_free(&r->error);
+    free(r->human_policy);
+    r->human_policy = NULL;
 }
 
 // ---- Protocol -----------------------------------------------------------------------------
@@ -56,8 +58,19 @@ String katago_analysis_query(const AnalysisJob *job) {
     push_json_string(&q, job->rules.len ? job->rules : SV("chinese"));
     string_pushf(&q, ",\"komi\":%g,\"boardXSize\":%d,\"boardYSize\":%d,\"maxVisits\":%d,\"initialPlayer\":\"%s\",\"analyzeTurns\":[",
                  job->komi, job->width, job->height, MAX(job->max_visits, 1), job->first_player == STONE_WHITE ? "W" : "B");
-    for (i32 t = 0; t <= job->move_count; ++t) string_pushf(&q, t ? ",%d" : "%d", t);
-    string_push(&q, SV("]}"));
+    if (job->turns) {
+        for (i32 i = 0; i < job->turn_count; ++i) string_pushf(&q, i ? ",%d" : "%d", job->turns[i]);
+    } else {
+        for (i32 t = 0; t <= job->move_count; ++t) string_pushf(&q, t ? ",%d" : "%d", t);
+    }
+    string_push_char(&q, ']');
+    if (job->include_human_policy) string_push(&q, SV(",\"includePolicy\":true"));
+    if (job->human_profile.len) {
+        string_push(&q, SV(",\"overrideSettings\":{\"humanSLProfile\":"));
+        push_json_string(&q, job->human_profile);
+        string_push_char(&q, '}');
+    }
+    string_push_char(&q, '}');
     return q;
 }
 
@@ -96,6 +109,15 @@ static bool parse_root(JsonValue root, i32 width, i32 height, TurnResult *out) {
             }
             break;
         }
+    }
+    // Human SL policy (with includePolicy and a -human-model): row-major from the top-left, then pass; -1 = illegal.
+    JsonValue human = json_get(root, "humanPolicy");
+    isize points = (isize)width * height;
+    if (json_array_len(human) == points + 1) {
+        out->human_policy = malloc(sizeof(f32) * (usize)points);
+        if (!out->human_policy) abort();
+        for (isize i = 0; i < points; ++i) out->human_policy[i] = (f32)MAX(json_number(json_array_at(human, i), 0.0), 0.0);
+        out->human_pass = (f32)MAX(json_number(json_array_at(human, points), 0.0), 0.0);
     }
     out->ok = true;
     return true;
@@ -192,8 +214,10 @@ BatchAnalyzer *katago_analyzer_create(const KataGoAnalyzerSettings *s, String *e
     string_push(&overrides, s->overrides);
     StringView args[] = {
         SV("analysis"), SV("-model"), s->model, SV("-config"), s->config, SV("-override-config"), string_sv(&overrides),
+        SV("-human-model"), s->human_model,
     };
-    ProcessSpec spec = { s->program, args, countof(args), s->working_dir, s->launcher, s->launcher_count };
+    isize argc = s->human_model.len ? countof(args) : countof(args) - 2;
+    ProcessSpec spec = { s->program, args, argc, s->working_dir, s->launcher, s->launcher_count };
     LineChannel *channel = line_channel_start(&spec, error);
     string_free(&overrides);
     if (!channel) return NULL;

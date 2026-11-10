@@ -130,7 +130,7 @@ KataGoTuning app_katago_tuning(const App *app) {
 }
 
 static void stop_engine(App *app) {
-    if (app->rank_slot == &app->main) app_rank_stop(app);
+    if (app->rank_slot == &app->main || app->rank_batch) app_rank_stop(app);   // the analyzer follows the main profile
     app_batch_stop(app);
     engine_destroy(app->main.engine);
     app->main.engine = NULL;
@@ -183,6 +183,8 @@ static void start_engine(App *app) {
 }
 
 void app_restart_engine(App *app) {
+    if (app->rank_batch) app_rank_stop(app);
+    app_batch_stop(app);
     batch_analyzer_destroy(app->analyzer);   // may belong to the previous profile
     app->analyzer = NULL;
     start_engine(app);
@@ -229,12 +231,43 @@ void app_game_analysis_progress(const App *app, isize *done, isize *total) {
     }
 }
 
+// Releases the analysis engine's GPU memory (KataGo processes are expensive)
+// once neither the game analysis nor a rank estimate uses it.
+static void analyzer_release(App *app) {
+    if (app->flash_running || app->rank_batch) return;
+    batch_analyzer_destroy(app->analyzer);
+    app->analyzer = NULL;
+}
+
+// Starts the JSON analyzer for the main profile if it is not running. Fails if
+// the profile has no analysis config, or the process would not fit next to the
+// running engines (engine.max_processes).
+static bool analyzer_ensure(App *app) {
+    if (app->analyzer && !batch_analyzer_alive(app->analyzer)) {
+        batch_analyzer_destroy(app->analyzer);
+        app->analyzer = NULL;
+    }
+    if (app->analyzer) return true;
+    if (!engine_profile_can_batch(app->main.profile)) return false;
+    i32 running = (app->main.engine != NULL) + (app->second.engine != NULL);
+    if (running + 1 > app->config.engine_max_processes) return false;
+    String err = { 0 };
+    KataGoTuning tuning = app_katago_tuning(app);
+    app->analyzer = batch_analyzer_create(app->main.profile, &tuning, &err);
+    if (!app->analyzer) {
+        log_warn("analysis engine: %s (falling back to GTP)", string_cstr(&err));
+        string_free(&err);
+        return false;
+    }
+    return true;
+}
+
+static bool rank_batch_begin(App *app, const PositionSpec *spec, GameNode *end);
+
 static void flash_finish(App *app) {
     app->flash_running = false;
     game_job_free(&app->flash_job);
-    // Release the analysis engine's GPU memory (KataGo processes are expensive).
-    batch_analyzer_destroy(app->analyzer);
-    app->analyzer = NULL;
+    analyzer_release(app);
     if (app->batch_restore_analysis) app_set_analysis(app, true);   // resume interactive analysis
 }
 
@@ -248,23 +281,7 @@ static void flash_stop(App *app) {
 // if it would not fit next to the running engines (engine.max_processes): the
 // game is then analysed over GTP by the main engine, which keeps running.
 static bool flash_start(App *app) {
-    if (!engine_profile_can_batch(app->main.profile)) return false;
-    i32 running = (app->main.engine != NULL) + (app->second.engine != NULL);
-    if (running + 1 > app->config.engine_max_processes) return false;
-    if (app->analyzer && !batch_analyzer_alive(app->analyzer)) {
-        batch_analyzer_destroy(app->analyzer);
-        app->analyzer = NULL;
-    }
-    if (!app->analyzer) {
-        String err = { 0 };
-        KataGoTuning tuning = app_katago_tuning(app);
-        app->analyzer = batch_analyzer_create(app->main.profile, &tuning, &err);
-        if (!app->analyzer) {
-            log_warn("analysis engine: %s (falling back to GTP)", string_cstr(&err));
-            string_free(&err);
-            return false;
-        }
-    }
+    if (!analyzer_ensure(app)) return false;
     GameNode *end = app->tree->current;
     while (end->first_child) end = end->first_child;   // end of the active line
     char id[32];
@@ -273,9 +290,13 @@ static bool flash_start(App *app) {
     AnalysisJob request = game_job_request(&app->flash_job, app->config.analysis_game_visits);
     if (!batch_analyzer_submit(app->analyzer, &request)) {
         game_job_free(&app->flash_job);
+        analyzer_release(app);
         return false;
     }
     app->flash_running = true;
+    // With the human network loaded, the same engine scores the ranks too (CGR[]):
+    // 1-visit policy queries, batched alongside the search.
+    if (app->main.profile->human_model.len && !app->rank_job) rank_batch_begin(app, app->flash_job.spec, end);
     // Give the GPU to the batch: pause interactive analysis until it finishes.
     app->batch_restore_analysis = app->analysis_enabled;
     app_set_analysis(app, false);
@@ -283,10 +304,15 @@ static bool flash_start(App *app) {
     return true;
 }
 
-static void flash_update(App *app) {
+// Routes the JSON analyzer's results to the game analysis and the rank estimate.
+static void analyzer_update(App *app) {
     if (!app->analyzer) return;
     TurnResult r;
     while (app->analyzer && batch_analyzer_poll(app->analyzer, &r)) {
+        if (app->rank_batch && rank_batch_apply(app->rank_batch, &r)) {
+            turn_result_free(&r);
+            continue;
+        }
         bool done = app->flash_running && game_job_apply(&app->flash_job, &r) && game_job_done(&app->flash_job);
         turn_result_free(&r);
         if (done) {
@@ -295,9 +321,11 @@ static void flash_update(App *app) {
             flash_finish(app);   // destroys the analyzer
         }
     }
-    if (app->flash_running && app->analyzer && !batch_analyzer_alive(app->analyzer)) {
-        app_set_status(app, "Analysis engine exited");
+    if (app->analyzer && !batch_analyzer_alive(app->analyzer)) {
+        if (app->flash_running || app->rank_batch) app_set_status(app, "Analysis engine exited");
         flash_stop(app);
+        app_rank_stop(app);
+        analyzer_release(app);
     }
 }
 
@@ -442,6 +470,12 @@ static void human_update(App *app) {
 }
 
 void app_rank_stop(App *app) {
+    if (app->rank_batch) {
+        if (app->analyzer) rank_batch_cancel(app->rank_batch, app->analyzer);
+        rank_batch_destroy(app->rank_batch);
+        app->rank_batch = NULL;
+        analyzer_release(app);
+    }
     if (!app->rank_job) return;
     rank_estimator_destroy(app->rank_job);
     app->rank_job = NULL;
@@ -460,9 +494,51 @@ void app_rank_stop(App *app) {
     }
 }
 
+// A new estimate replaces the old one: its moves fill in as they are scored.
+static void clear_line_ranks(App *app, GameNode *end) {
+    for (GameNode *n = end; n; n = n->parent) {
+        if (game_node_find_prop(n, SV(RANK_SGF_PROP))) game_node_remove_prop(app->tree, n, SV(RANK_SGF_PROP));
+    }
+}
+
+// Scores the line ending at `end` on the JSON analyzer (must be running).
+static bool rank_batch_begin(App *app, const PositionSpec *spec, GameNode *end) {
+    char id[32];
+    snprintf(id, sizeof(id), "rank%u", ++app->flash_serial);
+    app->rank_batch = rank_batch_create(spec, sv(id));
+    if (!rank_batch_submit(app->rank_batch, app->analyzer)) {
+        rank_batch_destroy(app->rank_batch);
+        app->rank_batch = NULL;
+        return false;
+    }
+    app->rank_end = end;
+    app->rank_stored = 0;
+    clear_line_ranks(app, end);
+    return true;
+}
+
+// Fast path: the main profile has the human network and an analysis config,
+// and its analyzer is running or fits in the process budget.
+static bool rank_start_batched(App *app) {
+    if (!app->main.profile || !app->main.profile->human_model.len || !analyzer_ensure(app)) return false;
+    enum { MAX_LINE = 4096 };
+    GameNode **line = malloc(sizeof(GameNode *) * MAX_LINE);
+    PositionSpec *spec = malloc(sizeof(PositionSpec));
+    if (!line || !spec) abort();
+    isize n = MIN(game_tree_active_line(app->tree, line, MAX_LINE), (isize)MAX_LINE);
+    position_spec_from_node(app->tree, line[n - 1], string_sv(&app->config.rules), spec);
+    bool ok = rank_batch_begin(app, spec, line[n - 1]);
+    if (ok) app_set_status(app, "Estimating ranks with %s (analysis engine)", string_cstr(&app->main.profile->name));
+    else analyzer_release(app);
+    free(spec);
+    free(line);
+    return ok;
+}
+
 void app_rank_start(App *app) {
     app_rank_stop(app);
     app->rank_pending = false;
+    if (rank_start_batched(app)) return;
     EngineSlot *slot = human_slot(app);   // runs inside an engine that is already up (GPU budget)
     if (!slot) {
         bool starting = (app->main.engine && app->main.status == ENGINE_STATUS_STARTING && app->main.profile->human_model.len) ||
@@ -488,18 +564,15 @@ void app_rank_start(App *app) {
     app->rank_slot = slot;
     app->rank_end = line[n - 1];
     app->rank_stored = 0;
-    // A new estimate replaces the old one: its moves fill in as they are scored.
-    for (isize i = 0; i < n; ++i) {
-        if (game_node_find_prop(line[i], SV(RANK_SGF_PROP))) game_node_remove_prop(app->tree, line[i], SV(RANK_SGF_PROP));
-    }
+    clear_line_ranks(app, app->rank_end);
     app_set_status(app, "Estimating ranks with %s", string_cstr(&slot->profile->name));
     free(spec);
     free(line);
 }
 
 bool app_rank_progress(const App *app, i32 *done, i32 *total) {
-    if (!app->rank_job) return false;
-    const RankProgress *p = rank_estimator_progress(app->rank_job);
+    if (!app->rank_job && !app->rank_batch) return false;
+    const RankProgress *p = app->rank_batch ? rank_batch_progress(app->rank_batch) : rank_estimator_progress(app->rank_job);
     *done = p->done;
     *total = p->total;
     return true;
@@ -541,12 +614,12 @@ static void rank_sync(App *app) {
 
 static void rank_update(App *app) {
     if (app->rank_pending && human_slot(app)) app_rank_start(app);
-    if (app->rank_job) {
-        rank_estimator_update(app->rank_job);
-        const RankProgress *p = rank_estimator_progress(app->rank_job);
+    if (app->rank_job || app->rank_batch) {
+        if (app->rank_job) rank_estimator_update(app->rank_job);
+        const RankProgress *p = app->rank_batch ? rank_batch_progress(app->rank_batch) : rank_estimator_progress(app->rank_job);
         // Every scored move goes into the tree right away (CGR[]): the sidebar,
         // the graph and the Deep report all follow the job as it runs.
-        if (p->done != app->rank_stored) {
+        if (p->done != app->rank_stored || p->finished) {
             app->rank_stored = p->done;
             rank_progress_store(p, app->tree, app->rank_end);
         }
@@ -623,7 +696,7 @@ static void autosave_update(App *app);
 
 void app_update(App *app) {
     autosave_update(app);
-    flash_update(app);
+    analyzer_update(app);
     rank_update(app);
     second_update(app);
     if (!app->main.engine || app->rank_slot == &app->main) return;   // lent to the rank job
@@ -1131,14 +1204,14 @@ static void cmd_toggle_ownership(void *c) {
 static bool shows_ownership(const void *c) { return CAPP(c)->config.show_ownership; }
 static void cmd_rank(void *c) {
     App *app = c;
-    if (app->rank_job || app->rank_pending) {
+    if (app->rank_job || app->rank_batch || app->rank_pending) {
         app->rank_pending = false;
         app_rank_stop(app);
     } else {
         app_rank_start(app);
     }
 }
-static bool rank_running(const void *c) { return CAPP(c)->rank_job != NULL || CAPP(c)->rank_pending; }
+static bool rank_running(const void *c) { return CAPP(c)->rank_job != NULL || CAPP(c)->rank_batch != NULL || CAPP(c)->rank_pending; }
 static bool has_human_profile(const void *c) {
     return CAPP(c)->human_available && CAPP(c)->tree->root->first_child != NULL;
 }
