@@ -5,7 +5,7 @@
 
 const char *const LAYOUT_PANELS[] = { "game_info", "winrate_summary", "winrate_graph", "candidates", "move_list",
                                       "report",    "compare",         "variation_tree", "comment",   "engine_log",
-                                      "territory", "confidence" };
+                                      "territory", "confidence", "human_winrate" };
 const isize LAYOUT_PANEL_COUNT = (isize)(sizeof(LAYOUT_PANELS) / sizeof(LAYOUT_PANELS[0]));
 
 // ---- A light scan of the text: every list's span, head and parent -----------------------------

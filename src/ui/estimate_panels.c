@@ -3,6 +3,8 @@
 // waits for its first analysis, so the numbers never blank or jump.
 #include "ui/ui.h"
 
+#include "core/human_winrate.h"
+
 #include <math.h>
 #include <string.h>
 
@@ -136,6 +138,74 @@ void panel_confidence(Ui *ui) {
             }
             StringView decided = tr(ui, "estimate.decided", "Board decided");
             CLAY_TEXT(ui_fmt(ui, SV_FMT ": %.0f%%", SV_ARG(decided), e.decided * 100.0f), ui_text_style(ui, FONT_UI_BOLD, 13, c->text));
+        }
+    }
+}
+
+// ---- Human win rate -----------------------------------------------------------------------------
+
+static StringView level_label(Ui *ui, f32 level) {
+    i32 l = (i32)lroundf(level);
+    return l >= 1 ? arena_format(&ui->frame, "%dd", l) : arena_format(&ui->frame, "%dk", 1 - l);
+}
+
+static void wr_bar(Ui *ui, f32 black, bool bold) {
+    const ThemeColors *c = &ui->theme->colors;
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(ui_px(ui, bold ? 26 : 16)) } }, .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 6)),
+           .clip = { .horizontal = true }, .border = { .color = color_to_clay(c->border), .width = CLAY_BORDER_OUTSIDE(1) } }) {
+        CLAY({ .layout = { .sizing = { CLAY_SIZING_PERCENT(CLAMP(black, 0.02f, 0.98f)), CLAY_SIZING_GROW(0) },
+                           .padding = { ui_u16(ui, 8), 0, 0, 0 }, .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } },
+               .backgroundColor = color_to_clay(c->winrate_black) }) {
+            if (black > 0.15f) CLAY_TEXT(ui_fmt(ui, "%.1f%%", black * 100.0f), ui_text_style(ui, bold ? FONT_UI_BOLD : FONT_UI, bold ? 13 : 11, c->winrate_white));
+        }
+        CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(0) }, .padding = { 0, ui_u16(ui, 8), 0, 0 },
+                           .childAlignment = { CLAY_ALIGN_X_RIGHT, CLAY_ALIGN_Y_CENTER } },
+               .backgroundColor = color_to_clay(c->winrate_white) }) {
+            if (black < 0.85f) CLAY_TEXT(ui_fmt(ui, "%.1f%%", (1.0f - black) * 100.0f), ui_text_style(ui, bold ? FONT_UI_BOLD : FONT_UI, bold ? 13 : 11, c->winrate_black));
+        }
+    }
+}
+
+void panel_human_winrate(Ui *ui) {
+    App *app = ui->app;
+    const ThemeColors *c = &ui->theme->colors;
+    const AnalysisSnapshot *a = app->analysis_valid ? app->analysis : NULL;
+    const Candidate *best = a ? analysis_best(a) : NULL;
+    const NodeEval *eval = &app->tree->current->eval;
+    i32 move = app->tree->current->move_number;
+    f32 level = app->config.human_winrate_level;
+    bool fresh = best || eval->valid;
+    if (fresh) {
+        f32 lead = best ? analysis_black_score(a, best->score_lead) : eval->black_score;
+        f32 ai = best ? analysis_black_winrate(a, best->winrate) : eval->black_winrate;
+        f32 human = human_black_winrate(lead, move, level);
+        if (!ui->human_wr_known) {
+            ui->human_wr_shown = human, ui->ai_wr_shown = ai, ui->human_wr_known = true;
+        } else {
+            f32 k = 1.0f - expf(-GetFrameTime() * 12.0f);
+            ui->human_wr_shown += (human - ui->human_wr_shown) * k;
+            ui->ai_wr_shown += (ai - ui->ai_wr_shown) * k;
+        }
+    }
+    CLAY(ui_card(ui, CLAY_ID("PanelHumanWinrate"))) {
+        ui_card_title_help(ui, tr(ui, "panel.human_winrate", "Human win rate"), SV("human_winrate"));
+        if (!ui->human_wr_known) {
+            no_estimate(ui);
+        } else {
+            wr_bar(ui, ui->human_wr_shown, true);
+            StringView ai = tr(ui, "label.ai_winrate", "KataGo");
+            CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 8),
+                               .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
+                CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 56)), CLAY_SIZING_FIT(0) } } }) { ui_label(ui, ai, FONT_UI, 11, c->text_muted); }
+                wr_bar(ui, ui->ai_wr_shown, false);
+            }
+            bool in_range = move >= HUMAN_WR_FIRST_MOVE && move <= HUMAN_WR_LAST_MOVE;
+            StringView players = tr(ui, "human_wr.players", "Players");
+            StringView fit = tr(ui, "human_wr.outside", "outside moves 50–200: rough");
+            StringView rank = level_label(ui, level);
+            CLAY_TEXT(ui_fmt(ui, SV_FMT " " SV_FMT " (Fox)%s" SV_FMT, SV_ARG(players), SV_ARG(rank), in_range ? "" : "  ·  ",
+                             SV_ARG(in_range ? SV("") : fit)),
+                      ui_text_style(ui, FONT_UI, 12, c->text_muted));
         }
     }
 }

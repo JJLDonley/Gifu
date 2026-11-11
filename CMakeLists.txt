@@ -114,6 +114,7 @@ add_library(gifu_core STATIC
     src/core/game_report.c
     src/core/tsumego_frame.c
     src/core/estimate.c
+    src/core/human_winrate.c
     src/core/board_reader.c
     src/core/markup.c
     src/core/sgf_analysis.c

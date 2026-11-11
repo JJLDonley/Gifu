@@ -155,6 +155,8 @@ typedef struct Ui {
     bool eval_known;
     bool estimate_known;
     TerritoryEstimate estimate_shown;   // territory / confidence widgets (eased)
+    bool human_wr_known;
+    f32 human_wr_shown, ai_wr_shown;    // human win rate widget (eased, Black's view)
     f32 eval_black_winrate, eval_black_score;   // displayed (animated) values
 
     // Engine setup (downloads).
@@ -305,6 +307,7 @@ void engine_setup_poll(Ui *ui);     // reload engines once an install finishes
 void update_dialog(Ui *ui);         // update_dialog.c
 void panel_territory(Ui *ui);       // estimate_panels.c: territory estimate
 void panel_confidence(Ui *ui);      // secure / likely / unclaimed bar
+void panel_human_winrate(Ui *ui);   // the win chance for humans of a chosen strength
 void update_dialog_poll(Ui *ui);    // opens it when the app asks
 void ui_dialogs(Ui *ui);                           // renders the open dialog, if any
 void ui_close_dialog(Ui *ui);

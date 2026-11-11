@@ -66,6 +66,9 @@
       (option "" Same) (option 20k 20k) (option 15k 15k) (option 10k 10k) (option 7k 7k) (option 5k 5k) (option 3k 3k)
       (option 1k 1k) (option 1d 1d) (option 3d 3d) (option 5d 5d) (option 7d 7d) (option 9d 9d)))
   (section settings.analysis :fallback Analysis
+    ;; Human win rate widget: the players' strength on Fox ranks (Rendu 2023).
+    (choice human_winrate.level :columns 7 :label settings.human_winrate_level :fallback "Human win rate: players' strength (Fox)"
+      (option -11 12k) (option -10 11k) (option -9 10k) (option -8 9k) (option -7 8k) (option -6 7k) (option -5 6k) (option -4 5k) (option -3 4k) (option -2 3k) (option -1 2k) (option 0 1k) (option 1 1d) (option 2 2d) (option 3 3d) (option 4 4d) (option 5 5d) (option 6 6d) (option 7 7d) (option 8 8d) (option 9 9d))
     (bool analysis.on_start :label settings.analyze_on_start :fallback "Analyze on start")
     (bool analysis.show_candidates :label command.analysis.candidates :fallback Candidates)
     (bool analysis.show_ownership :label command.analysis.ownership :fallback Territory)

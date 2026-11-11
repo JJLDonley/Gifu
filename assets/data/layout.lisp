@@ -19,7 +19,7 @@
 ;;            eraser trash play_stones
 ;;   (panel NAME)  game_info winrate_summary winrate_graph variation_tree
 ;;                 candidates move_list report compare comment engine_log
-;;                 territory confidence
+;;                 territory confidence human_winrate
 ;;   (tabs NAME... :grow)  one panel at a time in a fixed box
 ;;   (modes (mode NAME :label KEY :fallback "Text" item...) ...)   inside toolbar: one row
 ;;     of items at a time; (mode-switch) switches (also toolbar.next, M); a mode named

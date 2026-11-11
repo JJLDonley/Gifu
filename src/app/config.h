@@ -31,6 +31,7 @@ typedef struct Config {
     bool show_move_numbers;
     bool show_branches;       // dots where the following moves (and variations) were played
     f32 ai_seconds_per_move;
+    f32 human_winrate_level;   // Human win rate widget: player strength (core/human_winrate.h)
     bool ai_human_style;      // engine moves come from the human network at ai.human_profile
     bool ai_show_eval;          // win rate, score, graph, candidates... while playing the engine (hidden by default)
     i32 engine_max_processes;
