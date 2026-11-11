@@ -139,7 +139,8 @@ typedef struct App {
     UpdaterStatus update;              // snapshot, refreshed a few times a second
     f64 update_polled;
     String update_selected;            // the release picked in the dialog's list ("" = the default)
-    bool update_manual;                // the user asked: show the result even if up to date
+    bool update_manual;
+    bool ownership_wanted;             // a widget needs KataGo's ownership map (territory, confidence)                // the user asked: show the result even if up to date
     bool update_dialog_request;        // the UI opens the update dialog
 
     // Board sync from the screen (app_sync.c).

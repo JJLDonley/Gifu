@@ -113,6 +113,7 @@ add_library(gifu_core STATIC
     src/core/sgf.c
     src/core/game_report.c
     src/core/tsumego_frame.c
+    src/core/estimate.c
     src/core/board_reader.c
     src/core/markup.c
     src/core/sgf_analysis.c
@@ -168,6 +169,7 @@ add_executable(gifu
     src/ui/form.c
     src/ui/setup.c
     src/ui/update_dialog.c
+    src/ui/estimate_panels.c
     src/ui/variation_tree.c
     src/ui/board_view.c
     src/ui/winrate_graph.c
@@ -255,6 +257,7 @@ if(GIFU_BUILD_TESTS AND EXISTS ${CMAKE_SOURCE_DIR}/tests/test_main.c)
     tests/test_stone_anim.c
     tests/test_markup.c
     tests/test_update.c
+    tests/test_estimate.c
         src/ui/theme.c
         src/ui/layout_model.c
         src/ui/stone_anim.c

@@ -86,7 +86,7 @@ static void load_kv_layers(const App *app, const char *name, KvFile *kv) {
 AnalysisRequest app_analysis_request(const App *app) {
     return (AnalysisRequest){
         .interval_centiseconds = app->config.analysis_interval_cs,
-        .include_ownership = app->config.show_ownership,
+        .include_ownership = app->config.show_ownership || app->ownership_wanted,
         .max_candidates = app->config.max_candidates,
         .region = app->region,
     };

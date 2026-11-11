@@ -4,6 +4,7 @@
 #pragma once
 
 #include "app/app.h"
+#include "core/estimate.h"
 #include "app/installer.h"
 #include "base/sexpr.h"
 #include "ui/anim.h"
@@ -152,6 +153,8 @@ typedef struct Ui {
 
     // Win-rate bar animation (holds the last value while new analysis arrives).
     bool eval_known;
+    bool estimate_known;
+    TerritoryEstimate estimate_shown;   // territory / confidence widgets (eased)
     f32 eval_black_winrate, eval_black_score;   // displayed (animated) values
 
     // Engine setup (downloads).
@@ -300,6 +303,8 @@ void ui_modal_shell(Ui *ui, StringView title, f32 width, ModalSection body, Moda
 void engine_setup_dialog(Ui *ui);   // setup.c
 void engine_setup_poll(Ui *ui);     // reload engines once an install finishes
 void update_dialog(Ui *ui);         // update_dialog.c
+void panel_territory(Ui *ui);       // estimate_panels.c: territory estimate
+void panel_confidence(Ui *ui);      // secure / likely / unclaimed bar
 void update_dialog_poll(Ui *ui);    // opens it when the app asks
 void ui_dialogs(Ui *ui);                           // renders the open dialog, if any
 void ui_close_dialog(Ui *ui);

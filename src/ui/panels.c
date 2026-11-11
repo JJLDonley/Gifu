@@ -524,11 +524,13 @@ static const struct {
     { "report", panel_report },
     { "compare", panel_compare },
     { "engine_log", panel_engine_log },
+    { "territory", panel_territory },
+    { "confidence", panel_confidence },
 };
 
 // Panels that would show the engine's opinion while the user plays it.
 static bool shows_evaluation(StringView name) {
-    static const char *const EVAL_PANELS[] = { "winrate_summary", "winrate_graph", "candidates", "compare", "report" };
+    static const char *const EVAL_PANELS[] = { "winrate_summary", "winrate_graph", "candidates", "compare", "report", "territory", "confidence" };
     for (i32 i = 0; i < (i32)countof(EVAL_PANELS); ++i) {
         if (sv_eq(name, sv(EVAL_PANELS[i]))) return true;
     }
