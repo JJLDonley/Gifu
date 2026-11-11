@@ -46,7 +46,7 @@ typedef struct Config {
     i32 sync_interval_ms;        // board sync: time between captures
     String sync_area;            // board sync: last picked area, "x,y,w,h" in desktop coordinates
     bool updates_check;          // look for a new release once a day
-    String updates_channel;      // "stable" or "alpha" (pre-releases too)
+    String updates_releases;     // "auto" (pre-releases while running one), "stable" or "prerelease"
     String updates_url;          // GitHub /releases API endpoint
     String updates_last_check;   // "YYYY-MM-DD" of the last automatic check
     String updates_skip;         // a version the user chose to skip

@@ -101,9 +101,10 @@
   ;; Help -> Check for updates; GitHub releases.
   (section settings.updates :fallback Updates
     (bool updates.check :label settings.updates_check :fallback "Check for updates once a day")
-    (choice updates.channel :columns 2 :label settings.updates_channel :fallback "Update channel"
-      (option stable "Stable")
-      (option alpha "Alpha (test versions)"))
+    (choice updates.releases :columns 3 :label settings.updates_channel :fallback "Update to"
+      (option auto "Automatic")
+      (option stable "Stable releases")
+      (option prerelease "Pre-releases"))
     (command help.check_updates)))
 
 (form new_game :title command.file.new :fallback "New game"

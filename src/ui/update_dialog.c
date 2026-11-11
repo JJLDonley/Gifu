@@ -12,7 +12,22 @@ static void update_body(Ui *ui, void *user) {
     const ThemeColors *c = &ui->theme->colors;
     const UpdaterStatus *st = &ui->app->update;
     StringView running = tr(ui, "update.running", "Running");
-    ui_label(ui, arena_format(&ui->frame, SV_FMT " %s", SV_ARG(running), GIFU_VERSION), FONT_UI, 13, c->text_muted);
+    bool busy = st->phase == UPDATER_DOWNLOADING || st->phase == UPDATER_VERIFYING;
+    UpdateChannel channel = app_updates_channel(ui->app);
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 8),
+                       .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
+        ui_label(ui, arena_format(&ui->frame, SV_FMT " %s", SV_ARG(running), GIFU_VERSION), FONT_UI, 13, c->text_muted);
+        CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) } } }) {}
+        ui_label(ui, tr(ui, "update.channel", "Update to"), FONT_UI, 13, c->text_muted);
+        if (ui_button(ui, CLAY_ID("UpdateStable"), tr(ui, "update.channel_stable", "Stable"), BUTTON_NORMAL, channel == UPDATE_CHANNEL_STABLE, !busy) &&
+            channel != UPDATE_CHANNEL_STABLE) {
+            app_updates_set_channel(ui->app, UPDATE_CHANNEL_STABLE);
+        }
+        if (ui_button(ui, CLAY_ID("UpdatePre"), tr(ui, "update.channel_pre", "Pre-releases"), BUTTON_NORMAL, channel == UPDATE_CHANNEL_ALPHA, !busy) &&
+            channel != UPDATE_CHANNEL_ALPHA) {
+            app_updates_set_channel(ui->app, UPDATE_CHANNEL_ALPHA);
+        }
+    }
     switch (st->phase) {
         case UPDATER_IDLE:
         case UPDATER_CHECKING: ui_label(ui, tr(ui, "update.checking", "Checking for updates…"), FONT_UI_BOLD, 14, c->text); break;

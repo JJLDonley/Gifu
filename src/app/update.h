@@ -12,6 +12,9 @@ i32 version_compare(StringView a, StringView b);   // <0: a is older
 bool version_is_prerelease(StringView v);
 
 typedef enum UpdateChannel { UPDATE_CHANNEL_STABLE, UPDATE_CHANNEL_ALPHA } UpdateChannel;
+// The setting updates.releases: "stable", "prerelease" (also "alpha"), or "auto":
+// pre-releases when the running version is one, else stable.
+UpdateChannel update_channel_from(StringView setting, StringView running_version);
 
 typedef struct ReleaseInfo {
     String version;      // "0.2.0-alpha.1" (tag without the leading v)

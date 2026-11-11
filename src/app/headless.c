@@ -496,11 +496,11 @@ int headless_read_board(App *app) {
 
 int headless_update(App *app) {
     const AppOptions *o = &app->options;
-    StringView channel_name = o->update_channel.len ? o->update_channel : string_sv(&app->config.updates_channel);
-    UpdateChannel channel = sv_eq(channel_name, SV("alpha")) ? UPDATE_CHANNEL_ALPHA : UPDATE_CHANNEL_STABLE;
+    StringView setting = o->update_channel.len ? o->update_channel : string_sv(&app->config.updates_releases);
+    UpdateChannel channel = update_channel_from(setting, SV(GIFU_VERSION));
     const char *appimage = getenv("APPIMAGE");
     Updater *u = updater_create(string_sv(&app->exe_dir), sv(appimage ? appimage : ""), string_sv(&app->config.updates_url));
-    printf("Gifu %s, %s channel: checking %s\n", GIFU_VERSION, channel == UPDATE_CHANNEL_ALPHA ? "alpha" : "stable",
+    printf("Gifu %s, %s channel: checking %s\n", GIFU_VERSION, channel == UPDATE_CHANNEL_ALPHA ? "pre-release" : "stable",
            string_cstr(&app->config.updates_url));
     updater_check(u, channel);
     UpdaterStatus st = { 0 };

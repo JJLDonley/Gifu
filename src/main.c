@@ -21,7 +21,7 @@ static void usage(void) {
             "               [--screenshot out.png [--delay SECONDS]] [--verbose]\n"
             "       gifu --analyze FILE.sgf... [--out DIR] [--engine ID] [--set analysis.game_visits=N]\n"
             "       gifu --rank FILE.sgf...   (estimate player ranks with the human SL network)\n"
-            "       gifu --update [--channel stable|alpha]   (install the newest release)\n"
+            "       gifu --update [--channel stable|prerelease]   (install the newest release)\n"
             "       gifu --version\n"
             "       gifu --read-board FILE.png|screen [--capture-area X,Y,W,H] [--size 19]   (board recognition)\n"
             "       gifu --capture OUT.png [--capture-area X,Y,W,H] [--set sync.capture=auto|gdi|x11|portal|grim|command]\n"

@@ -142,3 +142,9 @@ bool sums_find(StringView sums, StringView file, char out[65]) {
     }
     return false;
 }
+
+UpdateChannel update_channel_from(StringView setting, StringView running) {
+    if (sv_eq(setting, SV("stable"))) return UPDATE_CHANNEL_STABLE;
+    if (sv_eq(setting, SV("prerelease")) || sv_eq(setting, SV("alpha"))) return UPDATE_CHANNEL_ALPHA;
+    return version_is_prerelease(running) ? UPDATE_CHANNEL_ALPHA : UPDATE_CHANNEL_STABLE;   // auto
+}

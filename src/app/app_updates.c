@@ -3,12 +3,13 @@
 
 #include "base/log.h"
 #include "base/os.h"
+#include "base/version_info.h"
 
 #include <stdlib.h>
 #include <time.h>
 
 static UpdateChannel channel(const App *app) {
-    return sv_eq(string_sv(&app->config.updates_channel), SV("alpha")) ? UPDATE_CHANNEL_ALPHA : UPDATE_CHANNEL_STABLE;
+    return update_channel_from(string_sv(&app->config.updates_releases), SV(GIFU_VERSION));
 }
 
 static void ensure_updater(App *app) {
@@ -35,6 +36,14 @@ void app_updates_check(App *app) {
     app->update_manual = true;
     updater_check(app->updater, channel(app));
     app->update_dialog_request = true;   // shows "checking" and then the result
+}
+
+UpdateChannel app_updates_channel(const App *app) { return channel(app); }
+
+void app_updates_set_channel(App *app, UpdateChannel c) {
+    string_free(&app->config.updates_releases);
+    app->config.updates_releases = string_from(c == UPDATE_CHANNEL_ALPHA ? SV("prerelease") : SV("stable"));
+    app_updates_check(app);   // and look again on the new channel
 }
 
 void app_updates_download(App *app) {

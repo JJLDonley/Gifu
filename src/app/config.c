@@ -59,7 +59,7 @@ static const ConfigField FIELDS[] = {
     STR("tsumego.attacker", tsumego_attacker, "auto"),
     STR("tsumego.ko_threats", tsumego_ko_threats, "none"),
     BOOL("updates.check", updates_check, 1),
-    STR("updates.channel", updates_channel, "stable"),
+    STR("updates.releases", updates_releases, "auto"),
     STR("updates.url", updates_url, "https://api.github.com/repos/JJLDonley/Gifu/releases?per_page=30"),
     STR("updates.last_check", updates_last_check, ""),
     STR("updates.skip", updates_skip, ""),
@@ -188,6 +188,7 @@ bool config_load(Config *config, String *error) {
     }
     vec_foreach(KvEntry, e, &kv.entries) {
         const ConfigField *f = config_field(e->key);
+        if (!f && sv_eq(e->key, SV("updates.channel"))) continue;   // retired: saved by 0.1.0-alpha.1 without the user choosing
         if (!f || f->transient) {
             log_warn("%s:%d: unknown setting '" SV_FMT "'", string_cstr(&config->path), e->line, SV_ARG(e->key));
             continue;

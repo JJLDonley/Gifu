@@ -228,6 +228,8 @@ void app_batch_start(App *app);   // analyse the active line from the start
 void app_updates_init(App *app);         // once a day: a background check
 void app_updates_check(App *app);        // Help -> Check for updates
 void app_updates_download(App *app);
+UpdateChannel app_updates_channel(const App *app);           // from updates.releases
+void app_updates_set_channel(App *app, UpdateChannel channel);   // the user's choice; checks again
 void app_updates_restart(App *app);      // installs the downloaded version and quits
 void app_updates_skip(App *app);         // never offer this version again
 void app_updates_update(App *app);       // every frame

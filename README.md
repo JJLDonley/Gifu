@@ -25,10 +25,11 @@ to `~/.local/share/applications/` (set `Exec=` to the full path of `gifu`) and
 `share/icons/hicolor/256x256/apps/gifu.png` to `~/.local/share/icons/hicolor/256x256/apps/`.
 
 Updates: Help → Check for updates (Gifu also looks once a day; Settings → Updates turns
-that off or switches to the Alpha channel for test versions). Nothing is downloaded or
+that off or chooses between stable releases and pre-releases (test versions); by default
+an installed pre-release follows pre-releases, the Updates dialog switches too). Nothing is downloaded or
 installed until you choose Update and then Restart; the download is checked against the
 release's SHA-256 sums, and `katago/` and your settings are kept. Without a window:
-`gifu --update [--channel stable|alpha]`.
+`gifu --update [--channel stable|prerelease]`.
 
 Batch analysis without a window:
 
