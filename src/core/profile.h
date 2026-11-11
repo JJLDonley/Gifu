@@ -8,6 +8,7 @@
 #pragma once
 
 #include "core/game_report.h"
+#include "core/style.h"
 
 typedef enum ProfileResult { PROFILE_RESULT_UNKNOWN, PROFILE_RESULT_WIN, PROFILE_RESULT_LOSS } ProfileResult;
 
@@ -15,10 +16,13 @@ typedef struct ProfileTotals {
     GameReport report;    // player[STONE_BLACK]: you as Black; player[STONE_WHITE]: you as White
     i32 games[3];         // indexed by Stone (games with analysed moves)
     i32 wins[3], losses[3];
+    StyleCounts style[3];  // the user's style as Black / White (profile_add_style)
 } ProfileTotals;
 
 // Adds one game in which the user played `color`.
 void profile_add_game(ProfileTotals *t, const GameReport *game, Stone color, ProfileResult result);
+// Adds the user's style counts from one game.
+void profile_add_style(ProfileTotals *t, const StyleReport *game, Stone color);
 // You as either colour (both columns merged).
 void profile_combined(const ProfileTotals *t, PlayerReport *out);
 

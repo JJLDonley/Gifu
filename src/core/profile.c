@@ -73,3 +73,7 @@ ProfileResult profile_result(StringView re, Stone color) {
     bool black_won = w == 'B';
     return (black_won == (color == STONE_BLACK)) ? PROFILE_RESULT_WIN : PROFILE_RESULT_LOSS;
 }
+
+void profile_add_style(ProfileTotals *t, const StyleReport *game, Stone color) {
+    if (color == STONE_BLACK || color == STONE_WHITE) style_add(&t->style[color], &game->player[color]);
+}

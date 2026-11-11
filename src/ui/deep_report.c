@@ -4,6 +4,8 @@
 // sidebar Report; clicking a move or a graph jumps there.
 #include "ui/ui.h"
 
+#include "core/style.h"
+
 #include "core/game_report.h"
 
 #include <math.h>
@@ -40,6 +42,8 @@ static StringView tr_rank(Ui *ui, const char *key, const char *fallback, StringV
     if (at < 0) return text;
     return arena_format(&ui->frame, SV_FMT SV_FMT SV_FMT, SV_ARG(sv_take(text, at)), SV_ARG(rank), SV_ARG(sv_drop(text, at + 6)));
 }
+
+static void style_page(DeepReport *d, const StyleCounts *black, const StyleCounts *white);
 
 // The Profile dialog shows a profile with the same views: "you as Black / White".
 static bool g_profile_mode;
@@ -301,7 +305,8 @@ static void graph(DeepReport *d, bool trend, u32 index, f32 height) {
 static void legend_dot(Ui *ui, Color color, StringView text) {
     CLAY({ .layout = { .childGap = ui_u16(ui, 4), .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
         CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 12)), CLAY_SIZING_FIXED(ui_px(ui, 12)) } },
-               .backgroundColor = color_to_clay(color), .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 2)) }) {}
+               .backgroundColor = color_to_clay(color), .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 2)),
+               .border = { .color = color_to_clay(ui->theme->colors.border), .width = CLAY_BORDER_OUTSIDE(1) } }) {}   // light colours on light themes
         ui_label(ui, text, FONT_UI, 13, ui->theme->colors.text_muted);
     }
 }
@@ -711,10 +716,10 @@ static void body(Ui *ui, void *user) {
         ui_help_button(ui, SV("deep_report"));
     }
     // Tabs: one kind of data per page.
-    enum { TAB_OVERVIEW, TAB_RANK, TAB_GRAPHS, TAB_DISTRIBUTION, TAB_MISTAKES, TAB_MOVES, TAB_COUNT };
+    enum { TAB_OVERVIEW, TAB_RANK, TAB_GRAPHS, TAB_DISTRIBUTION, TAB_STYLE, TAB_MISTAKES, TAB_MOVES, TAB_COUNT };
     static const char *const TAB_KEYS[TAB_COUNT] = { "report.tab_overview", "report.tab_rank", "report.tab_graphs", "report.tab_distribution",
-                                                     "report.tab_mistakes", "report.tab_moves" };
-    static const char *const TAB_FALLBACK[TAB_COUNT] = { "Overview", "Rank", "Graphs", "Distribution", "Mistakes", "All moves" };
+                                                     "report.tab_style", "report.tab_mistakes", "report.tab_moves" };
+    static const char *const TAB_FALLBACK[TAB_COUNT] = { "Overview", "Rank", "Graphs", "Distribution", "Style", "Mistakes", "All moves" };
     i32 tab = CLAMP(ui->deep_report_tab, 0, TAB_COUNT - 1);
     CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 4),
                        .padding = { 0, 0, 0, ui_u16(ui, 6) } },
@@ -742,6 +747,11 @@ static void body(Ui *ui, void *user) {
                 phase_table(d);
                 break;
             case TAB_RANK: rank_page(d); break;
+            case TAB_STYLE: {
+                StyleReport style;
+                style_compute(d->line, d->count, &style);
+                style_page(d, &style.player[STONE_BLACK], &style.player[STONE_WHITE]);
+            } break;
             case TAB_MOVES: moves_page(d); break;
             case TAB_GRAPHS:
                 block(ui, tr(ui, "report.points_per_move", "POINTS LOST PER MOVE"), SV("loss_graph"));
@@ -796,6 +806,76 @@ void deep_report_dialog(Ui *ui) {
         d->prob_moves += d->has_probs[i];
     }
     ui_modal_shell(ui, tr(ui, "report.deep_title", "Deep report"), 940, body, NULL, d);
+}
+
+// ---- Style ------------------------------------------------------------------------------------------
+
+typedef struct StyleSlider {
+    Ui *ui;
+    f32 black, white;   // 0..1, < 0 = no data
+} StyleSlider;
+
+static void draw_style_slider(void *user, Rectangle r) {
+    StyleSlider *s = user;
+    Ui *ui = s->ui;
+    const ThemeColors *c = &ui->theme->colors;
+    f32 y = r.y + r.height * 0.5f, pad = ui_px(ui, 9);
+    DrawRectangleRounded((Rectangle){ r.x, y - ui_px(ui, 3), r.width, ui_px(ui, 6) }, 1.0f, 6, c->surface_alt);
+    DrawLineEx((Vector2){ r.x + r.width * 0.5f, y - ui_px(ui, 7) }, (Vector2){ r.x + r.width * 0.5f, y + ui_px(ui, 7) }, 1.0f, c->border);
+    f32 span = r.width - 2 * pad;
+    if (s->white >= 0) {
+        Vector2 p = { r.x + pad + span * CLAMP(s->white, 0.0f, 1.0f), y };
+        DrawCircleV(p, ui_px(ui, 8), c->winrate_white);
+        DrawCircleLinesV(p, ui_px(ui, 8), c->text_muted);
+    }
+    if (s->black >= 0) DrawCircleV((Vector2){ r.x + pad + span * CLAMP(s->black, 0.0f, 1.0f), y }, ui_px(ui, 8), c->winrate_black);
+}
+
+// "Territory  [----o--●----]  Influence" with each side's percentage under it.
+static void style_row(Ui *ui, u32 index, StringView left, StringView right, f32 black, f32 white, StringView detail) {
+    const ThemeColors *c = &ui->theme->colors;
+    StyleSlider *s = arena_new(&ui->frame, StyleSlider);
+    *s = (StyleSlider){ ui, black, white };
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM, .childGap = ui_u16(ui, 4),
+                       .padding = { 0, 0, ui_u16(ui, 6), ui_u16(ui, 6) } } }) {
+        CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 12),
+                           .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
+            CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 110)), CLAY_SIZING_FIT(0) }, .childAlignment = { .x = CLAY_ALIGN_X_RIGHT } } }) {
+                ui_label(ui, left, FONT_UI_BOLD, 14, c->text);
+            }
+            CLAY({ .id = CLAY_IDI("StyleSlider", index), .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(ui_px(ui, 24)) } },
+                   .custom = { .customData = ui_custom(ui, draw_style_slider, s) } }) {}
+            CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 110)), CLAY_SIZING_FIT(0) } } }) { ui_label(ui, right, FONT_UI_BOLD, 14, c->text); }
+        }
+        CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childAlignment = { .x = CLAY_ALIGN_X_CENTER } } }) {
+            ui_label(ui, detail, FONT_UI, 12, c->text_muted);
+        }
+    }
+}
+
+// The three style sliders for two players' counts.
+static void style_page(DeepReport *d, const StyleCounts *black, const StyleCounts *white) {
+    Ui *ui = d->ui;
+    const ThemeColors *c = &ui->theme->colors;
+    CLAY({ .layout = { .childGap = ui_u16(ui, 12) } }) {
+        legend_dot(ui, c->winrate_black, player_name(ui, STONE_BLACK));
+        legend_dot(ui, c->winrate_white, player_name(ui, STONE_WHITE));
+    }
+    f32 bh = black->moves ? style_height(black) : -1, wh = white->moves ? style_height(white) : -1;
+    f32 bc = black->moves ? style_contact(black) : -1, wc = white->moves ? style_contact(white) : -1;
+    f32 bt = black->answers ? style_tenuki(black) : -1, wt = white->answers ? style_tenuki(white) : -1;
+    StringView bn = player_name(ui, STONE_BLACK), wn = player_name(ui, STONE_WHITE);
+    style_row(ui, 0, tr(ui, "style.territory", "Territory"), tr(ui, "style.influence", "Influence"), bh, wh,
+              arena_format(&ui->frame, SV_FMT " %.0f%%  ·  " SV_FMT " %.0f%%  %s", SV_ARG(bn), fmaxf(bh, 0) * 100, SV_ARG(wn), fmaxf(wh, 0) * 100,
+                           tr(ui, "style.height_detail", "of moves on the 4th line or higher").data));
+    style_row(ui, 1, tr(ui, "style.calm", "Calm"), tr(ui, "style.fighting", "Fighting"), bc, wc,
+              arena_format(&ui->frame, SV_FMT " %.0f%%  ·  " SV_FMT " %.0f%%  %s", SV_ARG(bn), fmaxf(bc, 0) * 100, SV_ARG(wn), fmaxf(wc, 0) * 100,
+                           tr(ui, "style.contact_detail", "of moves touch an opponent stone").data));
+    style_row(ui, 2, tr(ui, "style.local", "Local"), tr(ui, "style.tenuki", "Tenuki"), bt, wt,
+              arena_format(&ui->frame, SV_FMT " %.0f%%  ·  " SV_FMT " %.0f%%  %s", SV_ARG(bn), fmaxf(bt, 0) * 100, SV_ARG(wn), fmaxf(wt, 0) * 100,
+                           tr(ui, "style.tenuki_detail", "of answers played elsewhere").data));
+    ui_label(ui, tr(ui, "style.note", "Measured from the moves themselves (no engine needed): where they are played, whether they touch the opponent, and whether they answer the last move. A style, not a grade."),
+             FONT_UI, 12, c->text_muted);
 }
 
 // ---- Profile ----------------------------------------------------------------------------------------
@@ -907,9 +987,9 @@ void profile_dialog_body(Ui *ui, void *user) {
     DeepReport *d = arena_new(&ui->frame, DeepReport);
     d->ui = ui;
     d->report = app->profile.totals.report;
-    enum { PT_OVERVIEW, PT_DISTRIBUTION, PT_TREND, PT_GAMES, PT_COUNT };
-    static const char *const KEYS[PT_COUNT] = { "report.tab_overview", "report.tab_distribution", "profile.tab_trend", "profile.tab_games" };
-    static const char *const FALLBACK[PT_COUNT] = { "Overview", "Distribution", "Trend", "Games" };
+    enum { PT_OVERVIEW, PT_DISTRIBUTION, PT_STYLE, PT_TREND, PT_GAMES, PT_COUNT };
+    static const char *const KEYS[PT_COUNT] = { "report.tab_overview", "report.tab_distribution", "report.tab_style", "profile.tab_trend", "profile.tab_games" };
+    static const char *const FALLBACK[PT_COUNT] = { "Overview", "Distribution", "Style", "Trend", "Games" };
     i32 tab = CLAMP(ui->profile_tab, 0, PT_COUNT - 1);
     CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 4), .padding = { 0, 0, 0, ui_u16(ui, 6) } },
            .border = { .color = color_to_clay(c->border), .width = { .bottom = 1 } } }) {
@@ -944,6 +1024,7 @@ void profile_dialog_body(Ui *ui, void *user) {
                 block(ui, tr(ui, "report.distribution_wr", "WIN RATE LOST PER MOVE"), SV(""));
                 distribution(d, true, row_px);
             } break;
+            case PT_STYLE: style_page(d, &app->profile.totals.style[STONE_BLACK], &app->profile.totals.style[STONE_WHITE]); break;
             case PT_TREND:
                 block(ui, tr(ui, "profile.trend", "ACCURACY PER GAME (OLDEST → NEWEST)"), SV(""));
                 CLAY({ .layout = { .childGap = ui_u16(ui, 12) } }) {

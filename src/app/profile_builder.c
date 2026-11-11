@@ -218,6 +218,9 @@ static void add_up(ProfileBuilder *b, FoundVec *found) {
             b->data.skipped++;
         } else {
             profile_add_game(&b->data.totals, &report, f->color, result);
+            StyleReport style;
+            style_compute(line, count, &style);
+            profile_add_style(&b->data.totals, &style, f->color);
             ProfileGame g = {
                 .path = string_from(string_sv(&f->path)),
                 .date = string_from(game_tree_info(t, SV("DT"))),

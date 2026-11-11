@@ -582,6 +582,13 @@ int headless_profile(App *app) {
     printf("Profile of %s (%td games, %d skipped)\n", string_cstr(&app->config.profile_names), app->profile.games.len, app->profile.skipped);
     print_profile_side("as Black", &t->report.player[STONE_BLACK], t->games[STONE_BLACK], t->wins[STONE_BLACK], t->losses[STONE_BLACK]);
     print_profile_side("as White", &t->report.player[STONE_WHITE], t->games[STONE_WHITE], t->wins[STONE_WHITE], t->losses[STONE_WHITE]);
+    for (Stone c = STONE_BLACK; c <= STONE_WHITE; ++c) {
+        const StyleCounts *sc = &t->style[c];
+        if (sc->moves) {
+            printf("  style as %s: %.0f%% high (influence), %.0f%% contact, %.0f%% tenuki\n", c == STONE_BLACK ? "Black" : "White",
+                   style_height(sc) * 100.0f, style_contact(sc) * 100.0f, style_tenuki(sc) * 100.0f);
+        }
+    }
     vec_foreach(ProfileGame, g, &app->profile.games) {
         printf("    %-12s %s vs %-16s %s  accuracy %.1f\n", string_cstr(&g->date), g->color == STONE_BLACK ? "B" : "W", string_cstr(&g->opponent),
                g->result == PROFILE_RESULT_WIN ? "won " : g->result == PROFILE_RESULT_LOSS ? "lost" : "  ? ", g->accuracy);

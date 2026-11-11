@@ -116,6 +116,7 @@ add_library(gifu_core STATIC
     src/core/estimate.c
     src/core/human_winrate.c
     src/core/profile.c
+    src/core/style.c
     src/core/board_reader.c
     src/core/markup.c
     src/core/sgf_analysis.c
@@ -263,6 +264,7 @@ if(GIFU_BUILD_TESTS AND EXISTS ${CMAKE_SOURCE_DIR}/tests/test_main.c)
     tests/test_update.c
     tests/test_estimate.c
     tests/test_profile.c
+    tests/test_style.c
         src/ui/theme.c
         src/ui/layout_model.c
         src/ui/stone_anim.c
