@@ -212,9 +212,14 @@ if(GIFU_BUILD_TESTS AND EXISTS ${CMAKE_SOURCE_DIR}/tests/test_main.c)
     # Tests read assets from the source tree. When cross-compiling from WSL the
     # Windows binaries need the drive path (/mnt/c/x -> C:/x).
     set(GIFU_TEST_SOURCE_DIR ${CMAKE_SOURCE_DIR})
+    set(GIFU_TEST_OUTPUT_DIR ${CMAKE_BINARY_DIR}/test-output)   # scratch files: inside this build folder
     if(CMAKE_CROSSCOMPILING AND WIN32 AND CMAKE_SOURCE_DIR MATCHES "^/mnt/([a-z])/(.*)$")
         string(TOUPPER ${CMAKE_MATCH_1} drive)
         set(GIFU_TEST_SOURCE_DIR "${drive}:/${CMAKE_MATCH_2}")
+    endif()
+    if(CMAKE_CROSSCOMPILING AND WIN32 AND GIFU_TEST_OUTPUT_DIR MATCHES "^/mnt/([a-z])/(.*)$")
+        string(TOUPPER ${CMAKE_MATCH_1} drive)
+        set(GIFU_TEST_OUTPUT_DIR "${drive}:/${CMAKE_MATCH_2}")
     endif()
     add_executable(gifu_tests
         tests/test_main.c
@@ -238,7 +243,7 @@ if(GIFU_BUILD_TESTS AND EXISTS ${CMAKE_SOURCE_DIR}/tests/test_main.c)
         src/ui/text_edit.c)   # pure data code: needs raylib's Color type, not the library
     target_link_libraries(gifu_tests PRIVATE gifu_core)
     target_include_directories(gifu_tests PRIVATE third_party/raylib/src)
-    target_compile_definitions(gifu_tests PRIVATE GIFU_SOURCE_DIR="${GIFU_TEST_SOURCE_DIR}")
+    target_compile_definitions(gifu_tests PRIVATE GIFU_SOURCE_DIR="${GIFU_TEST_SOURCE_DIR}" GIFU_TEST_OUTPUT_DIR="${GIFU_TEST_OUTPUT_DIR}")
     gifu_warnings(gifu_tests)
     add_test(NAME unit COMMAND gifu_tests)
 
