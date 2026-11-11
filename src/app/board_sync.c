@@ -19,7 +19,17 @@ struct BoardSync {
     String error;
     BoardReading published;
     bool fresh;
+    bool finished;    // the thread is about to return
+    bool abandoned;   // board_sync_stop gave up waiting: the thread frees this itself
 };
+
+static void board_sync_free(BoardSync *s) {
+    mutex_destroy(&s->lock);
+    string_free(&s->error);
+    string_free(&s->backend);
+    string_free(&s->command);
+    free(s);
+}
 
 static void set_state(BoardSync *s, BoardSyncState state, StringView error) {
     mutex_lock(&s->lock);
@@ -29,8 +39,22 @@ static void set_state(BoardSync *s, BoardSyncState state, StringView error) {
     mutex_unlock(&s->lock);
 }
 
+static i32 sync_loop(BoardSync *s);
+
+// One capture can take long (the Wayland portal waits for the desktop's answer):
+// a stopped sync whose thread is still capturing cleans up after itself.
 static i32 sync_main(void *arg) {
     BoardSync *s = arg;
+    sync_loop(s);
+    mutex_lock(&s->lock);
+    s->finished = true;
+    bool abandoned = s->abandoned;
+    mutex_unlock(&s->lock);
+    if (abandoned) board_sync_free(s);
+    return 0;
+}
+
+static i32 sync_loop(BoardSync *s) {
     String err = { 0 };
     ScreenCapture *capture = screen_capture_open(s->settings.backend, s->settings.command, &err);
     if (!capture) {
@@ -124,15 +148,38 @@ bool board_sync_poll(BoardSync *s, BoardReading *out, BoardSyncState *state, Str
     return fresh;
 }
 
+// Never blocks the caller (the UI) for long: a thread still inside a capture is
+// left to finish it and free the sync itself.
 void board_sync_stop(BoardSync *s) {
     if (!s) return;
     s->quit = true;
-    if (s->thread.handle) thread_join(&s->thread);
-    mutex_destroy(&s->lock);
-    string_free(&s->error);
-    string_free(&s->backend);
-    string_free(&s->command);
-    free(s);
+    if (!s->thread.handle) {
+        board_sync_free(s);
+        return;
+    }
+    for (i32 waited = 0; waited < 300; waited += 10) {
+        mutex_lock(&s->lock);
+        bool finished = s->finished;
+        mutex_unlock(&s->lock);
+        if (finished) {
+            thread_join(&s->thread);
+            board_sync_free(s);
+            return;
+        }
+        os_sleep_ms(10);
+    }
+    Thread thread = s->thread;   // copied first: once abandoned, the thread may free `s`
+    mutex_lock(&s->lock);
+    bool finished = s->finished;
+    if (!finished) s->abandoned = true;
+    mutex_unlock(&s->lock);
+    if (finished) {
+        thread_join(&thread);
+        board_sync_free(s);
+    } else {
+        log_info("board sync: the capture is still running; stopping without waiting for it");
+        thread_detach(&thread);
+    }
 }
 
 // ---- Plan -------------------------------------------------------------------------------------------

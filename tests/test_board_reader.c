@@ -226,7 +226,22 @@ static void test_sync_plan(void) {
     game_tree_free(t);
 }
 
+// Stopping must not wait for a capture in progress (the Wayland portal can take
+// tens of seconds): a sync stopped mid-capture returns at once and its thread
+// frees everything when the capture ends.
+static void test_sync_stop_does_not_block(void) {
+    if (sv_eq(sv(os_platform_name()), SV("windows"))) return;   // the slow tool below is POSIX `sleep`
+    BoardSyncSettings settings = { SV("command"), SV("sleep 2"), { 0, 0, 100, 100 }, 19, 100 };
+    BoardSync *sync = board_sync_start(&settings);
+    os_sleep_ms(200);   // inside the capture now
+    f64 t0 = os_time_seconds();
+    board_sync_stop(sync);
+    CHECK(os_time_seconds() - t0 < 1.0);
+    os_sleep_ms(2500);   // the abandoned thread finishes and cleans up (ASan checks it)
+}
+
 void register_board_reader_tests(void) {
+    test_register("board_sync/stop_does_not_block", test_sync_stop_does_not_block);
     test_register("board_reader/screenshots", test_read_screenshots);
     test_register("board_reader/synthetic", test_read_synthetic);
     test_register("board_reader/sync_plan", test_sync_plan);
