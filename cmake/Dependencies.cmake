@@ -61,3 +61,18 @@ gifu_dependency(yyjson 0.10.0
     https://github.com/ibireme/yyjson/archive/refs/tags/0.10.0.tar.gz
     0d901cb2c45c5586e3f3a4245e58c2252d6b24bf4b402723f6179523d389b165
     yyjson-0.10.0 src LICENSE)
+
+# Clay tracks only 10 scroll containers; past that, clip containers silently stop
+# scrolling (no offset, no scrollbar). Gifu's panels, tabs and dialogs need more.
+set(_clay_h ${GIFU_THIRD_PARTY_DIR}/clay/clay.h)
+if(EXISTS ${_clay_h})
+    file(READ ${_clay_h} _clay_text)
+    set(_clay_from "scrollContainerDatas = Clay__ScrollContainerDataInternalArray_Allocate_Arena(10, arena);")
+    set(_clay_to "scrollContainerDatas = Clay__ScrollContainerDataInternalArray_Allocate_Arena(256, arena); /* Gifu: was 10 */")
+    string(FIND "${_clay_text}" "${_clay_from}" _clay_at)
+    if(NOT _clay_at EQUAL -1)
+        string(REPLACE "${_clay_from}" "${_clay_to}" _clay_text "${_clay_text}")
+        file(WRITE ${_clay_h} "${_clay_text}")
+        message(STATUS "clay: scroll container limit raised to 256")
+    endif()
+endif()

@@ -248,11 +248,28 @@ void form_render(Ui *ui, const Sexpr *form) {
     }
     // Tabs: one section at a time in a fixed-height page (the dialog never jumps).
     i32 tab = CLAMP(ui->form_tab, 0, count - 1);
-    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 4),
-                       .padding = { 0, 0, 0, ui_u16(ui, 6) } },
+    // The tabs wrap onto more rows when they do not fit (narrow windows, long
+    // translations) instead of stretching the dialog past its edge.
+    Clay_ElementData body = Clay_GetElementData(CLAY_ID("ModalBody"));
+    f32 avail = body.found ? body.boundingBox.width - ui_px(ui, 40) : 1e9f;   // the body's side padding
+    f32 gap = ui_px(ui, 4);
+    i32 row_start[33], rows = 0;
+    f32 x = 0;
+    for (i32 i = 0; i < count; ++i) {
+        f32 w = font_measure(ui->fonts, FONT_UI_BOLD, ui_px(ui, 14), title_of(ui, sections[i])).x + 2.0f * ui_px(ui, 10);
+        if (i == 0 || (x > 0 && x + gap + w > avail)) row_start[rows++] = i, x = w;
+        else x += gap + w;
+    }
+    row_start[rows] = count;
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                       .childGap = ui_u16(ui, 4), .padding = { 0, 0, 0, ui_u16(ui, 6) } },
            .border = { .color = color_to_clay(c->border), .width = { .bottom = 1 } } }) {
-        for (i32 i = 0; i < count; ++i) {
-            if (ui_button(ui, CLAY_IDI("FormTab", (u32)i), title_of(ui, sections[i]), BUTTON_GHOST, i == tab, true)) ui->form_tab = i;
+        for (i32 r = 0; r < rows; ++r) {
+            CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 4) } }) {
+                for (i32 i = row_start[r]; i < row_start[r + 1]; ++i) {
+                    if (ui_button(ui, CLAY_IDI("FormTab", (u32)i), title_of(ui, sections[i]), BUTTON_GHOST, i == tab, true)) ui->form_tab = i;
+                }
+            }
         }
     }
     // As tall as the window comfortably allows; longer pages scroll (with a scrollbar).

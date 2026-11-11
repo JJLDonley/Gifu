@@ -170,26 +170,36 @@ void ui_help_button(Ui *ui, StringView topic) {
             // Opens upwards when the button is in the lower half of the window.
             Clay_ElementData button = Clay_GetElementData(id);
             bool up = button.found && button.boundingBox.y > (f32)GetScreenHeight() * 0.5f;
+            // As tall as the room above / below the button allows; longer texts scroll.
+            f32 room = button.found ? (up ? button.boundingBox.y : (f32)GetScreenHeight() - button.boundingBox.y - button.boundingBox.height)
+                                    : (f32)GetScreenHeight() * 0.5f;
+            f32 max_h = fmaxf(room - ui_px(ui, 16), ui_px(ui, 80));
             Clay_FloatingAttachPoints attach = up ? (Clay_FloatingAttachPoints){ .element = CLAY_ATTACH_POINT_RIGHT_BOTTOM, .parent = CLAY_ATTACH_POINT_RIGHT_TOP }
                                                   : (Clay_FloatingAttachPoints){ .element = CLAY_ATTACH_POINT_RIGHT_TOP, .parent = CLAY_ATTACH_POINT_RIGHT_BOTTOM };
             CLAY({ .id = CLAY_ID("HelpPopover"),
                    .floating = { .attachTo = CLAY_ATTACH_TO_PARENT, .zIndex = 250, .offset = { 0, up ? -ui_px(ui, 6) : ui_px(ui, 6) },   // above dialogs (200) and their scrollbars
                                  .attachPoints = attach },
-                   .layout = { .sizing = { CLAY_SIZING_FIXED(width), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM,
-                               .padding = CLAY_PADDING_ALL(ui_u16(ui, 12)), .childGap = ui_u16(ui, 6) },
+                   .layout = { .sizing = { CLAY_SIZING_FIXED(width), CLAY_SIZING_FIT(0, max_h) }, .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                               .padding = CLAY_PADDING_ALL(ui_u16(ui, 12)) },
                    .backgroundColor = color_to_clay(color_with_alpha(c->surface, 1.0f)),   // opaque: themes may have translucent surfaces
                    .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 6)),
                    .border = { .color = color_to_clay(c->accent), .width = CLAY_BORDER_OUTSIDE(1) } }) {
-                if (title.len) ui_label(ui, title, FONT_UI_BOLD, 13, c->text);
-                // Paragraphs separated by blank lines ("\n\n" in the l10n file).
-                StringView rest = text;
-                while (rest.len > 0) {
-                    isize gap = sv_find(rest, SV("\n\n"));
-                    StringView para = gap >= 0 ? sv_take(rest, gap) : rest;
-                    rest = gap >= 0 ? sv_drop(rest, gap + 2) : SV("");
-                    StringView wrapped = ui_wrap_text(ui, para, FONT_UI, 12, width - ui_px(ui, 24));
-                    CLAY_TEXT(ui_str(ui, wrapped), CLAY_TEXT_CONFIG({ .fontId = FONT_UI, .fontSize = ui_u16(ui, 12),
-                                                                      .textColor = color_to_clay(c->text), .lineHeight = ui_u16(ui, 17) }));
+                Clay_ElementId scroll = CLAY_ID("HelpPopoverScroll");
+                CLAY({ .id = scroll,
+                       .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0, max_h - ui_px(ui, 24)) }, .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                                   .padding = { 0, ui_u16(ui, 10), 0, 0 }, .childGap = ui_u16(ui, 6) },
+                       .clip = { .vertical = true, .childOffset = Clay_GetScrollOffset() } }) {
+                    if (title.len) ui_label(ui, title, FONT_UI_BOLD, 13, c->text);
+                    // Paragraphs separated by blank lines ("\n\n" in the l10n file); Clay wraps them.
+                    StringView rest = text;
+                    while (rest.len > 0) {
+                        isize gap = sv_find(rest, SV("\n\n"));
+                        StringView para = gap >= 0 ? sv_take(rest, gap) : rest;
+                        rest = gap >= 0 ? sv_drop(rest, gap + 2) : SV("");
+                        CLAY_TEXT(ui_str(ui, para), CLAY_TEXT_CONFIG({ .fontId = FONT_UI, .fontSize = ui_u16(ui, 12),
+                                                                       .textColor = color_to_clay(c->text), .lineHeight = ui_u16(ui, 17) }));
+                    }
+                    ui_scrollbar(ui, scroll, 250);
                 }
             }
         }
