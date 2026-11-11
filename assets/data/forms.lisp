@@ -53,6 +53,7 @@
     (number katago.analysis_search_threads :step 1 :format "%.0f" :label settings.analysis_search_threads :fallback "Game analysis: threads per position")
     (text katago.overrides :placeholder "key=value, key=value" :label settings.overrides :fallback "More (KataGo keys)"))
   (section settings.ai :fallback "AI play"
+    (choice ai.engine :source opponents :columns 1 :label settings.opponent :fallback "Opponent (Engine plays Black / White)")
     (number ai.seconds_per_move :max 60 :step 0.5 :format "%.1f s" :label settings.ai_time :fallback "Engine time per move")
     (bool ai.human_style :label settings.human_style :fallback "AI plays like a human (needs the human network)")
     (choice ai.human_profile :columns 5 :label settings.human_profile :fallback "Human strength (moves overlay, AI play)"

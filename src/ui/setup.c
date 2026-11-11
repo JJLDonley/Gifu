@@ -92,6 +92,13 @@ static void setup_body(Ui *ui, void *user) {
         ui_label(ui, tr(ui, "setup.human_hint", "Use the \"KataGo · Human style\" engine profile; pick its strength in Settings."), FONT_UI,
                  12, c->text_muted);
     }
+    // An opponent to play against: the original Leela (2017).
+    ui_card_title(ui, tr(ui, "setup.opponents", "Opponents"));
+    item_row(ui, 3, &ui->setup_leela, status.leela, tr(ui, "setup.leela", "Leela 0.11 (original, 2017)"),
+             tr(ui, "setup.leela_detail", "Gian-Carlo Pascutto's engine from sjeng.org, to play against (CPU and OpenCL builds, 79 MB)"), running);
+    if (status.leela) {
+        ui_label(ui, tr(ui, "setup.leela_hint", "Choose it as the opponent in Settings → AI play."), FONT_UI, 12, c->text_muted);
+    }
 
     // Progress / result.
     if (ui->installer.started || st.finished) {
@@ -128,10 +135,10 @@ static void setup_footer(Ui *ui, void *user) {
         return;   // (outside any CLAY body)
     }
     if (ui_button(ui, CLAY_ID("SetupClose"), tr(ui, "setup.close", "Close"), BUTTON_NORMAL, false, true)) ui_close_dialog(ui);
-    bool any = ui->setup_engine || ui->setup_networks || ui->setup_human;
+    bool any = ui->setup_engine || ui->setup_networks || ui->setup_human || ui->setup_leela;
     if (ui_button(ui, CLAY_ID("SetupDownload"), tr(ui, "setup.download", "Download"), BUTTON_PRIMARY, false, any)) {
         String dir = app_katago_dir(ui->app);
-        installer_start(&ui->installer, string_sv(&dir), current_backend(ui), ui->setup_engine, ui->setup_networks, ui->setup_human);
+        installer_start(&ui->installer, string_sv(&dir), current_backend(ui), ui->setup_engine, ui->setup_networks, ui->setup_human, ui->setup_leela);
         ui->setup_reloaded = false;
         string_free(&dir);
     }

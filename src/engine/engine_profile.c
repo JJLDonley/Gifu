@@ -1,6 +1,7 @@
 #include "engine/engine_profile.h"
 
 #include "base/log.h"
+#include "engine/gtp_engine.h"
 #include "engine/katago_engine.h"
 
 #include <string.h>
@@ -237,11 +238,21 @@ static Engine *create_katago_gtp(const EngineProfile *p, StringView human_profil
     return engine;
 }
 
+// Any other GTP engine (e.g. Leela): plays and scores, no analysis.
+static Engine *create_gtp(const EngineProfile *p, StringView human_profile, const KataGoTuning *tuning, String *error) {
+    UNUSED(human_profile), UNUSED(tuning);
+    SettingsStorage st;
+    KataGoSettings s = settings_for(p, &st);
+    GtpEngineSettings g = { s.name, s.program, s.working_dir, s.extra_args, s.extra_arg_count, s.launcher, s.launcher_count };
+    return gtp_engine_create(&g, error);
+}
+
 static const struct {
     const char *kind;
     EngineConstructor create;
 } ENGINE_KINDS[] = {
     { "katago-gtp", create_katago_gtp },
+    { "gtp", create_gtp },
 };
 
 Engine *engine_create(const EngineProfile *profile, StringView human_profile, const KataGoTuning *tuning, String *error) {

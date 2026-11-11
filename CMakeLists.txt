@@ -121,6 +121,7 @@ add_library(gifu_core STATIC
     src/engine/process.c
     src/engine/line_channel.c
     src/engine/gtp_client.c
+    src/engine/gtp_engine.c
     src/engine/kata_analysis.c
     src/engine/position.c
     src/engine/katago_engine.c

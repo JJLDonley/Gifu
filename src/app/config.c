@@ -26,6 +26,7 @@ static const ConfigField FIELDS[] = {
     BOOL("ui_scale_with_window", ui_scale_with_window, 1),
     STR("engine", engine, ""),
     STR("engine2", engine2, ""),
+    STR("ai.engine", ai_engine, ""),   // the engine that plays against you ("" = the main engine)
     STR("install.backend", install_backend, "opencl"),
     STR("ai.human_profile", human_profile, "rank_5k"),
     STR("ai.human_white_rank", human_white_rank, ""),

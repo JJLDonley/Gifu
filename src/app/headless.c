@@ -201,7 +201,8 @@ int headless_install(App *app) {
            human ? "human-network" : "", backend->id);
     Installer *in = calloc(1, sizeof(Installer));
     if (!in) abort();
-    installer_start(in, string_sv(&dir), backend, engine, networks, human);
+    bool leela = sv_find(what, SV("leela")) >= 0;
+    installer_start(in, string_sv(&dir), backend, engine, networks, human, leela);
     char last_label[192] = "";
     f64 last_print = 0;
     for (;;) {

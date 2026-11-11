@@ -155,8 +155,10 @@ static void start_engine(App *app) {
         profile = NULL;
     }
     if (!profile) {
+        // The first installed analysis engine (KataGo); a playing-only engine (kind gtp,
+        // e.g. Leela) is the main engine only when chosen explicitly.
         vec_foreach(EngineProfile, p, &app->engine_profiles) {
-            if (engine_profile_available(p)) {
+            if (engine_profile_available(p) && sv_eq(string_sv(&p->kind), SV("katago-gtp"))) {
                 profile = p;
                 break;
             }
@@ -693,6 +695,89 @@ static void second_update(App *app) {
     }
 }
 
+// ---- Opponent engine (ai.engine) ------------------------------------------------------------
+
+// The profile that should play against the user, or NULL when the main engine plays.
+static const EngineProfile *opponent_profile(const App *app) {
+    StringView id = string_sv(&app->config.ai_engine);
+    if (!id.len || (app->main.profile && sv_eq(id, string_sv(&app->main.profile->id)))) return NULL;
+    return engine_profiles_find(&app->engine_profiles, id);
+}
+
+static void opponent_start(App *app) {
+    EngineSlot *s = &app->opponent;
+    const EngineProfile *p = opponent_profile(app);
+    if (s->engine && s->profile == p) return;
+    slot_clear(s);
+    string_free(&s->error);
+    if (!p) return;
+    if (!engine_profile_available(p)) {
+        s->status = ENGINE_STATUS_FAILED;
+        s->error = string_format("%s is not installed", string_cstr(&p->name));
+        app_set_status(app, "Opponent: %s is not installed (Engine -> Download engines)", string_cstr(&p->name));
+        return;
+    }
+    String err = { 0 };
+    KataGoTuning tuning = app_katago_tuning(app);
+    s->engine = engine_create(p, app_human_profile(app), &tuning, &err);
+    s->profile = p;
+    if (!s->engine) {
+        s->status = ENGINE_STATUS_FAILED;
+        s->error = err;
+        app_set_status(app, "Opponent: %s", string_cstr(&err));
+        return;
+    }
+    s->status = ENGINE_STATUS_STARTING;
+    app_set_status(app, "Opponent: %s", string_cstr(&p->name));
+}
+
+static void opponent_update(App *app) {
+    EngineSlot *s = &app->opponent;
+    bool wanted = (app->ai_plays[STONE_BLACK] || app->ai_plays[STONE_WHITE] || app->ai_move_once) && opponent_profile(app);
+    if (wanted && s->status != ENGINE_STATUS_FAILED) opponent_start(app);
+    if (!s->engine) return;
+    EngineEvent ev;
+    while (engine_poll(s->engine, &ev)) {
+        switch (ev.kind) {
+            case ENGINE_EVENT_STATUS: s->status = ev.status; break;
+            case ENGINE_EVENT_MOVE:
+                s->waiting_move = false;
+                if (ev.position_id != s->synced_position_id || s->synced_node != app->tree->current) {
+                    s->synced_node = NULL;
+                    break;
+                }
+                if (ev.resigned) {
+                    app->ai_plays[STONE_BLACK] = app->ai_plays[STONE_WHITE] = false;
+                    app_set_status(app, "%s resigns", string_cstr(&s->profile->name));
+                } else if (app_play(app, ev.move.point) != MOVE_OK) {
+                    app_set_status(app, "Opponent move rejected");
+                    s->synced_node = NULL;
+                }
+                break;
+            case ENGINE_EVENT_LOG: {
+                String line = string_format("[opponent] " SV_FMT, SV_ARG(ev.text));
+                app_log(app, string_sv(&line));
+                string_free(&line);
+                break;
+            }
+            case ENGINE_EVENT_ERROR:
+                s->waiting_move = false;
+                app_set_status(app, "Opponent: " SV_FMT, SV_ARG(ev.text));
+                break;
+            default: break;
+        }
+    }
+    if (s->synced_node != app->tree->current && s->status != ENGINE_STATUS_FAILED) {
+        PositionSpec *spec = malloc(sizeof(PositionSpec));
+        if (!spec) abort();
+        position_spec_from_node(app->tree, app->tree->current, string_sv(&app->config.rules), spec);
+        engine_set_position(s->engine, spec);
+        s->synced_position_id = spec->id;
+        s->synced_node = app->tree->current;
+        free(spec);
+    }
+}
+
 static void autosave_update(App *app);
 
 void app_update(App *app) {
@@ -706,6 +791,7 @@ void app_update(App *app) {
     analyzer_update(app);
     rank_update(app);
     second_update(app);
+    opponent_update(app);
     if (!app->main.engine || app->rank_slot == &app->main) return;   // lent to the rank job
     EngineEvent ev;
     while (engine_poll(app->main.engine, &ev)) {
@@ -802,9 +888,12 @@ void app_update(App *app) {
 
     // Engine's turn? In a match the second engine plays White.
     Stone to_play = app->tree->current->to_play;
-    EngineSlot *slot = app->match_mode && to_play == STONE_WHITE ? &app->second : &app->main;
+    // Playing against an opponent engine (ai.engine): it answers; the main engine keeps analysing.
+    EngineSlot *slot = app->match_mode && to_play == STONE_WHITE ? &app->second
+                       : !app->match_mode && opponent_profile(app)  ? &app->opponent
+                                                                    : &app->main;
     bool engine_turn = (app->ai_plays[to_play] || app->ai_move_once || app->match_mode) && !two_passes;
-    bool anyone_waiting = app->main.waiting_move || app->second.waiting_move;
+    bool anyone_waiting = app->main.waiting_move || app->second.waiting_move || app->opponent.waiting_move;
     if (engine_turn && slot->engine && !anyone_waiting && slot->status == ENGINE_STATUS_READY &&
         slot->synced_node == app->tree->current) {
         MoveRequest req = { slot->synced_position_id, to_play, app->config.ai_seconds_per_move,
@@ -865,6 +954,9 @@ void app_config_changed(App *app, StringView key) {
     } else if (sv_starts_with(key, SV("katago."))) {   // launch overrides: restart what is running (on Apply)
         if (app->main.engine) app->restart_main_pending = true;
         if (app->second.engine) app->restart_second_pending = true;
+    } else if (sv_eq(key, SV("ai.engine"))) {
+        slot_clear(&app->opponent);   // started again when it is next needed
+        string_free(&app->opponent.error);
     } else if (sv_eq(key, SV("engine2"))) {
         if (app->second.engine) app->restart_second_pending = true;
     } else if (sv_starts_with(key, SV("analysis."))) {
@@ -1369,6 +1461,7 @@ void app_reload_engines(App *app) {
     app_rank_stop(app);
     stop_engine(app);
     slot_clear(&app->second);
+    slot_clear(&app->opponent);   // its profile is about to be freed
     batch_analyzer_destroy(app->analyzer);
     app->analyzer = NULL;
     engine_profiles_free(&app->engine_profiles);
@@ -1527,6 +1620,8 @@ void app_shutdown(App *app) {
     stop_engine(app);
     slot_clear(&app->second);
     string_free(&app->second.error);
+    slot_clear(&app->opponent);
+    string_free(&app->opponent.error);
     free(app->second.analysis);
     batch_analyzer_destroy(app->analyzer);
     app->analyzer = NULL;

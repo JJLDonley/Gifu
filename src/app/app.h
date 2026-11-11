@@ -93,6 +93,7 @@ typedef struct App {
     // optional extra engine for side-by-side comparison and engine-vs-engine games.
     EngineSlot main;
     EngineSlot second;
+    EngineSlot opponent;   // ai.engine: plays against you (e.g. Leela) while the main engine analyses
     bool analysis_enabled;
     AnalysisSnapshot *analysis;   // latest snapshot for the current node
     bool analysis_valid;

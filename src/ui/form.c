@@ -114,6 +114,12 @@ static isize collect_options(Ui *ui, const Sexpr *v, ChoiceOption *out, isize ca
         vec_foreach(EngineProfile, p, &ui->app->engine_profiles) {
             if (n < cap) out[n++] = (ChoiceOption){ string_sv(&p->id), 0, string_sv(&p->name), engine_profile_available(p) };
         }
+    } else if (sv_eq(source, SV("opponents"))) {
+        // The engine that plays against you: the main engine, or any other profile.
+        out[n++] = (ChoiceOption){ SV(""), 0, app_tr(ui->app, "settings.opponent_main", "The main engine"), true };
+        vec_foreach(EngineProfile, p, &ui->app->engine_profiles) {
+            if (n < cap) out[n++] = (ChoiceOption){ string_sv(&p->id), 0, string_sv(&p->name), engine_profile_available(p) };
+        }
     } else if (sv_eq(source, SV("networks")) || sv_eq(source, SV("human_networks"))) {
         // The networks in katago/networks (or its human/ folder); the one in use is highlighted.
         String katago = app_katago_dir(ui->app);

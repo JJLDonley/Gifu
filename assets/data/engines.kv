@@ -32,6 +32,21 @@ katago-human.human_model = ${root}/katago/networks/human
 katago-human.human_required = true
 katago-human.config = ${root}/katago/${platform}-opencl/gtp_human5k_example.cfg
 
+# The original Leela (Gian-Carlo Pascutto, 2017), an opponent to play against
+# (Engine -> Download engines installs it; Settings -> AI play picks it). It
+# plays Chinese rules and thinks for the AI time per move; it does not analyse.
+leela.name = Leela 0.11
+leela.kind = gtp
+leela.program = ${root}/katago/leela/leela${exe}
+leela.arg = --gtp
+leela.arg = --noponder
+
+leela-opencl.name = Leela 0.11 · OpenCL
+leela-opencl.kind = gtp
+leela-opencl.program = ${root}/katago/leela/leela-opencl${exe}
+leela-opencl.arg = --gtp
+leela-opencl.arg = --noponder
+
 # Remote engine over SSH (key-based login: there is no terminal for a password
 # prompt). Program, model and config are paths on the remote machine. Put your
 # own version in <config_dir>/engines.kv.

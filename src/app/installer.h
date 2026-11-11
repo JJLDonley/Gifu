@@ -64,6 +64,7 @@ String katago_network_url_in(StringView html, StringView name);   // as the netw
 // ---- What is installed ---------------------------------------------------------------------
 typedef struct InstallStatus {
     bool engine, network, human;   // network: any kata1 network
+    bool leela;                    // katago/leela/leela[.exe] (the original Leela, an opponent)
     u32 families;                  // bit i: a network of katago_family_at(i) is installed
 } InstallStatus;
 InstallStatus installer_detect(StringView katago_dir, const KataGoBackend *backend);
@@ -74,6 +75,7 @@ typedef struct InstallRequest {
     const KataGoBackend *backend;
     bool engine, human;
     u32 networks;   // bit i: download the best network of katago_family_at(i)
+    bool leela;     // the original Leela 0.11 (sjeng.org), checked against a pinned SHA-256
 } InstallRequest;
 
 typedef struct InstallState {
@@ -92,7 +94,12 @@ typedef struct Installer {
     bool started;
 } Installer;
 
-void installer_start(Installer *in, StringView katago_dir, const KataGoBackend *backend, bool engine, u32 networks, bool human);
+void installer_start(Installer *in, StringView katago_dir, const KataGoBackend *backend, bool engine, u32 networks, bool human, bool leela);
+
+// The original Leela (Gian-Carlo Pascutto, 2017): the GTP build for this platform.
+#define LEELA_ZIP_URL "https://www.sjeng.org/dl/Leela0110GTP.zip"
+#define LEELA_ZIP_SHA256 "8c7d8c120ab8b940ded35c28f2a2d5b2b56448dbf9a9000f61c3de1da896c537"
+enum { LEELA_ZIP_SIZE = 82629955 };
 InstallState installer_state(Installer *in);
 void installer_cancel(Installer *in);
 void installer_finish(Installer *in);   // joins the thread (call once finished or after cancel)

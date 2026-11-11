@@ -162,7 +162,7 @@ typedef struct Ui {
     // Engine setup (downloads).
     Installer installer;
     bool setup_init, setup_reloaded;
-    bool setup_engine, setup_human;
+    bool setup_engine, setup_human, setup_leela;
     u32 setup_networks;   // network families to download (bit i: katago_family_at(i))
 
     // Comment editor state.
