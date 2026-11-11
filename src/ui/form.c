@@ -5,6 +5,7 @@
 // Fields bind to config keys (the config field table) and apply immediately;
 // dialogs add their own footer buttons around the form.
 #include "ui/ui.h"
+#include "base/os.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -113,6 +114,25 @@ static isize collect_options(Ui *ui, const Sexpr *v, ChoiceOption *out, isize ca
         vec_foreach(EngineProfile, p, &ui->app->engine_profiles) {
             if (n < cap) out[n++] = (ChoiceOption){ string_sv(&p->id), 0, string_sv(&p->name), engine_profile_available(p) };
         }
+    } else if (sv_eq(source, SV("networks")) || sv_eq(source, SV("human_networks"))) {
+        // The networks in katago/networks (or its human/ folder): "" picks the newest.
+        out[n++] = (ChoiceOption){ SV(""), 0, app_tr(ui->app, "settings.network_newest", "Newest installed"), true };
+        String katago = app_katago_dir(ui->app);
+        String dir = path_join(string_sv(&katago), sv_eq(source, SV("networks")) ? SV("networks") : SV("networks/human"));
+        StringVec names = { 0 };
+        os_list_dir(string_sv(&dir), &names);
+        vec_foreach(String, name, &names) {
+            StringView nm = string_sv(name);
+            if (n >= cap || !(sv_ends_with(nm, SV(".bin.gz")) || sv_ends_with(nm, SV(".bin")) || sv_ends_with(nm, SV(".txt.gz")))) continue;
+            StringView value = arena_format(&ui->frame, SV_FMT, SV_ARG(nm));
+            StringView label = value;
+            if (sv_starts_with(label, SV("kata1-"))) label = sv_drop(label, 6);
+            if (sv_ends_with(label, SV(".bin.gz")) || sv_ends_with(label, SV(".txt.gz"))) label = sv_take(label, label.len - 7);
+            out[n++] = (ChoiceOption){ value, 0, label, true };
+        }
+        string_vec_free(&names);
+        string_free(&dir);
+        string_free(&katago);
     } else {
         // (option VALUE "Label")
         for (const Sexpr *o = sexpr_next_child(v, NULL); o && n < cap; o = sexpr_next_child(v, o)) {
@@ -328,6 +348,7 @@ void ui_modal_shell(Ui *ui, StringView title, f32 width, ModalSection body, Moda
                                .childGap = ui_u16(ui, 14) },
                    .clip = { .vertical = true, .childOffset = Clay_GetScrollOffset() } }) {
                 body(ui, user);
+                ui_scrollbar(ui, CLAY_ID("ModalBody"), 200);   // when the window is too short for the dialog
             }
             if (footer) {
                 CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 8),

@@ -36,11 +36,19 @@ String path_vars_expand(const PathVars *vars, StringView text) {
     return out;
 }
 
-// A directory model path resolves to the last *.bin.gz / *.bin / *.txt.gz in it.
-// A model directory resolves to the most recently installed network in it
+// A model directory resolves to the chosen network file in it (PathVars), else to
+// the most recently installed network in it
 // (ties: the last name), so a freshly downloaded network takes over.
-static String resolve_model(String path) {
+static String resolve_model(String path, StringView preferred) {
     if (!os_dir_exists(string_sv(&path))) return path;
+    if (preferred.len) {
+        String want = path_join(string_sv(&path), preferred);
+        if (os_file_exists(string_sv(&want))) {
+            string_free(&path);
+            return want;
+        }
+        string_free(&want);
+    }
     StringVec names = { 0 };
     os_list_dir(string_sv(&path), &names);
     String chosen = { 0 };
@@ -136,9 +144,9 @@ void engine_profiles_from_kv(const KvFile *kv, const PathVars *vars, EngineProfi
             continue;
         }
         String model = p->model;
-        p->model = resolve_model(model);
+        p->model = resolve_model(model, vars->network);
         String human = p->human_model;
-        p->human_model = resolve_model(human);
+        p->human_model = resolve_model(human, vars->human_network);
         // Optional: a local human network that is not installed (yet) is simply not loaded.
         if (p->human_model.len && !p->launcher.len && !os_file_exists(string_sv(&p->human_model))) string_clear(&p->human_model);
         // A later profile with the same id (user file) replaces an earlier one.

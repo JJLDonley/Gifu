@@ -41,6 +41,9 @@
     (number engine.max_processes :min 1 :max 4 :step 1 :format "%.0f" :label settings.max_processes :fallback "KataGo processes at once (GPU memory)"))
   ;; KataGo launch settings (-override-config); 0 keeps the value from the engine's .cfg file.
   (section settings.katago :fallback KataGo
+    ;; Engine -> Download engines adds networks of other sizes (blocks).
+    (choice katago.network :source networks :columns 1 :label settings.network :fallback "Network")
+    (choice katago.human_network :source human_networks :columns 1 :label settings.human_network :fallback "Human network")
     (number katago.search_threads :step 1 :format "%.0f" :zero settings.cfg_default :label settings.search_threads :fallback "Search threads")
     (number katago.max_visits :step 100 :format "%.0f" :zero settings.cfg_default :label settings.max_visits :fallback "Max visits per engine move")
     (number katago.gpu :step 1 :format "%.0f" :zero_value -1 :zero settings.auto :label settings.gpu :fallback "GPU (device number)")

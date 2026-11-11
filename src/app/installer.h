@@ -1,8 +1,8 @@
-// installer.h - downloads KataGo, the strongest kata1 network and the human SL
-// network into <root>/katago (the layout the shipped engine profiles expect):
+// installer.h - downloads KataGo, kata1 networks (one per chosen size) and the
+// human SL network into <root>/katago (the layout the shipped engine profiles expect):
 //
 //   katago/<platform>-<backend>/katago[.exe] + cfgs     engine (release zip)
-//   katago/networks/kata1-....bin.gz                    strongest network
+//   katago/networks/kata1-<family>-....bin.gz           networks
 //   katago/networks/human/b18c384nbt-humanv0.bin.gz     human SL network
 //
 // Discovery is data-light: the newest GitHub release that has an asset for the
@@ -46,11 +46,25 @@ bool katago_strongest_network(StringView html, String *name);
 bool katago_best_network(StringView html, StringView family, i64 min_games, String *name);
 enum { KATAGO_NETWORK_MIN_GAMES = 1000 };
 #define KATAGO_NETWORK_FAMILY "b18c384nbt"
-String katago_network_url(StringView name);
+
+// kata1 network families by size (blocks x channels), smallest first. Each can be
+// downloaded (its best-rated network); the engine profiles pick one in Settings.
+typedef struct NetworkFamily {
+    const char *id;       // e.g. "b18c384nbt" (the file name's family part)
+    const char *label;    // e.g. "18 blocks"
+    const char *detail;   // speed / strength, size
+} NetworkFamily;
+isize katago_family_count(void);
+const NetworkFamily *katago_family_at(isize index);
+isize katago_family_find(StringView id);   // -1 if unknown
+u32 katago_default_families(void);         // bit of KATAGO_NETWORK_FAMILY
+String katago_network_url(StringView name);                       // the .bin.gz URL
+String katago_network_url_in(StringView html, StringView name);   // as the networks page links it (.bin.gz or .txt.gz)
 
 // ---- What is installed ---------------------------------------------------------------------
 typedef struct InstallStatus {
-    bool engine, network, human;
+    bool engine, network, human;   // network: any kata1 network
+    u32 families;                  // bit i: a network of katago_family_at(i) is installed
 } InstallStatus;
 InstallStatus installer_detect(StringView katago_dir, const KataGoBackend *backend);
 
@@ -58,7 +72,8 @@ InstallStatus installer_detect(StringView katago_dir, const KataGoBackend *backe
 typedef struct InstallRequest {
     String katago_dir;
     const KataGoBackend *backend;
-    bool engine, network, human;
+    bool engine, human;
+    u32 networks;   // bit i: download the best network of katago_family_at(i)
 } InstallRequest;
 
 typedef struct InstallState {
@@ -77,7 +92,7 @@ typedef struct Installer {
     bool started;
 } Installer;
 
-void installer_start(Installer *in, StringView katago_dir, const KataGoBackend *backend, bool engine, bool network, bool human);
+void installer_start(Installer *in, StringView katago_dir, const KataGoBackend *backend, bool engine, u32 networks, bool human);
 InstallState installer_state(Installer *in);
 void installer_cancel(Installer *in);
 void installer_finish(Installer *in);   // joins the thread (call once finished or after cancel)

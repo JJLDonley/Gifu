@@ -17,6 +17,26 @@ static const KataGoBackend BACKENDS[] = {
     { "cuda12.8-cudnn9.8.0", "cuda", "NVIDIA CUDA" },
 };
 
+static const NetworkFamily FAMILIES[] = {
+    { "b6c96", "6 blocks", "Tiny: very fast, weakest (5 MB)" },
+    { "b10c128", "10 blocks", "Small and fast (14 MB)" },
+    { "b15c192", "15 blocks", "Small (45 MB)" },
+    { "b18c384nbt", "18 blocks", "Recommended: strong and fast on any GPU (93 MB)" },
+    { "b28c512nbt", "28 blocks", "Strongest per visit; needs a strong GPU (258 MB)" },
+    { "b40c256", "40 blocks", "Older large size, slower (165 MB)" },
+    { "b60c320", "60 blocks", "Older largest size, slowest (384 MB)" },
+};
+
+isize katago_family_count(void) { return countof(FAMILIES); }
+const NetworkFamily *katago_family_at(isize i) { return i >= 0 && i < countof(FAMILIES) ? &FAMILIES[i] : NULL; }
+isize katago_family_find(StringView id) {
+    for (isize i = 0; i < countof(FAMILIES); ++i) {
+        if (sv_eq(sv(FAMILIES[i].id), id)) return i;
+    }
+    return -1;
+}
+u32 katago_default_families(void) { return 1u << katago_family_find(SV(KATAGO_NETWORK_FAMILY)); }
+
 isize katago_backend_count(void) { return countof(BACKENDS); }
 const KataGoBackend *katago_backend_at(isize i) { return i >= 0 && i < countof(BACKENDS) ? &BACKENDS[i] : NULL; }
 const KataGoBackend *katago_backend_find(StringView id) {
@@ -159,17 +179,50 @@ bool katago_best_network(StringView html, StringView family, i64 min_games, Stri
     return found;
 }
 
+String katago_network_url_in(StringView html, StringView name) {
+    // The page links each model file: ".../models/kata1/<name>.bin.gz" (older ones .txt.gz).
+    String needle = string_format("models/kata1/" SV_FMT ".", SV_ARG(name));
+    isize at = sv_find(html, string_sv(&needle));
+    string_free(&needle);
+    if (at >= 0) {
+        StringView ext = sv_drop(html, at + 13 + name.len);
+        if (sv_starts_with(ext, SV(".txt.gz"))) {
+            return string_format("https://media.katagotraining.org/uploaded/networks/models/kata1/" SV_FMT ".txt.gz", SV_ARG(name));
+        }
+    }
+    return katago_network_url(name);
+}
+
 String katago_network_url(StringView name) {
     return string_format("https://media.katagotraining.org/uploaded/networks/models/kata1/" SV_FMT ".bin.gz", SV_ARG(name));
 }
 
 // ---- Detection ------------------------------------------------------------------------------------
 
+// Bit i set: a "kata1-<family i>-....bin.gz" is in `dir`.
+static u32 dir_families(StringView dir) {
+    StringVec names = { 0 };
+    u32 bits = 0;
+    if (os_list_dir(dir, &names)) {
+        vec_foreach(String, n, &names) {
+            for (isize i = 0; i < countof(FAMILIES); ++i) {
+                StringView name = string_sv(n);
+                if (!sv_starts_with(name, SV("kata1-")) || !(sv_ends_with(name, SV(".bin.gz")) || sv_ends_with(name, SV(".txt.gz")))) continue;
+                StringView rest = sv_drop(name, 6);
+                StringView id = sv(FAMILIES[i].id);
+                if (sv_starts_with(rest, id) && rest.len > id.len && rest.data[id.len] == '-') bits |= 1u << i;
+            }
+        }
+    }
+    string_vec_free(&names);
+    return bits;
+}
+
 static bool dir_has_network(StringView dir) {
     StringVec names = { 0 };
     bool found = false;
     if (os_list_dir(dir, &names)) {
-        vec_foreach(String, n, &names) found |= sv_ends_with(string_sv(n), SV(".bin.gz"));
+        vec_foreach(String, n, &names) found |= sv_ends_with(string_sv(n), SV(".bin.gz")) || sv_ends_with(string_sv(n), SV(".txt.gz"));
     }
     string_vec_free(&names);
     return found;
@@ -183,6 +236,7 @@ InstallStatus installer_detect(StringView katago_dir, const KataGoBackend *backe
     String networks = path_join(katago_dir, SV("networks"));
     String human = path_join(string_sv(&networks), SV("human"));
     s.network = dir_has_network(string_sv(&networks));
+    s.families = dir_families(string_sv(&networks));
     s.human = dir_has_network(string_sv(&human));
     string_free(&engine_dir);
     string_free(&exe);
@@ -278,24 +332,29 @@ static i32 worker_main(void *arg) {
         }
     }
     if (ok && rq->engine && !in->cancel) ok = install_engine(in, string_sv(&releases));
-    if (ok && rq->network && !in->cancel) {
-        set_label(in, "Looking up the strongest " KATAGO_NETWORK_FAMILY " network");
-        String html = { 0 }, name = { 0 };
-        if (!http_get(SV("https://katagotraining.org/networks/"), &html, &err)) {
-            ok = fail(in, &err, "katagotraining.org");
-        } else if (!katago_best_network(string_sv(&html), SV(KATAGO_NETWORK_FAMILY), KATAGO_NETWORK_MIN_GAMES, &name) &&
-                   !katago_strongest_network(string_sv(&html), &name)) {
-            String e = string_from(SV("could not find the strongest network on the page"));
-            ok = fail(in, &e, "katagotraining.org");
-        } else {
-            String url = katago_network_url(string_sv(&name));
-            String file = string_format(SV_FMT "/networks/%s.bin.gz", SV_ARG(string_sv(&rq->katago_dir)), string_cstr(&name));
+    if (ok && rq->networks && !in->cancel) {
+        set_label(in, "Looking up networks on katagotraining.org");
+        String html = { 0 };
+        if (!http_get(SV("https://katagotraining.org/networks/"), &html, &err)) ok = fail(in, &err, "katagotraining.org");
+        for (isize i = 0; ok && i < countof(FAMILIES) && !in->cancel; ++i) {
+            if (!(rq->networks & (1u << i))) continue;
+            String name = { 0 };
+            // The best-rated of the family (fewer rating games for the rarer old sizes).
+            if (!katago_best_network(string_sv(&html), sv(FAMILIES[i].id), KATAGO_NETWORK_MIN_GAMES, &name) &&
+                !katago_best_network(string_sv(&html), sv(FAMILIES[i].id), 0, &name)) {
+                String e = string_format("no %s network on the page", FAMILIES[i].id);
+                ok = fail(in, &e, "katagotraining.org");
+                break;
+            }
+            String url = katago_network_url_in(string_sv(&html), string_sv(&name));
+            StringView ext = sv_ends_with(string_sv(&url), SV(".txt.gz")) ? SV(".txt.gz") : SV(".bin.gz");
+            String file = string_format(SV_FMT "/networks/%s" SV_FMT, SV_ARG(string_sv(&rq->katago_dir)), string_cstr(&name), SV_ARG(ext));
             ok = download_network(in, string_sv(&url), string_sv(&file), -1, string_cstr(&name));
             string_free(&url);
             string_free(&file);
+            string_free(&name);
         }
         string_free(&html);
-        string_free(&name);
     }
     if (ok && rq->human && !in->cancel) {
         DownloadAsset human = { 0 };
@@ -322,12 +381,12 @@ static i32 worker_main(void *arg) {
     return 0;
 }
 
-void installer_start(Installer *in, StringView katago_dir, const KataGoBackend *backend, bool engine, bool network, bool human) {
+void installer_start(Installer *in, StringView katago_dir, const KataGoBackend *backend, bool engine, u32 networks, bool human) {
     if (in->started && in->state.running) return;
     if (in->started) installer_finish(in);
     *in = (Installer){ 0 };
     mutex_init(&in->lock);
-    in->request = (InstallRequest){ string_from(katago_dir), backend, engine, network, human };
+    in->request = (InstallRequest){ string_from(katago_dir), backend, engine, human, networks };
     in->state.running = true;
     in->state.total = -1;
     snprintf(in->state.label, sizeof(in->state.label), "Starting");

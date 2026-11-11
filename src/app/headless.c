@@ -184,6 +184,11 @@ int headless_install(App *app) {
     StringView what = o->install;
     bool engine = sv_find(what, SV("engine")) >= 0, network = sv_find(what, SV("network")) >= 0, human = sv_find(what, SV("human")) >= 0;
     if (sv_eq(what, SV("all"))) engine = network = human = true;
+    // A network family by name (e.g. --install b28c512nbt,human) downloads that size.
+    u32 networks = network ? katago_default_families() : 0;
+    for (isize i = 0; i < katago_family_count(); ++i) {
+        if (sv_find(what, sv(katago_family_at(i)->id)) >= 0) networks |= 1u << i;
+    }
     const KataGoBackend *backend = katago_backend_find(o->install_backend.len ? o->install_backend : SV("opencl"));
     if (!backend) {
         fprintf(stderr, "unknown backend; choose one of:");
@@ -192,11 +197,11 @@ int headless_install(App *app) {
         return 2;
     }
     String dir = o->install_dir.len ? string_from(o->install_dir) : app_katago_dir(app);
-    printf("Installing into %s (%s%s%s) with backend %s\n", string_cstr(&dir), engine ? "engine " : "", network ? "network " : "",
+    printf("Installing into %s (%s%s%s) with backend %s\n", string_cstr(&dir), engine ? "engine " : "", networks ? "networks " : "",
            human ? "human-network" : "", backend->id);
     Installer *in = calloc(1, sizeof(Installer));
     if (!in) abort();
-    installer_start(in, string_sv(&dir), backend, engine, network, human);
+    installer_start(in, string_sv(&dir), backend, engine, networks, human);
     char last_label[192] = "";
     f64 last_print = 0;
     for (;;) {

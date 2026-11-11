@@ -49,6 +49,9 @@ typedef Vec(EngineProfile) EngineProfileVec;
 typedef struct PathVars {
     String root;
     String exe_dir;
+    // A model / human_model that is a directory resolves to this file in it when it
+    // exists (Settings -> KataGo), else to the most recently installed network.
+    StringView network, human_network;
 } PathVars;
 
 String path_vars_expand(const PathVars *vars, StringView text);

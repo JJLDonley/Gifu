@@ -52,6 +52,8 @@ static const ConfigField FIELDS[] = {
     INT("katago.analysis_threads", katago_analysis_threads, 12, 1, 256),
     INT("katago.analysis_search_threads", katago_analysis_search_threads, 2, 1, 256),
     STR("katago.overrides", katago_overrides, ""),
+    STR("katago.network", katago_network, ""),               // file in katago/networks ("" = the newest)
+    STR("katago.human_network", katago_human_network, ""),   // file in katago/networks/human
     BOOL("sgf.autosave", sgf_autosave, 0),
     INT("sgf.autosave_seconds", sgf_autosave_seconds, 60, 10, 3600),
     BOOL("sgf.save_lz", sgf_save_lz, 0),

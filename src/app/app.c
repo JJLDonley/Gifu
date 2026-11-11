@@ -860,6 +860,8 @@ void app_config_changed(App *app, StringView key) {
             if (app->main.engine) engine_set_human_profile(app->main.engine, app_human_profile(app));
             if (app->second.engine) engine_set_human_profile(app->second.engine, app_human_profile(app));
         }
+    } else if (sv_eq(key, SV("katago.network")) || sv_eq(key, SV("katago.human_network"))) {
+        app_reload_engines(app);   // the profiles resolve their network folder again
     } else if (sv_starts_with(key, SV("katago."))) {   // launch overrides: restart what is running (on Apply)
         if (app->main.engine) app->restart_main_pending = true;
         if (app->second.engine) app->restart_second_pending = true;
@@ -1355,7 +1357,7 @@ static const CommandDef APP_COMMANDS[] = {
 String app_katago_dir(const App *app) { return path_join(string_sv(&app->root_dir), SV("katago")); }
 
 static void load_engine_profiles(App *app) {
-    PathVars vars = { app->root_dir, app->exe_dir };
+    PathVars vars = { app->root_dir, app->exe_dir, string_sv(&app->config.katago_network), string_sv(&app->config.katago_human_network) };
     KvFile engines_kv = { 0 };
     load_kv_layers(app, "engines.kv", &engines_kv);
     engine_profiles_from_kv(&engines_kv, &vars, &app->engine_profiles);

@@ -51,7 +51,7 @@ static void setup_body(Ui *ui, void *user) {
     bool running = st.running;
     if (!ui->setup_init) {   // preselect whatever is missing
         ui->setup_engine = !status.engine;
-        ui->setup_network = !status.network;
+        ui->setup_networks = status.network ? 0 : katago_default_families();
         ui->setup_human = !status.human;
         ui->setup_init = true;
     }
@@ -74,8 +74,18 @@ static void setup_body(Ui *ui, void *user) {
     ui_card_title(ui, tr(ui, "setup.downloads", "Downloads"));
     item_row(ui, 0, &ui->setup_engine, status.engine, tr(ui, "setup.engine", "KataGo engine"),
              tr(ui, "setup.engine_detail", "Latest release for the build above (~15-500 MB)"), running);
-    item_row(ui, 1, &ui->setup_network, status.network, tr(ui, "setup.network", "Strongest network"),
-             tr(ui, "setup.network_detail", "Strongest b18c384nbt (fast on any GPU) from katagotraining.org (~100 MB)"), running);
+    // Networks by size: the best-rated network of each family on katagotraining.org.
+    ui_card_title(ui, tr(ui, "setup.networks", "Networks (by size)"));
+    for (isize i = 0; i < katago_family_count(); ++i) {
+        const NetworkFamily *f = katago_family_at(i);
+        bool on = (ui->setup_networks >> i) & 1u;
+        char key[64];
+        snprintf(key, sizeof(key), "setup.family.%s", f->id);
+        item_row(ui, 10 + (u32)i, &on, (status.families >> i) & 1u, arena_format(&ui->frame, "%s  ·  %s", f->label, f->id),
+                 app_tr(app, key, f->detail), running);
+        ui->setup_networks = on ? ui->setup_networks | (1u << i) : ui->setup_networks & ~(1u << i);
+    }
+    ui_card_title(ui, tr(ui, "setup.human_title", "Human style"));
     item_row(ui, 2, &ui->setup_human, status.human, tr(ui, "setup.human", "Human SL network"),
              tr(ui, "setup.human_detail", "Plays and evaluates like a human of a chosen rank (~100 MB)"), running);
     if (status.human) {
@@ -118,10 +128,10 @@ static void setup_footer(Ui *ui, void *user) {
         return;   // (outside any CLAY body)
     }
     if (ui_button(ui, CLAY_ID("SetupClose"), tr(ui, "setup.close", "Close"), BUTTON_NORMAL, false, true)) ui_close_dialog(ui);
-    bool any = ui->setup_engine || ui->setup_network || ui->setup_human;
+    bool any = ui->setup_engine || ui->setup_networks || ui->setup_human;
     if (ui_button(ui, CLAY_ID("SetupDownload"), tr(ui, "setup.download", "Download"), BUTTON_PRIMARY, false, any)) {
         String dir = app_katago_dir(ui->app);
-        installer_start(&ui->installer, string_sv(&dir), current_backend(ui), ui->setup_engine, ui->setup_network, ui->setup_human);
+        installer_start(&ui->installer, string_sv(&dir), current_backend(ui), ui->setup_engine, ui->setup_networks, ui->setup_human);
         ui->setup_reloaded = false;
         string_free(&dir);
     }
