@@ -1,0 +1,27 @@
+// Windows resources: application icon and version information (configured by CMake
+// from project(VERSION) and GIFU_VERSION_LABEL into the build folder).
+1 ICON "@GIFU_ICON@"
+
+1 VERSIONINFO
+FILEVERSION @PROJECT_VERSION_MAJOR@,@PROJECT_VERSION_MINOR@,@PROJECT_VERSION_PATCH@,0
+PRODUCTVERSION @PROJECT_VERSION_MAJOR@,@PROJECT_VERSION_MINOR@,@PROJECT_VERSION_PATCH@,0
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904B0"
+    BEGIN
+      VALUE "CompanyName", "Gifu"
+      VALUE "FileDescription", "Gifu - KataGo GUI"
+      VALUE "FileVersion", "@GIFU_VERSION_STRING@"
+      VALUE "InternalName", "gifu"
+      VALUE "LegalCopyright", "GPL-3.0"
+      VALUE "OriginalFilename", "gifu.exe"
+      VALUE "ProductName", "Gifu"
+      VALUE "ProductVersion", "@GIFU_VERSION_STRING@"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x409, 1200
+  END
+END

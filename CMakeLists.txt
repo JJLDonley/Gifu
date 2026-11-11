@@ -7,6 +7,14 @@ set(CMAKE_C_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(GIFU_SANITIZE "Build with ASan/UBSan (gcc/clang only)" OFF)
+# Pre-release label appended to the version, e.g. "alpha.1" -> 0.2.0-alpha.1 (empty for
+# a stable release). CI sets it from the tag (v0.2.0-alpha.1); the updater compares it.
+set(GIFU_VERSION_LABEL "" CACHE STRING "Pre-release label (alpha.1, beta.2, ...); empty = stable")
+if(GIFU_VERSION_LABEL)
+    set(GIFU_VERSION_STRING "${PROJECT_VERSION}-${GIFU_VERSION_LABEL}")
+else()
+    set(GIFU_VERSION_STRING "${PROJECT_VERSION}")
+endif()
 option(GIFU_BUILD_TESTS "Build unit tests" ON)
 
 # Toolchains: GCC/Clang only (Linux gcc, MSYS2 UCRT64 gcc/clang, llvm-mingw cross).
@@ -82,6 +90,9 @@ endif()
 # ---------------------------------------------------------------------------
 # gifu_core: everything that does not touch the window (unit-testable)
 # ---------------------------------------------------------------------------
+# The version the app reports and the updater compares (base/version.h).
+configure_file(src/base/version.h.in ${CMAKE_BINARY_DIR}/generated/base/version_info.h @ONLY)
+
 add_library(gifu_core STATIC
     src/base/arena.c
     src/base/str.c
@@ -124,8 +135,9 @@ add_library(gifu_core STATIC
     src/app/installer.c
     src/app/screen_capture.c
     src/app/board_sync.c
-    src/app/app_sync.c)
-target_include_directories(gifu_core PUBLIC src)
+    src/app/app_sync.c
+    src/app/update.c)
+target_include_directories(gifu_core PUBLIC src ${CMAKE_BINARY_DIR}/generated)
 target_link_libraries(gifu_core PUBLIC third_party_misc)
 if(WIN32)
     target_link_libraries(gifu_core PUBLIC shell32 ole32 uuid gdi32 user32)   # gdi32: screen capture
@@ -171,9 +183,11 @@ target_link_libraries(gifu PRIVATE gifu_core raylib)
 gifu_warnings(gifu)
 if(WIN32)
     enable_language(RC)
-    target_sources(gifu PRIVATE packaging/windows/gifu.rc)
+    set(GIFU_ICON ${CMAKE_SOURCE_DIR}/packaging/windows/gifu.ico)
+    configure_file(packaging/windows/gifu.rc.in ${CMAKE_BINARY_DIR}/generated/gifu.rc @ONLY)
+    target_sources(gifu PRIVATE ${CMAKE_BINARY_DIR}/generated/gifu.rc)
     # windres does not report the icon as a dependency: rebuild when it changes.
-    set_source_files_properties(packaging/windows/gifu.rc PROPERTIES OBJECT_DEPENDS ${CMAKE_SOURCE_DIR}/packaging/windows/gifu.ico)
+    set_source_files_properties(${CMAKE_BINARY_DIR}/generated/gifu.rc PROPERTIES OBJECT_DEPENDS ${GIFU_ICON})
     target_link_libraries(gifu PRIVATE comdlg32)
     # GUI subsystem in Release (no console window), console in Debug for logs.
     target_link_options(gifu PRIVATE $<$<CONFIG:Release>:-mwindows>)
@@ -237,6 +251,7 @@ if(GIFU_BUILD_TESTS AND EXISTS ${CMAKE_SOURCE_DIR}/tests/test_main.c)
     tests/test_board_reader.c
     tests/test_stone_anim.c
     tests/test_markup.c
+    tests/test_update.c
         src/ui/theme.c
         src/ui/layout_model.c
         src/ui/stone_anim.c
