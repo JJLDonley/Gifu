@@ -1,7 +1,7 @@
 #include "engine/http.h"
 
-#include "base/os.h"
-#include "engine/process.h"
+#include "platform/os.h"
+#include "platform/process.h"
 
 #include <stdio.h>
 

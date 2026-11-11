@@ -1,8 +1,8 @@
 #include "core/sgf.h"
 
 #include "base/log.h"
-#include "base/os.h"
-#include "base/text_encoding.h"
+#include "platform/os.h"
+#include "platform/text_encoding.h"
 #include "base/vec.h"
 
 #include <math.h>

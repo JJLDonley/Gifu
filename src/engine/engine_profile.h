@@ -23,7 +23,7 @@
 #pragma once
 
 #include "base/kv.h"
-#include "base/os.h"
+#include "platform/os.h"
 #include "engine/batch_analyzer.h"
 #include "engine/engine.h"
 #include "engine/katago_tuning.h"

@@ -4,7 +4,7 @@
 #include "engine/gtp_client.h"
 
 #include "base/log.h"
-#include "engine/line_channel.h"
+#include "platform/line_channel.h"
 
 #include <stdlib.h>
 

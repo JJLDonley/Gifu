@@ -2,7 +2,7 @@
 #include "app/app.h"
 
 #include "base/log.h"
-#include "base/os.h"
+#include "platform/os.h"
 #include "base/version_info.h"
 
 #include <stdlib.h>

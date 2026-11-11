@@ -11,7 +11,7 @@
 #include "core/game_report.h"
 #include "app/installer.h"
 #include "engine/game_job.h"
-#include "app/screen_capture.h"
+#include "platform/screen_capture.h"
 #include "base/image.h"
 #include "core/board_reader.h"
 #include "app/updater.h"

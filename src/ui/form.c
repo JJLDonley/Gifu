@@ -5,7 +5,7 @@
 // Fields bind to config keys (the config field table) and apply immediately;
 // dialogs add their own footer buttons around the form.
 #include "ui/ui.h"
-#include "base/os.h"
+#include "platform/os.h"
 
 #include <math.h>
 #include <stdio.h>

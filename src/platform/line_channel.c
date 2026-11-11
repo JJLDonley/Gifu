@@ -1,8 +1,8 @@
-#include "engine/line_channel.h"
+#include "platform/line_channel.h"
 
 #include "base/log.h"
-#include "base/os.h"
-#include "base/thread.h"
+#include "platform/os.h"
+#include "platform/thread.h"
 #include "base/vec.h"
 
 #include <stdlib.h>

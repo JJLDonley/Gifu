@@ -2,12 +2,12 @@
 
 #include "base/codec.h"
 #include "base/log.h"
-#include "base/os.h"
-#include "base/thread.h"
+#include "platform/os.h"
+#include "platform/thread.h"
 #include "base/version_info.h"
 #include "base/zip.h"
 #include "engine/http.h"
-#include "engine/process.h"
+#include "platform/process.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,13 +33,7 @@ struct Updater {
     String staged;         // the unpacked package's root folder, or the new AppImage file
 };
 
-StringView updater_program_name(void) {
-#ifdef _WIN32
-    return SV("gifu.exe");
-#else
-    return SV("gifu");
-#endif
-}
+StringView updater_program_name(void) { return *os_executable_suffix() ? SV("gifu.exe") : SV("gifu"); }
 
 // A packaged install: the release archives put the notices next to the program.
 // (Build folders do not: a development build never replaces itself.)

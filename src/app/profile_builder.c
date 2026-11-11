@@ -2,10 +2,10 @@
 
 #include "base/codec.h"
 #include "base/log.h"
-#include "base/os.h"
-#include "base/thread.h"
+#include "platform/os.h"
+#include "platform/thread.h"
 #include "core/sgf.h"
-#include "engine/process.h"
+#include "platform/process.h"
 
 #include <stdio.h>
 #include <stdlib.h>

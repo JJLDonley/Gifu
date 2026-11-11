@@ -40,6 +40,7 @@ void os_log_backtrace(void);
 String os_executable_dir(void);
 String os_config_dir(void);  // %APPDATA%\Gifu, $XDG_CONFIG_HOME/gifu, ~/.config/gifu
 const char *os_platform_name(void);   // "windows" | "linux" | "macos"
+const char *os_executable_suffix(void);   // ".exe" on Windows, else ""
 
 String path_join(StringView a, StringView b);
 StringView path_basename(StringView path);

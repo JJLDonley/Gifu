@@ -1,5 +1,7 @@
 #include "app/update.h"
 
+#include "platform/os.h"
+
 #include <stdlib.h>
 
 #include "base/json.h"
@@ -64,12 +66,10 @@ bool version_is_prerelease(StringView v) { return sv_find_char(strip_v(v), '-') 
 // ---- Releases -----------------------------------------------------------------------------------
 
 StringView update_asset_suffix(bool appimage) {
-#ifdef _WIN32
-    UNUSED(appimage);
-    return SV("-windows-x64.zip");
-#else
+    StringView platform = sv(os_platform_name());
+    if (sv_eq(platform, SV("windows"))) return SV("-windows-x64.zip");
+    if (sv_eq(platform, SV("macos"))) return SV("-macos.zip");   // Gifu.app (Apple Silicon and Intel)
     return appimage ? SV("-x86_64.AppImage") : SV("-linux-x64.tar.xz");
-#endif
 }
 
 void release_info_free(ReleaseInfo *r) {

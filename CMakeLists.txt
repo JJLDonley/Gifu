@@ -45,6 +45,11 @@ target_compile_options(raylib PRIVATE -w)
 set_target_properties(raylib PROPERTIES C_STANDARD 99 C_EXTENSIONS ON)
 if(WIN32)
     target_link_libraries(raylib PUBLIC winmm gdi32 user32 shell32 opengl32)
+elseif(APPLE)
+    # GLFW's Cocoa backend is Objective-C: rglfw.c pulls in the .m files.
+    target_compile_definitions(raylib PRIVATE _GLFW_COCOA GL_SILENCE_DEPRECATION)
+    set_source_files_properties(${RAYLIB_SRC}/rglfw.c PROPERTIES COMPILE_OPTIONS "-x;objective-c")
+    target_link_libraries(raylib PUBLIC "-framework Cocoa" "-framework IOKit" "-framework CoreVideo" "-framework OpenGL" "-framework CoreFoundation")
 else()
     target_compile_definitions(raylib PRIVATE _GLFW_X11 _GNU_SOURCE)
     target_link_libraries(raylib PUBLIC X11 m dl pthread)
@@ -97,11 +102,8 @@ add_library(gifu_core STATIC
     src/base/arena.c
     src/base/str.c
     src/base/vec.c
-    src/base/os.c
     src/base/log.c
     src/base/json.c
-    src/base/thread.c
-    src/base/text_encoding.c
     src/base/sexpr.c
     src/base/kv.c
     src/base/zip.c
@@ -120,8 +122,6 @@ add_library(gifu_core STATIC
     src/core/board_reader.c
     src/core/markup.c
     src/core/sgf_analysis.c
-    src/engine/process.c
-    src/engine/line_channel.c
     src/engine/gtp_client.c
     src/engine/gtp_engine.c
     src/engine/kata_analysis.c
@@ -138,7 +138,6 @@ add_library(gifu_core STATIC
     src/app/config.c
     src/app/i18n.c
     src/app/installer.c
-    src/app/screen_capture.c
     src/app/board_sync.c
     src/app/app_sync.c
     src/app/update.c
@@ -146,10 +145,21 @@ add_library(gifu_core STATIC
     src/app/app_updates.c
     src/app/profile_builder.c
     src/app/ai_style.c)
+# The platform layer (src/platform/platform.h): portable parts plus one file per system.
+target_sources(gifu_core PRIVATE src/platform/platform_common.c src/platform/line_channel.c src/platform/screen_capture.c)
+if(WIN32)
+    target_sources(gifu_core PRIVATE src/platform/platform_windows.c)
+elseif(APPLE)
+    target_sources(gifu_core PRIVATE src/platform/platform_posix.c src/platform/platform_macos.c)
+else()
+    target_sources(gifu_core PRIVATE src/platform/platform_posix.c src/platform/platform_linux.c)
+endif()
 target_include_directories(gifu_core PUBLIC src ${CMAKE_BINARY_DIR}/generated)
 target_link_libraries(gifu_core PUBLIC third_party_misc)
 if(WIN32)
     target_link_libraries(gifu_core PUBLIC shell32 ole32 uuid gdi32 user32)   # gdi32: screen capture
+elseif(APPLE)
+    target_link_libraries(gifu_core PUBLIC m pthread)   # screen capture and dialogs use system tools
 else()
     target_link_libraries(gifu_core PUBLIC m pthread X11)   # X11: screen capture
 endif()
@@ -161,7 +171,6 @@ gifu_warnings(gifu_core)
 add_executable(gifu
     src/main.c
     src/app/app.c
-    src/app/file_dialog.c
     src/app/headless.c
     src/ui/font_cache.c
     src/ui/theme.c
@@ -266,6 +275,7 @@ if(GIFU_BUILD_TESTS AND EXISTS ${CMAKE_SOURCE_DIR}/tests/test_main.c)
     tests/test_estimate.c
     tests/test_profile.c
     tests/test_style.c
+    tests/test_platform.c
         src/ui/theme.c
         src/ui/layout_model.c
         src/ui/stone_anim.c

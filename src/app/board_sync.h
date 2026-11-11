@@ -7,7 +7,7 @@
 // readings into moves / positions (board_sync_apply).
 #pragma once
 
-#include "app/screen_capture.h"
+#include "platform/screen_capture.h"
 #include "core/board_reader.h"
 #include "core/game_tree.h"
 

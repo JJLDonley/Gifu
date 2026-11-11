@@ -1,8 +1,8 @@
 #include "app/board_sync.h"
 
 #include "base/log.h"
-#include "base/os.h"
-#include "base/thread.h"
+#include "platform/os.h"
+#include "platform/thread.h"
 
 #include <math.h>
 #include <stdlib.h>

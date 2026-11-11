@@ -5,7 +5,7 @@
 // gtp_client_poll() each frame; it never blocks on the engine.
 #pragma once
 
-#include "engine/process.h"
+#include "platform/process.h"
 
 typedef enum GtpEventKind {
     GTP_EVENT_RESPONSE,   // complete "=id ..." or "?id ..." response

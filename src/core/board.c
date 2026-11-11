@@ -1,7 +1,7 @@
 #include "core/board.h"
 
 #include <string.h>
-#include "base/thread.h"
+#include "platform/thread.h"
 
 // ---- Zobrist -----------------------------------------------------------------
 

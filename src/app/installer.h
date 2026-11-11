@@ -11,7 +11,7 @@
 #pragma once
 
 #include "base/str.h"
-#include "base/thread.h"
+#include "platform/thread.h"
 
 typedef struct KataGoBackend {
     const char *id;       // asset tag, e.g. "opencl", "eigenavx2", "cuda12.8-cudnn9.8.0"

@@ -3,8 +3,8 @@
 #include "app/app.h"
 
 #include "base/log.h"
-#include "base/os.h"
-#include "engine/line_channel.h"
+#include "platform/os.h"
+#include "platform/line_channel.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -56,9 +56,7 @@ void app_sync_select(App *app) {
     }
     // The picker is this program again: a transparent window over every monitor.
     String exe = path_join(string_sv(&app->exe_dir), SV("gifu"));
-#ifdef _WIN32
-    string_push(&exe, SV(".exe"));
-#endif
+    string_push_cstr(&exe, os_executable_suffix());
     char area[64];
     snprintf(area, sizeof(area), "%d,%d,%d,%d", d.x, d.y, d.width, d.height);
     StringView hint = app_tr(app, "sync.pick_hint", "Drag a box around the board  -  Esc cancels");

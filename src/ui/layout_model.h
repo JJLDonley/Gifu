@@ -9,7 +9,7 @@
 #pragma once
 
 #include "base/str.h"
-#include "base/os.h"    // StringVec
+#include "platform/os.h"    // StringVec
 #include "base/vec.h"
 
 typedef struct LayoutModel {

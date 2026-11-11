@@ -1,5 +1,7 @@
 #include "engine/engine_profile.h"
 
+#include "platform/os.h"
+
 #include "base/log.h"
 #include "engine/gtp_engine.h"
 #include "engine/katago_engine.h"
@@ -27,12 +29,7 @@ String path_vars_expand(const PathVars *vars, StringView text) {
         if (sv_eq(name, SV("root"))) string_push(&out, string_sv(&vars->root));
         else if (sv_eq(name, SV("exe_dir"))) string_push(&out, string_sv(&vars->exe_dir));
         else if (sv_eq(name, SV("platform"))) string_push_cstr(&out, os_platform_name());
-#if defined(OS_WINDOWS)
-        else if (sv_eq(name, SV("exe"))) string_push(&out, SV(".exe"));
-#else
-        else if (sv_eq(name, SV("exe"))) {
-        }
-#endif
+        else if (sv_eq(name, SV("exe"))) string_push_cstr(&out, os_executable_suffix());
     }
     return out;
 }

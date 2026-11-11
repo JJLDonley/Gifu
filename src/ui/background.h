@@ -2,7 +2,7 @@
 // procedurally generated paper texture (grain, fibers, vignette, coffee rings).
 #pragma once
 
-#include "base/thread.h"
+#include "platform/thread.h"
 #include "ui/theme.h"
 
 // A paper texture being generated on a worker thread (first use of a theme):

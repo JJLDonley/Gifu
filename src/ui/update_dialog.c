@@ -4,7 +4,7 @@
 // daily check offers (and which is picked first here).
 #include "ui/ui.h"
 
-#include "base/os.h"
+#include "platform/os.h"
 #include "base/version_info.h"
 
 static StringView tr(Ui *ui, const char *key, const char *fallback) { return app_tr(ui->app, key, fallback); }

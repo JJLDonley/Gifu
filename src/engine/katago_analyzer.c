@@ -6,7 +6,7 @@
 #include "base/json.h"
 #include "base/log.h"
 #include "base/vec.h"
-#include "engine/line_channel.h"
+#include "platform/line_channel.h"
 
 #include <stdio.h>
 #include <stdlib.h>
