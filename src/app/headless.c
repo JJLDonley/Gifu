@@ -512,7 +512,7 @@ int headless_update(App *app) {
         if (st.phase == UPDATER_AVAILABLE && last != UPDATER_AVAILABLE) {
             printf("Gifu %s is available%s\n", string_cstr(&st.version), st.can_install ? "" : " (this is not a packaged install: nothing is replaced)");
             if (!st.can_install) break;
-            updater_download(u);
+            updater_install(u, string_sv(&st.version));
         } else if (st.phase == UPDATER_UP_TO_DATE) {
             printf("Gifu %s is the newest version\n", GIFU_VERSION);
             break;
@@ -525,7 +525,7 @@ int headless_update(App *app) {
             // From the command line the new version is installed, not started.
             StringView args[] = { SV("--version") };
             if (updater_apply(u, args, countof(args), &err)) {
-                printf("installed Gifu %s in %s\n", string_cstr(&st.version), string_cstr(&app->exe_dir));
+                printf("installed Gifu %s in %s\n", string_cstr(&st.installing), string_cstr(&app->exe_dir));
             } else {
                 fprintf(stderr, "update failed: %s\n", string_cstr(&err));
                 code = 1;

@@ -22,7 +22,9 @@ struct Updater {
     Mutex lock;
     // Under lock.
     UpdaterPhase phase;
-    ReleaseInfo release;
+    ReleaseInfo release;   // the newer release on the channel (AVAILABLE), then the one being installed
+    ReleaseVec releases;
+    String installing;
     i64 done, total;
     String error;
     // Worker input.
@@ -81,20 +83,27 @@ static void run_check(Updater *u) {
         string_free(&body), string_free(&err);
         return;
     }
-    ReleaseInfo r;
-    bool found = release_pick(string_sv(&body), u->channel, update_asset_suffix(u->appimage.len > 0), &r);
-    string_free(&body);
-    if (!found || version_compare(string_sv(&r.version), SV(GIFU_VERSION)) <= 0) {
-        if (found) release_info_free(&r);
-        log_info("update: %s is the newest version", GIFU_VERSION);
-        set_phase(u, UPDATER_UP_TO_DATE, SV(""));
+    ReleaseVec all;
+    if (!release_list(string_sv(&body), update_asset_suffix(u->appimage.len > 0), &all)) {
+        string_free(&body);
+        fail(u, string_from(SV("cannot read the release list")));
         return;
     }
-    log_info("update: %s available (running %s)", string_cstr(&r.version), GIFU_VERSION);
+    string_free(&body);
+    const ReleaseInfo *newer = NULL;   // the newest on the channel, if newer than this one
+    vec_foreach(ReleaseInfo, r, &all) {
+        if (r->prerelease && u->channel != UPDATE_CHANNEL_ALPHA) continue;
+        if (version_compare(string_sv(&r->version), SV(GIFU_VERSION)) > 0) newer = r;
+        break;
+    }
+    if (newer) log_info("update: %s available (running %s)", string_cstr(&newer->version), GIFU_VERSION);
+    else log_info("update: %s is the newest version", GIFU_VERSION);
     mutex_lock(&u->lock);
     release_info_free(&u->release);
-    u->release = r;
-    u->phase = UPDATER_AVAILABLE;
+    u->release = newer ? release_info_copy(newer) : (ReleaseInfo){ 0 };
+    release_vec_free(&u->releases);
+    u->releases = all;
+    u->phase = newer ? UPDATER_AVAILABLE : UPDATER_UP_TO_DATE;
     mutex_unlock(&u->lock);
 }
 
@@ -234,11 +243,22 @@ void updater_check(Updater *u, UpdateChannel channel) {
     start(u, JOB_CHECK, UPDATER_CHECKING);
 }
 
-void updater_download(Updater *u) {
+void updater_install(Updater *u, StringView version) {
     mutex_lock(&u->lock);
-    bool available = u->phase == UPDATER_AVAILABLE;
+    bool idle = u->phase == UPDATER_AVAILABLE || u->phase == UPDATER_UP_TO_DATE || u->phase == UPDATER_FAILED || u->phase == UPDATER_READY;
+    const ReleaseInfo *pick = NULL;
+    vec_foreach(ReleaseInfo, r, &u->releases) {
+        if (sv_eq(string_sv(&r->version), version)) pick = r;
+    }
+    if (idle && pick) {
+        ReleaseInfo copy = release_info_copy(pick);
+        release_info_free(&u->release);
+        u->release = copy;
+        string_free(&u->installing);
+        u->installing = string_from(version);
+    }
     mutex_unlock(&u->lock);
-    if (!available) return;
+    if (!idle || !pick) return;
     if (!packaged(u)) {
         set_phase(u, UPDATER_FAILED, SV("this is a development build: download the new version from the release page"));
         return;
@@ -256,7 +276,13 @@ void updater_status(Updater *u, UpdaterStatus *out) {
         .done = u->done,
         .total = u->total,
         .error = string_from(string_sv(&u->error)),
+        .installing = string_from(string_sv(&u->installing)),
     };
+    // The newer release is only reported while it is the offer (not once one is installing).
+    if (u->phase != UPDATER_AVAILABLE) {
+        string_free(&out->version), string_free(&out->notes), string_free(&out->page_url);
+    }
+    vec_foreach(ReleaseInfo, r, &u->releases) vec_push(&out->releases, release_info_copy(r));
     mutex_unlock(&u->lock);
     out->can_install = packaged(u);
 }
@@ -266,6 +292,8 @@ void updater_status_free(UpdaterStatus *s) {
     string_free(&s->notes);
     string_free(&s->page_url);
     string_free(&s->error);
+    string_free(&s->installing);
+    release_vec_free(&s->releases);
 }
 
 // One item swapped in: where the old one went (to undo).
@@ -352,6 +380,8 @@ void updater_destroy(Updater *u) {
     if (u->thread_started) thread_join(&u->thread);
     mutex_destroy(&u->lock);
     release_info_free(&u->release);
+    release_vec_free(&u->releases);
+    string_free(&u->installing);
     string_free(&u->error);
     string_free(&u->staged);
     string_free(&u->install_dir);

@@ -35,7 +35,7 @@ void ui_label(Ui *ui, StringView text, FontRole role, f32 size, Color color) {
     CLAY_TEXT(ui_str(ui, text), ui_text_style(ui, role, size, color));
 }
 
-static bool clicked(Ui *ui, Clay_ElementId id, bool enabled) {
+bool ui_clicked(Ui *ui, Clay_ElementId id, bool enabled) {
     bool over = Clay_PointerOver(id);
     if (over && ui->mouse_pressed && enabled) ui->active_id = id.id;
     bool click = over && ui->mouse_released && ui->active_id == id.id && enabled;
@@ -86,7 +86,7 @@ bool ui_button(Ui *ui, Clay_ElementId id, StringView label, ButtonStyle style, b
                                                            .textColor = color_to_clay(fg), .wrapMode = CLAY_TEXT_WRAP_NONE }));
         }
     }
-    return clicked(ui, id, enabled);
+    return ui_clicked(ui, id, enabled);
 }
 
 void ui_command_button(Ui *ui, StringView command_id, StringView icon, ButtonStyle style, u32 index) {
@@ -173,7 +173,7 @@ void ui_help_button(Ui *ui, StringView topic) {
             Clay_FloatingAttachPoints attach = up ? (Clay_FloatingAttachPoints){ .element = CLAY_ATTACH_POINT_RIGHT_BOTTOM, .parent = CLAY_ATTACH_POINT_RIGHT_TOP }
                                                   : (Clay_FloatingAttachPoints){ .element = CLAY_ATTACH_POINT_RIGHT_TOP, .parent = CLAY_ATTACH_POINT_RIGHT_BOTTOM };
             CLAY({ .id = CLAY_ID("HelpPopover"),
-                   .floating = { .attachTo = CLAY_ATTACH_TO_PARENT, .zIndex = 150, .offset = { 0, up ? -ui_px(ui, 6) : ui_px(ui, 6) },
+                   .floating = { .attachTo = CLAY_ATTACH_TO_PARENT, .zIndex = 250, .offset = { 0, up ? -ui_px(ui, 6) : ui_px(ui, 6) },   // above dialogs (200) and their scrollbars
                                  .attachPoints = attach },
                    .layout = { .sizing = { CLAY_SIZING_FIXED(width), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM,
                                .padding = CLAY_PADDING_ALL(ui_u16(ui, 12)), .childGap = ui_u16(ui, 6) },

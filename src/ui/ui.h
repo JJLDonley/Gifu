@@ -253,6 +253,8 @@ void ui_icon(Ui *ui, i32 icon, f32 size, Color color);
 typedef enum ButtonStyle { BUTTON_GHOST, BUTTON_NORMAL, BUTTON_PRIMARY } ButtonStyle;
 // Immediate-mode button; returns true when clicked this frame.
 bool ui_button(Ui *ui, Clay_ElementId id, StringView label, ButtonStyle style, bool checked, bool enabled);
+// Pressed and released on element `id` (any element: rows, cards...).
+bool ui_clicked(Ui *ui, Clay_ElementId id, bool enabled);
 // Text input (single or multi-line). The caller owns `edit`.
 TextInputResult ui_text_input(Ui *ui, Clay_ElementId id, TextEdit *edit, f32 font_size, i32 min_rows, StringView placeholder);
 // Small on/off switch; returns true when toggled this frame.

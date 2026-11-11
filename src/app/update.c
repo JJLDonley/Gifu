@@ -1,5 +1,7 @@
 #include "app/update.h"
 
+#include <stdlib.h>
+
 #include "base/json.h"
 
 #include <string.h>
@@ -80,20 +82,21 @@ void release_info_free(ReleaseInfo *r) {
     *r = (ReleaseInfo){ 0 };
 }
 
-bool release_pick(StringView json, UpdateChannel channel, StringView suffix, ReleaseInfo *out) {
-    *out = (ReleaseInfo){ 0 };
+static i32 newest_first(const void *a, const void *b) {
+    const ReleaseInfo *x = a, *y = b;
+    return version_compare(string_sv(&y->version), string_sv(&x->version));
+}
+
+bool release_list(StringView json, StringView suffix, ReleaseVec *out) {
+    *out = (ReleaseVec){ 0 };
     JsonDoc doc = { 0 };
     if (!json_parse(json, &doc, NULL)) return false;
     JsonValue list = json_root(&doc);
-    bool found = false;
-    StringView best_version = SV("");
     for (isize i = 0; i < json_array_len(list); ++i) {
         JsonValue rel = json_array_at(list, i);
         if (json_bool(json_get(rel, "draft"), false)) continue;
-        bool pre = json_bool(json_get(rel, "prerelease"), false);
         StringView version = strip_v(json_string(json_get(rel, "tag_name"), SV("")));
-        if (!version.len || (pre && channel != UPDATE_CHANNEL_ALPHA)) continue;
-        if (found && version_compare(version, best_version) <= 0) continue;
+        if (!version.len) continue;
         JsonValue assets = json_get(rel, "assets");
         StringView asset = SV(""), asset_url = SV(""), sums_url = SV("");
         i64 size = 0;
@@ -105,8 +108,7 @@ bool release_pick(StringView json, UpdateChannel channel, StringView suffix, Rel
             if (sv_eq(name, SV("SHA256SUMS"))) sums_url = url;
         }
         if (!asset.len || !sums_url.len) continue;   // not for this platform, or unverifiable
-        release_info_free(out);
-        *out = (ReleaseInfo){
+        ReleaseInfo r = {
             .version = string_from(version),
             .notes = string_from(json_string(json_get(rel, "body"), SV(""))),
             .page_url = string_from(json_string(json_get(rel, "html_url"), SV(""))),
@@ -114,12 +116,45 @@ bool release_pick(StringView json, UpdateChannel channel, StringView suffix, Rel
             .asset_url = string_from(asset_url),
             .sums_url = string_from(sums_url),
             .asset_size = size,
-            .prerelease = pre,
+            .prerelease = json_bool(json_get(rel, "prerelease"), false),
         };
-        best_version = string_sv(&out->version);
-        found = true;
+        vec_push(out, r);
     }
     json_free(&doc);
+    if (out->len > 1) qsort(out->items, (usize)out->len, sizeof(ReleaseInfo), newest_first);
+    return true;
+}
+
+void release_vec_free(ReleaseVec *v) {
+    vec_foreach(ReleaseInfo, r, v) release_info_free(r);
+    vec_free(v);
+}
+
+ReleaseInfo release_info_copy(const ReleaseInfo *r) {
+    return (ReleaseInfo){
+        .version = string_from(string_sv(&r->version)),
+        .notes = string_from(string_sv(&r->notes)),
+        .page_url = string_from(string_sv(&r->page_url)),
+        .asset_name = string_from(string_sv(&r->asset_name)),
+        .asset_url = string_from(string_sv(&r->asset_url)),
+        .sums_url = string_from(string_sv(&r->sums_url)),
+        .asset_size = r->asset_size,
+        .prerelease = r->prerelease,
+    };
+}
+
+bool release_pick(StringView json, UpdateChannel channel, StringView suffix, ReleaseInfo *out) {
+    *out = (ReleaseInfo){ 0 };
+    ReleaseVec all;
+    if (!release_list(json, suffix, &all)) return false;
+    bool found = false;
+    vec_foreach(ReleaseInfo, r, &all) {
+        if (r->prerelease && channel != UPDATE_CHANNEL_ALPHA) continue;
+        *out = release_info_copy(r);
+        found = true;
+        break;
+    }
+    release_vec_free(&all);
     return found;
 }
 

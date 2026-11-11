@@ -46,8 +46,8 @@ void app_updates_set_channel(App *app, UpdateChannel c) {
     app_updates_check(app);   // and look again on the new channel
 }
 
-void app_updates_download(App *app) {
-    if (app->updater) updater_download(app->updater);
+void app_updates_install(App *app, StringView version) {
+    if (app->updater) updater_install(app->updater, version);
 }
 
 void app_updates_skip(App *app) {
@@ -84,4 +84,5 @@ void app_updates_shutdown(App *app) {
     updater_destroy(app->updater);
     app->updater = NULL;
     updater_status_free(&app->update);
+    string_free(&app->update_selected);
 }

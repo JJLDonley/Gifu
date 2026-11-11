@@ -7,6 +7,7 @@
 #pragma once
 
 #include "base/str.h"
+#include "base/vec.h"
 
 i32 version_compare(StringView a, StringView b);   // <0: a is older
 bool version_is_prerelease(StringView v);
@@ -29,6 +30,12 @@ typedef struct ReleaseInfo {
 // allowed on `channel` with an asset ending in `asset_suffix` and a SHA256SUMS asset.
 bool release_pick(StringView releases_json, UpdateChannel channel, StringView asset_suffix, ReleaseInfo *out);
 void release_info_free(ReleaseInfo *r);
+ReleaseInfo release_info_copy(const ReleaseInfo *r);
+typedef Vec(ReleaseInfo) ReleaseVec;
+// Every release (not drafts) with this platform's archive and a SHA256SUMS file,
+// newest version first. False if the JSON cannot be read.
+bool release_list(StringView releases_json, StringView asset_suffix, ReleaseVec *out);
+void release_vec_free(ReleaseVec *v);
 
 // This build's package: "-windows-x64.zip", "-linux-x64.tar.xz", or "-x86_64.AppImage".
 StringView update_asset_suffix(bool appimage);

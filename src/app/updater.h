@@ -15,7 +15,7 @@ typedef enum UpdaterPhase {
     UPDATER_IDLE,
     UPDATER_CHECKING,
     UPDATER_UP_TO_DATE,
-    UPDATER_AVAILABLE,     // release found; waiting for updater_download
+    UPDATER_AVAILABLE,     // a newer release on the channel; waiting for updater_install
     UPDATER_DOWNLOADING,
     UPDATER_VERIFYING,
     UPDATER_READY,         // unpacked and verified; waiting for updater_apply
@@ -24,7 +24,9 @@ typedef enum UpdaterPhase {
 
 typedef struct UpdaterStatus {
     UpdaterPhase phase;
-    String version, notes, page_url;   // the release found (owned copies)
+    String version, notes, page_url;   // the newer release on the channel, if any (owned copies)
+    ReleaseVec releases;               // every release for this platform, newest first (owned copies)
+    String installing;                 // the version being downloaded / ready
     i64 done, total;                   // download progress (bytes)
     String error;
     bool can_install;                  // a packaged install (not a build folder) that can be written
@@ -36,7 +38,9 @@ typedef struct Updater Updater;
 // api_url: GitHub's /releases endpoint (config updates.url).
 Updater *updater_create(StringView install_dir, StringView appimage, StringView api_url);
 void updater_check(Updater *u, UpdateChannel channel);   // starts a check (async)
-void updater_download(Updater *u);                       // AVAILABLE -> download, verify, unpack (async)
+// Downloads, verifies and unpacks release `version` from the list (async; any
+// version, older ones too). Not while checking or downloading.
+void updater_install(Updater *u, StringView version);
 void updater_status(Updater *u, UpdaterStatus *out);     // a snapshot; free with updater_status_free
 void updater_status_free(UpdaterStatus *s);
 // READY -> swaps the files in and starts the new version (with `restart_args` and

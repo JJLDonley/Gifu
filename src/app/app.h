@@ -138,6 +138,7 @@ typedef struct App {
     struct Updater *updater;
     UpdaterStatus update;              // snapshot, refreshed a few times a second
     f64 update_polled;
+    String update_selected;            // the release picked in the dialog's list ("" = the default)
     bool update_manual;                // the user asked: show the result even if up to date
     bool update_dialog_request;        // the UI opens the update dialog
 
@@ -227,7 +228,7 @@ void app_batch_start(App *app);   // analyse the active line from the start
 // Updates (app_updates.c).
 void app_updates_init(App *app);         // once a day: a background check
 void app_updates_check(App *app);        // Help -> Check for updates
-void app_updates_download(App *app);
+void app_updates_install(App *app, StringView version);   // download, verify, unpack; then app_updates_restart
 UpdateChannel app_updates_channel(const App *app);           // from updates.releases
 void app_updates_set_channel(App *app, UpdateChannel channel);   // the user's choice; checks again
 void app_updates_restart(App *app);      // installs the downloaded version and quits
