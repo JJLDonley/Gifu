@@ -15,9 +15,12 @@ if(MSVC)
 endif()
 
 # ---------------------------------------------------------------------------
-# Third party: raylib (built directly from vendored sources, no system GL dev
-# packages needed: GLFW dlopens libGL / opengl32 at runtime).
+# Third party: downloaded into third_party/ on the first configure (pinned
+# versions, SHA-256 checked; see cmake/Dependencies.cmake). raylib is built
+# directly from its sources: no system GL dev packages needed (GLFW dlopens
+# libGL / opengl32 at runtime).
 # ---------------------------------------------------------------------------
+include(cmake/Dependencies.cmake)
 set(RAYLIB_SRC ${CMAKE_SOURCE_DIR}/third_party/raylib/src)
 add_library(raylib STATIC
     ${RAYLIB_SRC}/rcore.c
@@ -39,15 +42,19 @@ else()
     target_link_libraries(raylib PUBLIC X11 m dl pthread)
 endif()
 
-# Clay + yyjson + stb_truetype
+# Clay + yyjson, and our own builds of raylib's bundled stb_truetype and sinfl
+# (raylib compiles its copies static / exports sinflate: src/third_party_impl.c renames).
+# Only those two headers are exposed: raylib's external/ also holds shims such as a
+# Windows dirent.h that must not shadow the system headers.
+file(COPY ${RAYLIB_SRC}/external/stb_truetype.h ${RAYLIB_SRC}/external/sinfl.h
+     DESTINATION ${CMAKE_BINARY_DIR}/vendor_include)
 add_library(third_party_misc STATIC
-    third_party/yyjson/yyjson.c
+    third_party/yyjson/src/yyjson.c
     src/third_party_impl.c)
 target_include_directories(third_party_misc SYSTEM PUBLIC
     third_party/clay
-    third_party/yyjson
-    third_party/stb       # stb_truetype.h (our own copy; raylib compiles its copy static)
-    third_party/sinfl)    # raw deflate for zip extraction (symbols renamed)
+    third_party/yyjson/src
+    ${CMAKE_BINARY_DIR}/vendor_include)   # stb_truetype.h, sinfl.h (from raylib)
 target_compile_options(third_party_misc PRIVATE -w)
 
 # ---------------------------------------------------------------------------
@@ -199,7 +206,8 @@ install(FILES third_party/yyjson/LICENSE DESTINATION licenses RENAME yyjson-LICE
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
-if(GIFU_BUILD_TESTS)
+# The unit tests live outside the public repository: built when tests/ is present.
+if(GIFU_BUILD_TESTS AND EXISTS ${CMAKE_SOURCE_DIR}/tests/test_main.c)
     enable_testing()
     # Tests read assets from the source tree. When cross-compiling from WSL the
     # Windows binaries need the drive path (/mnt/c/x -> C:/x).

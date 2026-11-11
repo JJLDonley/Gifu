@@ -35,7 +35,32 @@ folder (`%APPDATA%\Gifu` on Windows, `~/.config/gifu` on Linux):
 
 ## Building
 
-See `CLAUDE.md` (build presets for Linux gcc, llvm-mingw cross-compiles from WSL, MSYS2)
-and `PLAN.md` (architecture and roadmap). Packages: `python3 tools/package.py`.
+Needs CMake 3.24+, Ninja and GCC or Clang (MSVC is not supported); an internet
+connection the first time.
 
-License: GPL-3.0 (see `LICENSE`, `THIRD_PARTY_NOTICES.md`).
+```sh
+cmake --preset linux-release        # or msys2-release (Windows, MSYS2 UCRT64 shell)
+cmake --build build/linux-release
+```
+
+The first configure downloads the libraries Gifu builds with into `third_party/`
+(pinned versions, checked against SHA-256 hashes; see `cmake/Dependencies.cmake`).
+To build offline, download the archives listed in `third_party/README.md` and
+extract them there yourself. Cross-compiling for Windows from Linux/WSL with
+llvm-mingw: `windows-release` preset (see `CLAUDE.md`). Release packages:
+`python3 tools/package.py`. Architecture and roadmap: `PLAN.md`.
+
+## Credits
+
+Gifu is a re-imagining of [LizzieYzy](https://github.com/yzyray/lizzieyzy) by yzyray
+(GPL-3.0); its screen board reader adapts the stone recognition of
+[readboard](https://github.com/yzyray/readboard_java). Analysis is done by
+[KataGo](https://github.com/lightvector/KataGo) by lightvector (MIT) with networks from
+[katagotraining.org](https://katagotraining.org); Gifu downloads them, it does not
+bundle them. Built with [raylib](https://github.com/raysan5/raylib) (zlib),
+[Clay](https://github.com/nicbarker/clay) (zlib), [yyjson](https://github.com/ibireme/yyjson)
+(MIT), and stb_truetype and sinfl (public domain / MIT, bundled with raylib). Fonts:
+Noto Sans CJK, Open Sans and Source Code Pro (SIL OFL 1.1). Details and license texts:
+`THIRD_PARTY_NOTICES.md`.
+
+License: GPL-3.0 (see `LICENSE`).

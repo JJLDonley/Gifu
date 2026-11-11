@@ -27,3 +27,10 @@ Thumbs.db
 # Python caches (tools/*.py)
 __pycache__/
 *.pyc
+
+# Third-party libraries: downloaded by CMake (cmake/Dependencies.cmake)
+/third_party/*
+!/third_party/README.md
+
+# Unit tests are kept outside the public repository
+/tests/
