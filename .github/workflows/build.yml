@@ -26,21 +26,27 @@ jobs:
       - uses: actions/checkout@v7
       - name: Version from the tag
         run: tools/ci_version.sh
-      # The packages are kept in the cache (per runner image), so a slow or unreachable
-      # Ubuntu archive does not break the build once they have been fetched.
+      # The packages are kept in the cache, keyed to the runner image (its $ImageVersion
+      # is a shell variable on the runner, not in the workflow's env context), so a slow
+      # or unreachable Ubuntu archive does not break the build once they are fetched.
+      - name: Runner image version
+        id: image
+        run: echo "version=${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
       - name: Cache build-tool packages
         uses: actions/cache@v6
         with:
           path: ~/apt-debs
-          key: apt-x11-${{ runner.os }}-${{ env.ImageVersion }}-v1
+          key: apt-x11-${{ runner.os }}-${{ steps.image.outputs.version }}-v1
       - name: Build tools and X11 headers (GLFW's X11 backend)
         timeout-minutes: 10
         run: |
           PKGS="ninja-build file libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev"
-          if ls ~/apt-debs/*.deb > /dev/null 2>&1; then
-            sudo dpkg -i ~/apt-debs/*.deb
+          APT="-o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30"
+          # From the cache; if those packages no longer fit the image, download them instead.
+          if ls ~/apt-debs/*.deb > /dev/null 2>&1 && sudo dpkg -i ~/apt-debs/*.deb; then
+            echo "installed from the cache"
           else
-            APT="-o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30"
+            rm -rf ~/apt-debs
             sudo apt-get $APT update
             sudo apt-get $APT install -y --download-only $PKGS
             mkdir -p ~/apt-debs && cp /var/cache/apt/archives/*.deb ~/apt-debs/
