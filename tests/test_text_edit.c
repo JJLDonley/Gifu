@@ -39,8 +39,8 @@ static void test_text_edit_utf8(void) {
     text_edit_set(&e, SV("a李明b"));   // 1 + 3 + 3 + 1 bytes
     text_edit_left(&e, false);           // before 'b'
     CHECK_EQ(e.caret, 7);
-    text_edit_backspace(&e, false);      // removes 洁 (3 bytes), never half a character
-    CHECK_SV(string_sv(&e.text), SV("a柯b"));
+    text_edit_backspace(&e, false);      // removes 明 (3 bytes), never half a character
+    CHECK_SV(string_sv(&e.text), SV("a李b"));
     text_edit_move_to(&e, 1, false);
     text_edit_delete_forward(&e);
     CHECK_SV(string_sv(&e.text), SV("ab"));
