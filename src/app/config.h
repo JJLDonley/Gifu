@@ -44,6 +44,8 @@ typedef struct Config {
     String sync_capture_command; // "command" backend: writes a PNG to stdout, or to %f
     i32 sync_interval_ms;        // board sync: time between captures
     String sync_area;            // board sync: last picked area, "x,y,w,h" in desktop coordinates
+    String markup_colors;        // shading / pen palette: "rrggbb,rrggbb,..."
+    bool markup_count_empty;     // shading counts: empty points only
     String tsumego_ko_threats;   // "none", "attacker", "defender" or "both": who gets a ko threat in the frame
     // KataGo settings sent as -override-config (0 / -1 = keep the .cfg value).
     i32 katago_search_threads, katago_max_visits, katago_gpu, katago_nn_batch, katago_nn_cache_power;

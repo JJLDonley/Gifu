@@ -127,6 +127,79 @@ static void icon_menu(Rectangle r, Color c, f32 w) {
     line(r, 0.24f, 0.5f, 0.76f, 0.5f, w, c);
     line(r, 0.24f, 0.7f, 0.76f, 0.7f, w, c);
 }
+// ---- Markup tools ----
+static void icon_triangle(Rectangle r, Color c, f32 w) {
+    line(r, 0.5f, 0.24f, 0.78f, 0.74f, w, c);
+    line(r, 0.78f, 0.74f, 0.22f, 0.74f, w, c);
+    line(r, 0.22f, 0.74f, 0.5f, 0.24f, w, c);
+}
+static void icon_square(Rectangle r, Color c, f32 w) {
+    line(r, 0.26f, 0.26f, 0.74f, 0.26f, w, c);
+    line(r, 0.74f, 0.26f, 0.74f, 0.74f, w, c);
+    line(r, 0.74f, 0.74f, 0.26f, 0.74f, w, c);
+    line(r, 0.26f, 0.74f, 0.26f, 0.26f, w, c);
+}
+static void icon_circle(Rectangle r, Color c, f32 w) {
+    Vector2 p = at(r, 0.5f, 0.5f);
+    f32 rad = r.width * 0.25f;
+    DrawRing(p, rad - w * 0.5f, rad + w * 0.5f, 0, 360, 36, c);
+}
+static void icon_cross(Rectangle r, Color c, f32 w) {
+    line(r, 0.28f, 0.28f, 0.72f, 0.72f, w, c);
+    line(r, 0.28f, 0.72f, 0.72f, 0.28f, w, c);
+}
+static void icon_letter(Rectangle r, Color c, f32 w) {   // "A"
+    line(r, 0.3f, 0.76f, 0.5f, 0.22f, w, c);
+    line(r, 0.5f, 0.22f, 0.7f, 0.76f, w, c);
+    line(r, 0.37f, 0.57f, 0.63f, 0.57f, w, c);
+}
+static void icon_number(Rectangle r, Color c, f32 w) {   // "1"
+    line(r, 0.38f, 0.34f, 0.52f, 0.22f, w, c);
+    line(r, 0.52f, 0.22f, 0.52f, 0.76f, w, c);
+    line(r, 0.38f, 0.76f, 0.66f, 0.76f, w, c);
+}
+static void icon_arrow(Rectangle r, Color c, f32 w) {
+    line(r, 0.24f, 0.76f, 0.74f, 0.26f, w, c);
+    line(r, 0.74f, 0.26f, 0.48f, 0.28f, w, c);
+    line(r, 0.74f, 0.26f, 0.72f, 0.52f, w, c);
+}
+static void icon_line(Rectangle r, Color c, f32 w) {
+    line(r, 0.24f, 0.76f, 0.76f, 0.24f, w, c);
+    DrawCircleV(at(r, 0.24f, 0.76f), w * 1.3f, c);
+    DrawCircleV(at(r, 0.76f, 0.24f), w * 1.3f, c);
+}
+static void icon_pen(Rectangle r, Color c, f32 w) {   // a squiggle
+    f32 px = 0.2f, py = 0.6f;
+    for (i32 i = 1; i <= 12; ++i) {
+        f32 x = 0.2f + 0.6f * (f32)i / 12.0f, y = 0.5f + 0.18f * sinf((f32)i * 0.9f);
+        line(r, px, py, x, y, w, c);
+        px = x, py = y;
+    }
+}
+static void icon_shade(Rectangle r, Color c, f32 w) {   // a hatched square
+    icon_square(r, c, w);
+    line(r, 0.26f, 0.5f, 0.5f, 0.26f, w * 0.8f, c);
+    line(r, 0.26f, 0.74f, 0.74f, 0.26f, w * 0.8f, c);
+    line(r, 0.5f, 0.74f, 0.74f, 0.5f, w * 0.8f, c);
+}
+static void icon_eraser(Rectangle r, Color c, f32 w) {
+    line(r, 0.24f, 0.62f, 0.52f, 0.34f, w, c);
+    line(r, 0.52f, 0.34f, 0.74f, 0.56f, w, c);
+    line(r, 0.74f, 0.56f, 0.5f, 0.78f, w, c);
+    line(r, 0.5f, 0.78f, 0.36f, 0.78f, w, c);
+    line(r, 0.36f, 0.78f, 0.24f, 0.62f, w, c);
+    line(r, 0.38f, 0.48f, 0.6f, 0.7f, w, c);
+}
+static void icon_trash(Rectangle r, Color c, f32 w) {
+    line(r, 0.24f, 0.3f, 0.76f, 0.3f, w, c);
+    line(r, 0.42f, 0.3f, 0.44f, 0.22f, w, c);
+    line(r, 0.44f, 0.22f, 0.56f, 0.22f, w, c);
+    line(r, 0.56f, 0.22f, 0.58f, 0.3f, w, c);
+    line(r, 0.3f, 0.3f, 0.34f, 0.78f, w, c);
+    line(r, 0.34f, 0.78f, 0.66f, 0.78f, w, c);
+    line(r, 0.66f, 0.78f, 0.7f, 0.3f, w, c);
+}
+
 // A monitor with a small board on it (board sync from the screen).
 static void icon_screen(Rectangle r, Color c, f32 w) {
     line(r, 0.16f, 0.22f, 0.84f, 0.22f, w, c);
@@ -157,7 +230,11 @@ static const struct {
     { "stone_white", icon_stone_white }, { "gear", icon_gear }, { "folder", icon_folder }, { "save", icon_save },
     { "play", icon_play }, { "pause", icon_pause }, { "chart", icon_chart }, { "menu", icon_menu },
     { "check", icon_check }, { "chevron_down", icon_down }, { "help", icon_help }, { "rank", icon_rank }, { "clipboard", icon_clipboard },
-    { "screen", icon_screen },
+    { "screen", icon_screen },     { "triangle", icon_triangle }, { "square", icon_square },
+    { "circle", icon_circle },     { "cross", icon_cross },       { "letter", icon_letter },
+    { "number", icon_number },     { "arrow", icon_arrow },       { "line", icon_line },
+    { "pen", icon_pen },           { "shade", icon_shade },       { "eraser", icon_eraser },
+    { "trash", icon_trash },
 };
 
 i32 icon_find(StringView name) {

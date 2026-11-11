@@ -15,10 +15,15 @@
 ;;   (button COMMAND :icon @name :label :style primary|ghost)
 ;;     icons: first prev next last prev2 next2 up down close plus stone_black
 ;;            stone_white gear folder save play pause chart menu check help rank clipboard
-;;            screen
+;;            screen triangle square circle cross letter number arrow line pen shade
+;;            eraser trash
 ;;   (panel NAME)  game_info winrate_summary winrate_graph variation_tree
 ;;                 candidates move_list report compare comment engine_log
 ;;   (tabs NAME... :grow)  one panel at a time in a fixed box
+;;   (modes (mode NAME :label KEY :fallback "Text" item...) ...)   inside toolbar: one row
+;;     of items at a time; (mode-switch) switches (also toolbar.next, M); a mode named
+;;     "markup" turns the board into a drawing surface
+;;   (markup-colors) (markup-counts)   the shading palette and the shaded points per colour
 ;;   (menu TITLE-KEY COMMAND... - COMMAND... :fallback "Text")   inside menubar
 ;;   A copy in <config_dir> still gets the menus from this file (so new commands
 ;;   show up); write (menubar :custom ...) there to keep your own menus.
@@ -33,24 +38,50 @@
       nav.first nav.back10 nav.back nav.forward nav.forward10 nav.last - nav.prev_variation nav.next_variation :fallback "Navigate")
     (menu menu.analysis
       analysis.toggle analysis.play_best analysis.game analysis.report analysis.rank analysis.region analysis.tsumego_frame - analysis.candidates analysis.ownership analysis.human_policy - engine.second engine.restart engine.setup :fallback "Analysis")
+    (menu menu.markup
+      toolbar.markup markup.tool.black markup.tool.white - markup.tool.triangle markup.tool.square markup.tool.circle markup.tool.cross markup.tool.letter markup.tool.number - markup.tool.arrow markup.tool.line markup.tool.pen - markup.tool.shade markup.count_empty - markup.tool.eraser markup.clear :fallback "Markup")
     (menu menu.view
-      view.coordinates view.move_numbers view.next_tab - view.zoom_in view.zoom_out - view.theme_editor view.layout_editor view.settings :fallback "View"))
+      view.coordinates view.move_numbers view.next_tab - toolbar.analysis toolbar.markup - view.zoom_in view.zoom_out - view.theme_editor view.layout_editor view.settings :fallback "View"))
 
   (toolbar
-    (button file.new :icon @plus :label)
-    (button file.open :icon @folder :label)
-    (button file.save :icon @save :label)
+    (mode-switch)
     (separator)
-    (button analysis.toggle :style primary)
-    (button analysis.game :icon @chart)
-    (button analysis.candidates)
-    (button analysis.ownership)
-    (button analysis.human_policy)
-    (button view.coordinates)
-    (separator)
-    (button game.ai_black :icon "@stone_black AI")
-    (button game.ai_white :icon "@stone_white AI")
-    (spacer)
+    (modes :grow
+      (mode analysis :label toolbar.analysis :fallback "Analysis"
+        (button file.new :icon @plus :label)
+        (button file.open :icon @folder :label)
+        (button file.save :icon @save :label)
+        (separator)
+        (button analysis.toggle :style primary)
+        (button analysis.game :icon @chart)
+        (button analysis.candidates)
+        (button analysis.ownership)
+        (button analysis.human_policy)
+        (button view.coordinates)
+        (separator)
+        (button game.ai_black :icon "@stone_black AI")
+        (button game.ai_white :icon "@stone_white AI"))
+      (mode markup :label toolbar.markup :fallback "Markup"
+        (button markup.tool.black :icon @stone_black)
+        (button markup.tool.white :icon @stone_white)
+        (separator)
+        (button markup.tool.triangle :icon @triangle)
+        (button markup.tool.square :icon @square)
+        (button markup.tool.circle :icon @circle)
+        (button markup.tool.cross :icon @cross)
+        (button markup.tool.letter :icon @letter)
+        (button markup.tool.number :icon @number)
+        (separator)
+        (button markup.tool.arrow :icon @arrow)
+        (button markup.tool.line :icon @line)
+        (button markup.tool.pen :icon @pen)
+        (separator)
+        (button markup.tool.shade :icon @shade)
+        (markup-colors)
+        (markup-counts)
+        (separator)
+        (button markup.tool.eraser :icon @eraser)
+        (button markup.clear :icon @trash)))
     (engine-status)
     (button view.settings :icon @gear))
 

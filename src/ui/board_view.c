@@ -468,7 +468,8 @@ static void draw_board(void *user, Rectangle bounds) {
     }
 
     // Playing the engine with the evaluation hidden: no candidates, territory or previews.
-    const AnalysisSnapshot *analysis = app->analysis_valid && !app_eval_hidden(app) ? app->analysis : NULL;
+    // (Also none while marking up: the marks stay readable.)
+    const AnalysisSnapshot *analysis = app->analysis_valid && !app_eval_hidden(app) && !ui->markup_mode ? app->analysis : NULL;
     if (analysis && app->config.show_ownership && analysis->has_ownership) draw_ownership(ui, &g, analysis, board);
 
     // Stones: newly placed ones ease in (slight overshoot), removed ones fade out.
@@ -514,6 +515,7 @@ static void draw_board(void *user, Rectangle bounds) {
     }
     board_draw_markup(ui, &g, markup, board);
     markup_free(markup);
+    if (ui->markup_mode) markup_tools_preview(ui, &g);
 
     // Candidate preview: hovered on the board or in the candidates panel.
     i32 pv_index = ui->hover_candidate >= 0 ? ui->hover_candidate : ui->hover_list_candidate;
@@ -528,7 +530,7 @@ static void draw_board(void *user, Rectangle bounds) {
         }
         f32 fade = anim_towards(&ui->anim, CANDIDATE_KEY, analysis ? 1.0f : 0.0f, 10.0f, 0.0f);
         if (analysis && app->config.show_candidates && fade > 0.01f) draw_candidates(ui, &g, analysis, board, fade);
-        if (app->config.show_human_policy && !app_eval_hidden(app) && app_human_policy_for(app, node)) draw_human_policy(ui, &g, app->human_policy, analysis, board);
+        if (app->config.show_human_policy && !app_eval_hidden(app) && !ui->markup_mode && app_human_policy_for(app, node)) draw_human_policy(ui, &g, app->human_policy, analysis, board);
         // Ghost stone under the cursor: appears and disappears at once (a fade leaves
         // a trail of half-visible stones behind the moving cursor).
         Point hp = ui->hover_point;
@@ -590,6 +592,13 @@ void board_view_handle_input(Ui *ui) {
             }
         }
         SetMouseCursor(MOUSE_CURSOR_CROSSHAIR);
+        return;
+    }
+    if (ui->markup_mode) {   // the board is a drawing surface: no moves, no hover stone
+        ui->board_geo = g;
+        markup_tools_input(ui, &g);
+        if (ui->wheel > 0) command_execute(&app->commands, SV("nav.back"));
+        if (ui->wheel < 0) command_execute(&app->commands, SV("nav.forward"));
         return;
     }
     if (!CheckCollisionPointRec(ui->mouse, g.board)) return;

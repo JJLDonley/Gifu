@@ -8,6 +8,7 @@
 // their natural size along the main axis, or share leftover space with :grow.
 // Common props: :grow :width N :height N :gap N :padding N.
 #include "ui/ui.h"
+#include "ui/anim.h"
 
 #include "base/log.h"
 #include "base/os.h"
@@ -412,7 +413,131 @@ static void bar(Ui *ui, const Sexpr *node, LayoutCtx *ctx, bool top, bool ghost)
     ctx->counter = child.counter, ctx->tabs_index = child.tabs_index, ctx->menu_index = child.menu_index;
 }
 
-static void toolbar(Ui *ui, const Sexpr *node, LayoutCtx *ctx) { bar(ui, node, ctx, true, false); }
+// ---- Toolbar modes ---------------------------------------------------------------------------------------
+// (modes (mode analysis :label KEY :fallback "Text" item...) (mode markup ...)): one row of
+// items at a time; switching slides the rows vertically (MODE_SLIDE_SECONDS).
+// (mode-switch) shows the modes as a segmented control.
+
+#define MODE_SLIDE_SECONDS 0.15
+
+static StringView mode_name(const Sexpr *mode) {
+    const Sexpr *name = sexpr_next_arg(mode, NULL);
+    return name ? name->text : SV("");
+}
+
+static const Sexpr *find_mode(const Sexpr *modes, StringView name, i32 *index) {
+    i32 k = 0;
+    const Sexpr *first = NULL;
+    for (const Sexpr *c = sexpr_next_child(modes, NULL); c; c = sexpr_next_child(modes, c)) {
+        if (!sexpr_is_list(c, "mode")) continue;
+        if (!first) first = c;
+        if (sv_eq(mode_name(c), name)) {
+            if (index) *index = k;
+            return c;
+        }
+        k++;
+    }
+    if (index) *index = 0;
+    return first;
+}
+
+void toolbar_switch(Ui *ui, StringView mode) {
+    if (sv_eq(sv(ui->toolbar_mode), mode)) return;
+    snprintf(ui->toolbar_prev, sizeof(ui->toolbar_prev), "%s", ui->toolbar_mode);
+    snprintf(ui->toolbar_mode, sizeof(ui->toolbar_mode), SV_FMT, SV_ARG(mode));
+    ui->toolbar_switched = GetTime();
+}
+
+void toolbar_next(Ui *ui) {
+    if (!ui->toolbar_modes) return;
+    const Sexpr *current = find_mode(ui->toolbar_modes, sv(ui->toolbar_mode), NULL), *next = NULL, *first = NULL;
+    bool after = false;
+    for (const Sexpr *c = sexpr_next_child(ui->toolbar_modes, NULL); c; c = sexpr_next_child(ui->toolbar_modes, c)) {
+        if (!sexpr_is_list(c, "mode")) continue;
+        if (!first) first = c;
+        if (after && !next) next = c;
+        if (c == current) after = true;
+    }
+    if (!next) next = first;
+    if (next) toolbar_switch(ui, mode_name(next));
+}
+
+static void mode_row(Ui *ui, const Sexpr *mode, LayoutCtx *ctx, Clay_SizingAxis height) {
+    LayoutCtx child = *ctx;
+    child.horizontal = true;
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), height }, .childGap = ui_u16(ui, 6), .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
+        if (mode) render_children(ui, mode, &child);
+    }
+    ctx->counter = child.counter, ctx->tabs_index = child.tabs_index, ctx->menu_index = child.menu_index;
+}
+
+static void modes(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
+    ui->toolbar_modes = node;
+    i32 ai = 0, pi = 0;
+    const Sexpr *active = find_mode(node, sv(ui->toolbar_mode), &ai);
+    const Sexpr *prev = ui->toolbar_prev[0] ? find_mode(node, sv(ui->toolbar_prev), &pi) : NULL;
+    ui->markup_mode = active && sv_eq(mode_name(active), SV("markup"));
+    Clay_ElementId id = CLAY_ID("ToolbarModes");
+    Clay_ElementData last = Clay_GetElementData(id);
+    f32 h = last.found ? last.boundingBox.height : 0;
+    f32 t = (f32)((GetTime() - ui->toolbar_switched) / MODE_SLIDE_SECONDS);
+    if (!prev || prev == active || t >= 1.0f || h <= 1.0f) {
+        CLAY({ .id = id, .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) } } }) {
+            mode_row(ui, active, ctx, CLAY_SIZING_FIT(0));
+        }
+        return;
+    }
+    // Later modes come in from below, earlier ones from above.
+    bool down = ai > pi;
+    f32 e = ease_out_cubic(CLAMP(t, 0.0f, 1.0f)), offset = down ? -e * h : -(1.0f - e) * h;
+    CLAY({ .id = id, .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(h) } },
+           .clip = { .vertical = true, .childOffset = { 0, offset } } }) {
+        CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM } }) {
+            mode_row(ui, down ? prev : active, ctx, CLAY_SIZING_FIXED(h));
+            mode_row(ui, down ? active : prev, ctx, CLAY_SIZING_FIXED(h));
+        }
+    }
+}
+
+static void mode_switch(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
+    UNUSED(node);
+    const ThemeColors *c = &ui->theme->colors;
+    if (!ui->toolbar_modes) return;   // known from the (modes) node, laid out every frame
+    const Sexpr *active = find_mode(ui->toolbar_modes, sv(ui->toolbar_mode), NULL);
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_FIT(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 2), .padding = CLAY_PADDING_ALL(ui_u16(ui, 2)) },
+           .backgroundColor = color_to_clay(c->surface_alt),
+           .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, ui->theme->shape.radius)) }) {
+        u32 k = 0;
+        for (const Sexpr *m = sexpr_next_child(ui->toolbar_modes, NULL); m; m = sexpr_next_child(ui->toolbar_modes, m)) {
+            if (!sexpr_is_list(m, "mode")) continue;
+            char key[64], fallback[64];   // :label KEY (i18n), :fallback "Text"
+            snprintf(key, sizeof(key), SV_FMT, SV_ARG(sexpr_prop_text(m, "label", mode_name(m))));
+            snprintf(fallback, sizeof(fallback), SV_FMT, SV_ARG(sexpr_prop_text(m, "fallback", mode_name(m))));
+            StringView label = app_tr(ui->app, key, fallback);
+            if (ui_button(ui, CLAY_IDI("ToolbarModeTab", k++), label, BUTTON_GHOST, m == active, true)) toolbar_switch(ui, mode_name(m));
+        }
+    }
+    ctx->counter++;
+}
+
+static void markup_colors_component(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
+    UNUSED(node), UNUSED(ctx);
+    markup_colors_element(ui);
+}
+static void markup_counts_component(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
+    UNUSED(node), UNUSED(ctx);
+    markup_counts_element(ui);
+}
+
+static void toolbar(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
+    // The switch comes before (modes) in the bar: find the modes first.
+    ui->toolbar_modes = NULL;
+    for (const Sexpr *c = sexpr_next_child(node, NULL); c; c = sexpr_next_child(node, c)) {
+        if (sexpr_is_list(c, "modes")) ui->toolbar_modes = c;
+    }
+    if (!ui->toolbar_modes) ui->markup_mode = false;
+    bar(ui, node, ctx, true, false);
+}
 static void navbar(Ui *ui, const Sexpr *node, LayoutCtx *ctx) { bar(ui, node, ctx, false, true); }
 
 // ---- Menu bar --------------------------------------------------------------------------------------------
@@ -533,6 +658,8 @@ static const struct {
     { "theme-picker", theme_picker }, { "move-counter", move_counter },
     { "status", status_text },    { "board", board },
     { "panel", panel },           { "tabs", tabs },
+    { "modes", modes },           { "mode-switch", mode_switch },
+    { "markup-colors", markup_colors_component }, { "markup-counts", markup_counts_component },
 };
 
 bool layout_component_exists(StringView name) {
@@ -566,38 +693,86 @@ static String layout_path(const Ui *ui) {
     return path_join(string_sv(&ui->app->assets_dir), SV("data/layout.lisp"));
 }
 
-// The menubar of the app node (and the node before it in the child list).
-static Sexpr *find_menubar(Sexpr *app_node, Sexpr **prev) {
-    *prev = NULL;
-    for (Sexpr *c = app_node->first, *before = NULL; c; before = c, c = c->next) {
-        if (sexpr_is_list(c, "menubar")) {
-            *prev = before;
+static Sexpr *find_child_list(Sexpr *list, const char *head, Sexpr **prev) {
+    if (prev) *prev = NULL;
+    for (Sexpr *c = list->first, *before = NULL; c; before = c, c = c->next) {
+        if (sexpr_is_list(c, head)) {
+            if (prev) *prev = before;
             return c;
         }
     }
     return NULL;
 }
 
+static Sexpr *last_element(Sexpr *list) {
+    Sexpr *c = list->first;
+    while (c && c->next) c = c->next;
+    return c;
+}
+
+// Replaces `old` (a child of `parent`, after `prev`) with `node`.
+static void replace_child(Sexpr *parent, Sexpr *prev, Sexpr *old, Sexpr *node) {
+    node->next = old->next;
+    if (prev) prev->next = node;
+    else parent->first = node;
+}
+
 // A saved layout (Customize layout, drag and drop, presets) is a copy of the
-// whole file, but nothing in the app edits menus: take them from the built-in
-// layout so new commands always show up. A saved menubar with :custom is kept.
-static void use_builtin_menus(Ui *ui, Arena *arena, Sexpr *app_node) {
-    Sexpr *prev = NULL, *saved = find_menubar(app_node, &prev);
-    if (!saved || sexpr_flag(saved, "custom")) return;
+// whole file. Things the app adds later must still reach it:
+//   - menus: nothing in the app edits them, so they come from the built-in layout
+//     (a saved (menubar :custom ...) is kept);
+//   - toolbar modes: a flat saved toolbar becomes the Analysis mode (its items up to
+//     the spacer), with the other modes from the built-in layout.
+static void upgrade_saved_layout(Ui *ui, Arena *arena, Sexpr *app_node) {
     String path = path_join(string_sv(&ui->app->assets_dir), SV("data/layout.lisp"));
     String text = { 0 };
     Sexpr *root = NULL;
     SexprError err = { 0 };
-    if (os_read_file(string_sv(&path), &text) && sexpr_parse(arena, string_sv(&text), &root, &err) && sexpr_is_list(root->first, "app")) {
-        Sexpr *unused, *builtin = find_menubar(root->first, &unused);
-        if (builtin) {
-            builtin->next = saved->next;
-            if (prev) prev->next = builtin;
-            else app_node->first = builtin;
-        }
-    }
+    bool ok = os_read_file(string_sv(&path), &text) && sexpr_parse(arena, string_sv(&text), &root, &err) && sexpr_is_list(root->first, "app");
     string_free(&text);
     string_free(&path);
+    if (!ok) return;
+    // Look everything up in the built-in tree before splicing (splicing relinks its nodes).
+    Sexpr *builtin = root->first, *prev, *unused;
+    Sexpr *menus = find_child_list(builtin, "menubar", &unused), *bar = find_child_list(builtin, "toolbar", &unused);
+    Sexpr *builtin_modes = bar ? find_child_list(bar, "modes", &unused) : NULL;
+    Sexpr *saved_menus = find_child_list(app_node, "menubar", &prev);
+    if (saved_menus && menus && !sexpr_flag(saved_menus, "custom")) replace_child(app_node, prev, saved_menus, menus);
+
+    Sexpr *saved_bar = find_child_list(app_node, "toolbar", &prev);
+    if (!saved_bar || find_child_list(saved_bar, "modes", &unused) || !builtin_modes) return;
+    // (toolbar (mode-switch) (separator) (modes :grow (mode analysis ...saved items...) ...other modes...) ...saved tail...)
+    Sexpr *tpl = NULL;
+    if (!sexpr_parse(arena, SV("(toolbar (mode-switch) (separator) (modes :grow (mode analysis :label toolbar.analysis :fallback \"Analysis\")))"), &tpl, &err)) {
+        return;
+    }
+    Sexpr *new_bar = tpl->first, *new_modes = find_child_list(new_bar, "modes", &unused);
+    Sexpr *analysis = find_child_list(new_modes, "mode", &unused);
+    // Saved items: the head symbol, then items; split at the first (spacer).
+    Sexpr *items = saved_bar->first ? saved_bar->first->next : NULL, *tail = NULL, *before_spacer = NULL;
+    for (Sexpr *c = items; c; before_spacer = c, c = c->next) {
+        if (sexpr_is_list(c, "spacer")) {
+            tail = c->next;
+            if (before_spacer) before_spacer->next = NULL;
+            else items = NULL;
+            break;
+        }
+    }
+    last_element(analysis)->next = items;
+    // The built-in modes other than analysis.
+    Sexpr *after = analysis;
+    for (Sexpr *m = builtin_modes->first; m; m = m->next) {
+        if (!sexpr_is_list(m, "mode")) continue;
+        const Sexpr *name = sexpr_next_arg(m, NULL);
+        if (name && sv_eq(name->text, SV("analysis"))) continue;
+        Sexpr *copy = arena_new(arena, Sexpr);
+        *copy = *m;
+        copy->next = NULL;
+        after->next = copy;
+        after = copy;
+    }
+    last_element(new_bar)->next = tail;
+    replace_child(app_node, prev, saved_bar, new_bar);
 }
 
 bool layout_load(Ui *ui) {
@@ -616,7 +791,7 @@ bool layout_load(Ui *ui) {
         ok = false;
     }
     String builtin = path_join(string_sv(&ui->app->assets_dir), SV("data/layout.lisp"));
-    if (ok && !sv_eq(string_sv(&path), string_sv(&builtin))) use_builtin_menus(ui, &arena, root->first);
+    if (ok && !sv_eq(string_sv(&path), string_sv(&builtin))) upgrade_saved_layout(ui, &arena, root->first);
     string_free(&builtin);
     if (ok) {   // swap in the new tree (keep the old one on errors)
         arena_free(&ui->layout_arena);

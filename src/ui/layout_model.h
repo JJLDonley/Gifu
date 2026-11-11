@@ -20,7 +20,8 @@ typedef struct LayoutModel {
     StringVec toolbar;    // "(button file.new :icon @plus :label)", "(separator)" ...
 
     // Where the nodes are in the source text (for writing back).
-    isize toolbar_start, toolbar_end;
+    isize toolbar_start, toolbar_end;   // the (toolbar), or its first (mode ...) when it has modes
+    String toolbar_header;              // "(toolbar" or "(mode analysis :label ..." (head + props)
     isize row_start, row_end;
     String row_header;      // "(row :grow" (head + props, without children)
     String board_text;      // "(board :grow)"

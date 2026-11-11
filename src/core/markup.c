@@ -277,3 +277,44 @@ i32 markup_empty_region(const Board *b, Point p, bool *region) {
     free(stack);
     return count;
 }
+
+// ---- Setup stones -------------------------------------------------------------------------------------
+
+// Removes the point value `coord` from property `ident` (keeps the others).
+static bool remove_point_value(GameTree *tree, GameNode *node, StringView ident, StringView coord) {
+    SgfProperty *p = game_node_find_prop(node, ident);
+    if (!p) return false;
+    bool found = false;
+    String kept[BOARD_MAX_POINTS];
+    i32 n = 0;
+    for (i32 i = 0; i < p->value_count; ++i) {
+        if (sv_eq(p->values[i], coord)) found = true;
+        else if (n < BOARD_MAX_POINTS) kept[n++] = string_from(p->values[i]);
+    }
+    if (!found) {
+        for (i32 i = 0; i < n; ++i) string_free(&kept[i]);
+        return false;
+    }
+    game_node_remove_prop(tree, node, ident);
+    for (i32 i = 0; i < n; ++i) {
+        game_node_add_prop_value(tree, node, ident, string_sv(&kept[i]));
+        string_free(&kept[i]);
+    }
+    return true;
+}
+
+void setup_toggle_stone(GameTree *tree, GameNode *node, Point p, Stone color) {
+    char c[3];
+    point_to_sgf(p, c);
+    StringView coord = sv(c);
+    // What the point holds before this node's setup: the parent's position.
+    Stone before = node->parent ? (Stone)board_at(&node->parent->board, p) : STONE_EMPTY;
+    Stone now = (Stone)board_at(&node->board, p);
+    remove_point_value(tree, node, SV("AB"), coord);
+    remove_point_value(tree, node, SV("AW"), coord);
+    remove_point_value(tree, node, SV("AE"), coord);
+    Stone want = now == color ? STONE_EMPTY : color;
+    if (want == before) return;   // the parent already has it that way
+    StringView ident = want == STONE_BLACK ? SV("AB") : want == STONE_WHITE ? SV("AW") : SV("AE");
+    game_node_add_prop_value(tree, node, ident, coord);
+}

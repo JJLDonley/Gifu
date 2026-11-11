@@ -289,6 +289,8 @@ bool ui_init(Ui *ui, App *app) {
     isize theme = themes_find(&ui->themes, string_sv(&app->config.theme));
     ui_apply_theme(ui, theme >= 0 ? theme : 0);
     register_ui_commands(ui);
+    markup_tools_register(ui);
+    ui->markup_tool = MARK_TOOL_TRIANGLE;
     validate_command_refs(ui);
 
     // First run: no usable engine -> offer the downloads right away.

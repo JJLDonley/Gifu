@@ -76,8 +76,13 @@ bool layout_model_read(StringView text, LayoutModel *m, const char **error) {
         vec_free(&spans);
         return false;
     }
+    // A toolbar with modes: the editor works on the first mode's items (Analysis).
+    i32 modes = child(&spans, toolbar, "modes");
+    i32 first_mode = modes >= 0 ? child(&spans, modes, "mode") : -1;
+    if (first_mode >= 0 && spans.items[first_mode].end > 0) toolbar = first_mode;
     const Span *ts = &spans.items[toolbar], *rs = &spans.items[row], *cs = &spans.items[column], *bs = &spans.items[board], *tb = &spans.items[tabs];
     m->toolbar_start = ts->start, m->toolbar_end = ts->end;
+    m->toolbar_header = string_from(sv_trim_right(slice(text, ts->start, ts->header_end)));
     m->row_start = rs->start, m->row_end = rs->end;
     m->sidebar_left = cs->start < bs->start;
     m->row_header = string_from(sv_trim_right(slice(text, rs->start, rs->header_end)));
@@ -128,8 +133,9 @@ static String column_header_with_width(const LayoutModel *m) {
 }
 
 String layout_model_write(StringView original, const LayoutModel *m) {
-    String toolbar = string_from(SV("(toolbar"));
-    vec_foreach(String, item, &m->toolbar) string_pushf(&toolbar, "\n    " SV_FMT, SV_ARG(string_sv(item)));
+    String toolbar = string_from(m->toolbar_header.len ? string_sv(&m->toolbar_header) : SV("(toolbar"));
+    const char *indent = sv_starts_with(string_sv(&m->toolbar_header), SV("(mode")) ? "\n        " : "\n    ";
+    vec_foreach(String, item, &m->toolbar) string_pushf(&toolbar, "%s" SV_FMT, indent, SV_ARG(string_sv(item)));
     string_push_char(&toolbar, ')');
 
     String column = column_header_with_width(m);
@@ -165,6 +171,7 @@ void layout_model_free(LayoutModel *m) {
     string_vec_free(&m->tabs);
     string_vec_free(&m->toolbar);
     string_free(&m->row_header);
+    string_free(&m->toolbar_header);
     string_free(&m->board_text);
     string_free(&m->column_header);
     string_free(&m->tabs_props);

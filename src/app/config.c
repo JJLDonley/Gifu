@@ -57,6 +57,8 @@ static const ConfigField FIELDS[] = {
     BOOL("sgf.save_kt", sgf_save_kt, 0),
     STR("tsumego.attacker", tsumego_attacker, "auto"),
     STR("tsumego.ko_threats", tsumego_ko_threats, "none"),
+    STR("markup.colors", markup_colors, "e0503c,3c7be0,3cb371,e0b33c,9b59b6,7f8c8d"),
+    BOOL("markup.count_empty", markup_count_empty, 0),
     STR("sync.capture", sync_capture, "auto"),
     STR("sync.capture_command", sync_capture_command, ""),
     INT("sync.interval_ms", sync_interval_ms, 400, 100, 10000),

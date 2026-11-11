@@ -59,6 +59,11 @@ void markup_clear(Markup *markup);
 // Next free label: "A".."Z" then "a".."z" (letters), or "1".. (numbers).
 void markup_next_label(const Markup *markup, bool numbers, char out[MARKUP_MAX_LABEL]);
 
+// Setup stones on `node` (AB / AW / AE): puts a `color` stone at p, or removes it
+// when that colour is already there (empty: AE when it came from an earlier node).
+// The caller rebuilds the tree from `node`.
+void setup_toggle_stone(GameTree *tree, GameNode *node, Point p, Stone color);
+
 // Shaded points per colour (up to `cap` colours, most points first). With
 // `empty_only`, points with a stone on `board` are not counted.
 typedef struct ShadeCount {

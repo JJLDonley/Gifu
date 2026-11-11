@@ -81,6 +81,21 @@ typedef struct LayoutDrag {
     char label[64];
 } LayoutDrag;
 
+// Markup mode tools (markup_tools.c).
+typedef enum MarkTool {
+    MARK_TOOL_BLACK, MARK_TOOL_WHITE, MARK_TOOL_TRIANGLE, MARK_TOOL_SQUARE, MARK_TOOL_CIRCLE, MARK_TOOL_CROSS,
+    MARK_TOOL_LETTER, MARK_TOOL_NUMBER, MARK_TOOL_ARROW, MARK_TOOL_LINE, MARK_TOOL_PEN, MARK_TOOL_SHADE, MARK_TOOL_ERASER,
+    MARK_TOOLS
+} MarkTool;
+typedef struct MarkupDrag {
+    bool active, erase, rect;
+    Point start, last;
+    f32 pen[256][2];      // board coordinates
+    i32 pen_count;
+    f64 last_click;       // double click (shade: fill the empty region)
+    Point last_click_point;
+} MarkupDrag;
+
 typedef struct Ui {
     App *app;
     FontCache *fonts;
@@ -149,6 +164,18 @@ typedef struct Ui {
     GameNode *move_list_scrolled_to;
     i32 tab_selected[16];   // per tab group (sidebar entry index)
     bool in_tab;            // panels inside a tab group skip their card title
+
+    // Toolbar modes (layout.lisp: (modes (mode analysis ...) (mode markup ...))).
+    char toolbar_mode[24];           // active mode name ("" = the first)
+    char toolbar_prev[24];           // the one sliding out
+    f64 toolbar_switched;            // when (GetTime)
+    const Sexpr *toolbar_modes;      // the (modes ...) node this frame
+    bool markup_mode;                // the active mode is "markup": clicks mark the board
+    MarkTool markup_tool;
+    i32 markup_color;                // palette index (config markup.colors)
+    bool markup_color_editing;       // the colour editor popover is open
+    i32 markup_slider;               // H/S/V slider being dragged (+1)
+    MarkupDrag markup_drag;
 
     // The sidebar as laid out this frame (for drag and drop).
     LayoutDrag layout_drag;
@@ -267,6 +294,13 @@ bool layout_load(Ui *ui);    // (re)reads the layout file; keeps the old tree on
 void layout_free(Ui *ui);
 void layout_build(Ui *ui);   // hot-reloads, renders the tree and open dialogs
 void layout_write_user(Ui *ui, StringView text);   // saves <config_dir>/layout.lisp and reloads it
+void toolbar_switch(Ui *ui, StringView mode);      // slide to that toolbar mode
+void toolbar_next(Ui *ui);
+void markup_tools_register(Ui *ui);
+void markup_tools_input(Ui *ui, const BoardGeometry *g);     // instead of playing moves, in Markup mode
+void markup_tools_preview(Ui *ui, const BoardGeometry *g);   // the drag in progress
+void markup_colors_element(Ui *ui);                          // (markup-colors): shading / pen palette
+void markup_counts_element(Ui *ui);                          // (markup-counts): shaded points per colour
 
 // layout_drag.c: drag panels / tabs and the sidebar dividers in the live window.
 void layout_drag_update(Ui *ui);    // before the layout
