@@ -61,6 +61,60 @@ def package(platform, preset=None):
     size = os.path.getsize(archive) / (1024 * 1024)
     print(f"-> {os.path.relpath(archive, ROOT)} ({size:.1f} MB)")
 
+INFO_PLIST = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key><string>Gifu</string>
+  <key>CFBundleDisplayName</key><string>Gifu</string>
+  <key>CFBundleIdentifier</key><string>io.github.jjldonley.gifu</string>
+  <key>CFBundleExecutable</key><string>gifu</string>
+  <key>CFBundleIconFile</key><string>gifu</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>{version}</string>
+  <key>CFBundleVersion</key><string>{version}</string>
+  <key>LSMinimumSystemVersion</key><string>11.0</string>
+  <key>NSHighResolutionCapable</key><true/>
+  <key>CFBundleDocumentTypes</key>
+  <array><dict>
+    <key>CFBundleTypeName</key><string>Go game record</string>
+    <key>CFBundleTypeExtensions</key><array><string>sgf</string></array>
+    <key>CFBundleTypeRole</key><string>Editor</string>
+  </dict></array>
+</dict>
+</plist>
+"""
+
+def package_macos(preset="macos-release"):
+    """Gifu.app (the program, its assets and notices in Contents/MacOS), zipped with ditto."""
+    configure(preset)
+    run(CMAKE, "--build", os.path.join(ROOT, "build", preset), "--target", "gifu")
+    stage = os.path.join(DIST, "macos")
+    shutil.rmtree(stage, ignore_errors=True)
+    app = os.path.join(stage, "Gifu.app")
+    run(CMAKE, "--install", os.path.join(ROOT, "build", preset), "--prefix", os.path.join(app, "Contents", "MacOS"))
+    with open(os.path.join(app, "Contents", "Info.plist"), "w") as f:
+        f.write(INFO_PLIST.format(version=version()))
+    # Icon: gifu.png -> gifu.icns with the system's sips / iconutil.
+    resources = os.path.join(app, "Contents", "Resources")
+    iconset = os.path.join(stage, "gifu.iconset")
+    os.makedirs(resources, exist_ok=True)
+    os.makedirs(iconset, exist_ok=True)
+    png = os.path.join(ROOT, "assets", "icons", "gifu.png")
+    for size in (16, 32, 128, 256, 512):
+        for scale in (1, 2):
+            px = size * scale
+            out = os.path.join(iconset, f"icon_{size}x{size}{'@2x' if scale == 2 else ''}.png")
+            run("sips", "-z", str(px), str(px), png, "--out", out)
+    run("iconutil", "-c", "icns", iconset, "-o", os.path.join(resources, "gifu.icns"))
+    shutil.rmtree(iconset)
+    archive = os.path.join(DIST, f"Gifu-{version()}-macos.zip")
+    if os.path.exists(archive):
+        os.remove(archive)
+    run("ditto", "-c", "-k", "--keepParent", app, archive)   # keeps permissions
+    size = os.path.getsize(archive) / (1024 * 1024)
+    print(f"-> {os.path.relpath(archive, ROOT)} ({size:.1f} MB)")
+
 APPIMAGETOOL_URL = "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
 
 def appimagetool():
@@ -108,6 +162,8 @@ if __name__ == "__main__":
             package_appimage()
         elif t == "appdir":   # the AppImage's contents only (no appimagetool needed)
             package_appimage(pack=False)
+        elif t == "macos":    # Gifu.app, zipped (on a Mac)
+            package_macos()
         elif t == "msys2":    # Windows package built natively in an MSYS2 UCRT64 shell (CI)
             package("windows", preset="msys2-release")
         else:

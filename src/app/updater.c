@@ -16,7 +16,10 @@
 typedef enum Job { JOB_NONE, JOB_CHECK, JOB_DOWNLOAD } Job;
 
 struct Updater {
-    String install_dir, appimage, api_url;
+    String install_dir;   // the folder whose items are swapped (macOS: the one holding Gifu.app)
+    String program_dir;   // the running program's folder
+    String bundle;        // macOS: "Gifu.app" (the item that is replaced), else ""
+    String appimage, api_url;
     Thread thread;
     bool thread_started;
     Mutex lock;
@@ -39,10 +42,29 @@ StringView updater_program_name(void) { return *os_executable_suffix() ? SV("gif
 // (Build folders do not: a development build never replaces itself.)
 static bool packaged(const Updater *u) {
     if (u->appimage.len) return true;
-    String notices = path_join(string_sv(&u->install_dir), SV("THIRD_PARTY_NOTICES.md"));
+    String notices = path_join(string_sv(&u->program_dir), SV("THIRD_PARTY_NOTICES.md"));
     bool ok = os_file_exists(string_sv(&notices));
     string_free(&notices);
     return ok;
+}
+
+// Inside a macOS app bundle (X.app/Contents/MacOS) the bundle is what gets replaced:
+// the install folder is the one holding it. Returns the bundle's name, or "".
+static StringView bundle_of(StringView program_dir, StringView *install_dir) {
+    *install_dir = program_dir;
+    StringView contents = path_dirname(program_dir), app = path_dirname(contents);
+    if (!sv_eq(path_basename(program_dir), SV("MacOS")) || !sv_eq(path_basename(contents), SV("Contents")) ||
+        !sv_ends_with(path_basename(app), SV(".app"))) {
+        return SV("");
+    }
+    *install_dir = path_dirname(app);
+    return path_basename(app);
+}
+
+StringView updater_install_dir(StringView program_dir) {
+    StringView dir;
+    bundle_of(program_dir, &dir);
+    return dir;
 }
 
 static String update_dir(StringView install_dir) { return path_join(install_dir, SV(".update")); }
@@ -102,10 +124,11 @@ static void run_check(Updater *u) {
 }
 
 // The only folder inside `dir` (archives hold one top folder), else `dir` itself.
+// An app bundle (Gifu.app) is itself the item to swap in: not descended into.
 static String package_root(StringView dir) {
     StringVec names = { 0 };
     String root = string_from(dir);
-    if (os_list_dir(dir, &names) && names.len == 1) {
+    if (os_list_dir(dir, &names) && names.len == 1 && !sv_ends_with(string_sv(&names.items[0]), SV(".app"))) {
         String child = path_join(dir, string_sv(&names.items[0]));
         if (os_dir_exists(string_sv(&child))) string_free(&root), root = child;
         else string_free(&child);
@@ -180,7 +203,8 @@ static void run_download(Updater *u) {
             goto done;
         }
         staged = package_root(string_sv(&unpack));
-        String program = path_join(string_sv(&staged), updater_program_name());
+        String program = u->bundle.len ? string_format(SV_FMT "/" SV_FMT "/Contents/MacOS/gifu", SV_ARG(string_sv(&staged)), SV_ARG(string_sv(&u->bundle)))
+                                       : path_join(string_sv(&staged), updater_program_name());
         bool has_program = os_file_exists(string_sv(&program));
         string_free(&program);
         if (!has_program) {
@@ -217,10 +241,13 @@ static void start(Updater *u, Job job, UpdaterPhase phase) {
 
 // ---- Interface ----------------------------------------------------------------------------------
 
-Updater *updater_create(StringView install_dir, StringView appimage, StringView api_url) {
+Updater *updater_create(StringView program_dir, StringView appimage, StringView api_url) {
     Updater *u = calloc(1, sizeof(Updater));
     if (!u) abort();
+    StringView install_dir;
+    u->bundle = string_from(bundle_of(program_dir, &install_dir));
     u->install_dir = string_from(install_dir);
+    u->program_dir = string_from(program_dir);
     u->appimage = string_from(appimage);
     u->api_url = string_from(api_url);
     mutex_init(&u->lock);
@@ -347,7 +374,13 @@ bool updater_apply(Updater *u, const StringView *args, isize arg_count, String *
         vec_free(&moved);
         string_vec_free(&names);
         string_free(&old);
-        program = path_join(string_sv(&u->install_dir), updater_program_name());
+        if (u->bundle.len) {   // Gifu.app/Contents/MacOS/gifu (zip archives may lose the executable bit)
+            String app = path_join(string_sv(&u->install_dir), string_sv(&u->bundle));
+            program = path_join(string_sv(&app), SV("Contents/MacOS/gifu"));
+            string_free(&app);
+        } else {
+            program = path_join(string_sv(&u->install_dir), updater_program_name());
+        }
         os_set_executable(string_sv(&program));
     }
     string_free(&staged);
@@ -379,6 +412,8 @@ void updater_destroy(Updater *u) {
     string_free(&u->error);
     string_free(&u->staged);
     string_free(&u->install_dir);
+    string_free(&u->program_dir);
+    string_free(&u->bundle);
     string_free(&u->appimage);
     string_free(&u->api_url);
     free(u);
@@ -399,8 +434,8 @@ static i32 cleanup_worker(void *arg) {
     return 0;
 }
 
-void updater_cleanup(StringView install_dir, i64 previous_pid) {
-    String dir = update_dir(install_dir);
+void updater_cleanup(StringView program_dir, i64 previous_pid) {
+    String dir = update_dir(updater_install_dir(program_dir));
     if (!os_dir_exists(string_sv(&dir))) {
         string_free(&dir);
         return;

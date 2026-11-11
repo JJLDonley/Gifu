@@ -5,7 +5,8 @@
 #   v0.2.0          a release: every user's updater offers it
 #   v0.2.0-alpha.1  a pre-release (also -beta.N, -rc.N): only the alpha channel gets it
 # The tag must match project(VERSION) in CMakeLists.txt. The release carries the
-# Windows zip, the Linux tar.xz and AppImage, and SHA256SUMS (the updater checks it).
+# Windows zip, the Linux tar.xz and AppImage, the macOS Gifu.app zip, and SHA256SUMS
+# (the updater checks it).
 name: Build
 
 on:
@@ -81,9 +82,45 @@ jobs:
           name: Gifu-windows-x64
           path: dist/*.zip
 
+  macos:
+    runs-on: macos-14   # Apple Silicon; the release build is universal (arm64 + x86_64)
+    steps:
+      - uses: actions/checkout@v7
+      - name: Version from the tag
+        run: tools/ci_version.sh
+      - name: Build tools
+        run: brew install ninja
+      - name: Cache third-party downloads
+        uses: actions/cache@v6
+        with:
+          path: |
+            third_party/raylib
+            third_party/clay
+            third_party/yyjson
+          key: third-party-${{ hashFiles('cmake/Dependencies.cmake') }}
+      - name: Build and run the tests (platform layer included)
+        run: |
+          cmake --preset macos-debug
+          cmake --build build/macos-debug
+          ./build/macos-debug/gifu_tests
+      - name: Start Gifu once (screenshot)
+        continue-on-error: true   # a runner without a usable display should not fail the build
+        run: ./build/macos-debug/gifu --engine none --screenshot macos-screenshot.png --delay 2
+      - uses: actions/upload-artifact@v7
+        with:
+          name: macos-screenshot
+          path: macos-screenshot.png
+          if-no-files-found: warn
+      - name: Package (Gifu.app)
+        run: python3 tools/package.py macos
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Gifu-macos
+          path: dist/*-macos.zip
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [linux, windows]
+    needs: [linux, windows, macos]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -92,6 +129,7 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           path: artifacts
+          pattern: Gifu-*   # the packages (not the macOS screenshot)
           merge-multiple: true
       - name: Checksums
         working-directory: artifacts

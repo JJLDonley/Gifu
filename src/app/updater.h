@@ -34,9 +34,13 @@ typedef struct UpdaterStatus {
 
 typedef struct Updater Updater;
 
-// install_dir: the folder of the running program. appimage: $APPIMAGE or "".
+// program_dir: the folder of the running program (inside a macOS bundle the whole
+// Gifu.app is replaced; see updater_install_dir). appimage: $APPIMAGE or "".
 // api_url: GitHub's /releases endpoint (config updates.url).
-Updater *updater_create(StringView install_dir, StringView appimage, StringView api_url);
+Updater *updater_create(StringView program_dir, StringView appimage, StringView api_url);
+// The folder whose items an update swaps: the program's folder, or for
+// X.app/Contents/MacOS the folder holding X.app.
+StringView updater_install_dir(StringView program_dir);
 void updater_check(Updater *u, UpdateChannel channel);   // starts a check (async)
 // Downloads, verifies and unpacks release `version` from the list (async; any
 // version, older ones too). Not while checking or downloading.
@@ -51,6 +55,6 @@ void updater_destroy(Updater *u);
 // Removes what a previous update left behind (call at startup). `previous_pid`
 // (from --updated-from): the old version's process, which may still be exiting and
 // holding its executable on Windows: waited for first (on a background thread).
-void updater_cleanup(StringView install_dir, i64 previous_pid);
+void updater_cleanup(StringView program_dir, i64 previous_pid);
 // The program file inside an install folder ("gifu.exe" / "gifu").
 StringView updater_program_name(void);
