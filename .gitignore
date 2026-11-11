@@ -35,3 +35,9 @@ __pycache__/
 
 # Unit tests are kept outside the public repository
 /tests/
+
+# Local notes and editor settings (kept on the developer's machine)
+/CLAUDE.md
+/PLAN.md
+/.clang-format
+/.editorconfig

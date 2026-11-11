@@ -49,10 +49,9 @@ The first configure downloads the libraries Gifu builds with into `third_party/`
 (pinned versions, checked against SHA-256 hashes; see `cmake/Dependencies.cmake`).
 To build offline, download the archives listed in `third_party/README.md` and
 extract them there yourself. Cross-compiling for Windows from Linux/WSL with
-llvm-mingw: `windows-release` preset (see `CLAUDE.md`). Release packages:
-`python3 tools/package.py`. Every push is built on Linux and on Windows (MSYS2) by
-GitHub Actions, and `v*` tags publish the packages as a release. Architecture and
-roadmap: `PLAN.md`.
+llvm-mingw (`$LLVM_MINGW` or `~/.local/share/toolchains/llvm-mingw`): `windows-release`
+preset. Release packages: `python3 tools/package.py`. Every push is built on Linux and
+on Windows (MSYS2) by GitHub Actions, and `v*` tags publish the packages as a release.
 
 ## Credits
 
