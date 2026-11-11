@@ -40,6 +40,7 @@ void register_estimate_tests(void);
 void register_profile_tests(void);
 void register_style_tests(void);
 void register_platform_tests(void);
+void register_capture_linux_tests(void);
 int platform_child_main(const char *mode);
 
 int main(int argc, char **argv) {
@@ -63,6 +64,7 @@ int main(int argc, char **argv) {
     register_profile_tests();
     register_style_tests();
     register_platform_tests();
+    register_capture_linux_tests();
     const char *filter = argc > 1 ? argv[1] : NULL;
     int run = 0;
     for (int i = 0; i < g_test_count; ++i) {

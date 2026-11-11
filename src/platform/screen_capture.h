@@ -27,3 +27,6 @@ ScreenCapture *screen_capture_open(StringView backend, StringView command, Strin
 bool screen_capture_grab(ScreenCapture *capture, const ScreenRect *rect, RgbaImage *out, String *error);
 StringView screen_capture_name(const ScreenCapture *capture);
 void screen_capture_close(ScreenCapture *capture);
+// A flag the owner sets to abandon a capture that is waiting (e.g. for the desktop's
+// answer to a portal request): board sync passes its quit flag.
+void screen_capture_set_cancel(ScreenCapture *capture, const volatile bool *cancel);

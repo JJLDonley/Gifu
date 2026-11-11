@@ -6,7 +6,9 @@
 
 #include <stdlib.h>
 
-const char *const CAPTURE_NAMES[CAPTURE_KINDS] = { "gdi", "x11", "portal", "grim", "screencapture", "command" };
+const char *const CAPTURE_NAMES[CAPTURE_KINDS] = { "gdi", "x11", "portal", "grim", "screencapture", "command", "kwin" };
+
+void screen_capture_set_cancel(ScreenCapture *c, const volatile bool *cancel) { c->cancel = cancel; }
 
 StringView screen_capture_name(const ScreenCapture *c) { return sv(CAPTURE_NAMES[c->kind]); }
 
@@ -48,7 +50,6 @@ bool screen_capture_grab(ScreenCapture *c, const ScreenRect *rect, RgbaImage *ou
 void screen_capture_close(ScreenCapture *c) {
     if (!c) return;
     capture_close_native(c);
-    if (c->monitor) line_channel_stop(c->monitor, SV(""));
     string_free(&c->command);
     free(c);
 }

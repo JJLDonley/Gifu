@@ -62,6 +62,7 @@ static i32 sync_loop(BoardSync *s) {
         string_free(&err);
         return 0;
     }
+    screen_capture_set_cancel(capture, &s->quit);   // a capture waiting for the desktop stops with the sync
     BoardGrid grid = { 0 };
     BoardReading last = { 0 }, candidate = { 0 };
     bool have_candidate = false, have_last = false;

@@ -152,7 +152,7 @@ if(WIN32)
 elseif(APPLE)
     target_sources(gifu_core PRIVATE src/platform/platform_posix.c src/platform/platform_macos.c)
 else()
-    target_sources(gifu_core PRIVATE src/platform/platform_posix.c src/platform/platform_linux.c)
+    target_sources(gifu_core PRIVATE src/platform/platform_posix.c src/platform/platform_linux.c src/platform/dbus_link.c)
 endif()
 target_include_directories(gifu_core PUBLIC src ${CMAKE_BINARY_DIR}/generated)
 target_link_libraries(gifu_core PUBLIC third_party_misc)
@@ -163,7 +163,7 @@ elseif(APPLE)
     # posix_spawn_file_actions_addchdir_np: deprecated in macOS 26, but the replacement is missing before it.
     set_source_files_properties(src/platform/platform_posix.c PROPERTIES COMPILE_OPTIONS "-Wno-deprecated-declarations")
 else()
-    target_link_libraries(gifu_core PUBLIC m pthread X11)   # X11: screen capture
+    target_link_libraries(gifu_core PUBLIC m pthread X11 ${CMAKE_DL_LIBS})   # X11: screen capture; dl: libdbus-1 / libpipewire at run time
 endif()
 gifu_warnings(gifu_core)
 
@@ -282,6 +282,12 @@ if(GIFU_BUILD_TESTS AND EXISTS ${CMAKE_SOURCE_DIR}/tests/test_main.c)
         src/ui/layout_model.c
         src/ui/stone_anim.c
         src/ui/text_edit.c)   # pure data code: needs raylib's Color type, not the library
+    # Screen capture over D-Bus (KWin, portal) against fake services: Linux only.
+    if(UNIX AND NOT APPLE)
+        target_sources(gifu_tests PRIVATE tests/test_capture_linux.c)
+    else()
+        target_sources(gifu_tests PRIVATE tests/test_capture_none.c)
+    endif()
     target_link_libraries(gifu_tests PRIVATE gifu_core)
     target_include_directories(gifu_tests PRIVATE third_party/raylib/src)
     target_compile_definitions(gifu_tests PRIVATE GIFU_SOURCE_DIR="${GIFU_TEST_SOURCE_DIR}" GIFU_TEST_OUTPUT_DIR="${GIFU_TEST_OUTPUT_DIR}")

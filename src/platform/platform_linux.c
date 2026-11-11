@@ -4,11 +4,15 @@
 #include "platform/platform_internal.h"
 
 #include "base/log.h"
+#include "platform/dbus_link.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <poll.h>
 #include <unistd.h>
 
 #include <X11/Xlib.h>
@@ -137,64 +141,152 @@ static String uri_to_path(StringView uri) {
     return path;
 }
 
-static bool capture_grab_portal(ScreenCapture *c, RgbaImage *full, String *error) {
-    if (!c->monitor || !line_channel_alive(c->monitor)) {
-        StringView args[] = { SV("monitor"), SV("--session"), SV("--dest"), SV("org.freedesktop.portal.Desktop") };
-        ProcessSpec spec = { SV("gdbus"), args, countof(args), SV(""), NULL, 0 };
-        if (c->monitor) line_channel_stop(c->monitor, SV(""));
-        c->monitor = line_channel_start(&spec, error);
-        if (!c->monitor) return false;
-        os_sleep_ms(150);   // let it subscribe before the first request
-    }
-    char token[32], options[96];
-    snprintf(token, sizeof(token), "gifu_%u_%u", (u32)os_time_seconds(), ++c->serial);
-    snprintf(options, sizeof(options), "{'handle_token': <'%s'>, 'interactive': <false>}", token);
-    StringView argv[] = { SV("gdbus"), SV("call"), SV("--session"), SV("--dest"), SV("org.freedesktop.portal.Desktop"),
-                          SV("--object-path"), SV("/org/freedesktop/portal/desktop"), SV("--method"),
-                          SV("org.freedesktop.portal.Screenshot.Screenshot"), SV(""), sv(options) };
-    String reply = { 0 };
-    bool ok = capture_run_tool(argv, countof(argv), &reply, error);
-    string_free(&reply);
-    if (!ok) return false;
-    // Wait for ".../<token>: org.freedesktop.portal.Request.Response (uint32 0, {'uri': <'file:///...'>, ...})".
-    char needle[48];
-    snprintf(needle, sizeof(needle), "/%s:", token);
-    for (f64 until = os_time_seconds() + 30.0; os_time_seconds() < until;) {
-        Line line;
-        if (!line_channel_poll(c->monitor, &line)) {
-            if (!line_channel_alive(c->monitor)) break;
-            os_sleep_ms(10);
-            continue;
-        }
-        StringView text = string_sv(&line.text);
-        bool mine = line.kind == LINE_STDOUT && sv_find(text, sv(needle)) >= 0 && sv_find(text, SV("Response")) >= 0;
-        if (!mine) {
-            line_free(&line);
-            continue;
-        }
-        isize code_at = sv_find(text, SV("(uint32 "));
-        bool granted = code_at >= 0 && sv_starts_with(sv_drop(text, code_at + 8), SV("0,"));
-        isize uri_at = sv_find(text, SV("'uri': <'"));
-        String path = { 0 }, bytes = { 0 };
-        if (granted && uri_at >= 0) {
-            StringView uri = sv_drop(text, uri_at + 9);
-            isize end = sv_find(uri, SV("'>"));
-            path = uri_to_path(end >= 0 ? sv_take(uri, end) : uri);
-        }
-        line_free(&line);
-        if (!path.len) {
-            capture_set_error(error, string_from(SV("the desktop refused the screenshot (portal)")));
-            return false;
-        }
-        ok = os_read_file(string_sv(&path), &bytes) && capture_decode_png(string_sv(&bytes), full, error, SV("portal"));
-        os_remove(string_sv(&path));   // the portal saved it for this request only
-        string_free(&bytes);
-        string_free(&path);
-        return ok;
-    }
-    capture_set_error(error, string_from(SV("no answer from the screenshot portal")));
-    return false;
+static DbusLink *capture_link(ScreenCapture *c, String *error) {
+    if (!c->dbus) c->dbus = dbus_link_open_session(error);
+    return c->dbus;
 }
+
+static bool cancelled(const ScreenCapture *c) { return c->cancel && *c->cancel; }
+
+// One Screenshot request on the capture's own D-Bus connection: the portal sends
+// Response only to the connection that asked, and drops the request when that
+// connection goes away. The match is added before the call (Request docs).
+static bool capture_grab_portal(ScreenCapture *c, RgbaImage *full, String *error) {
+    DbusLink *link = capture_link(c, error);
+    if (!link) return false;
+    char token[32];
+    snprintf(token, sizeof(token), "gifu%u", ++c->serial);
+    String path = dbus_portal_request_path(link, sv(token));
+    String rule = string_format("type='signal',interface='org.freedesktop.portal.Request',member='Response',path='%s'", string_cstr(&path));
+    bool ok = dbus_link_add_match(link, string_sv(&rule), error);
+    string_free(&rule);
+    DbusValue reply = { 0 }, response = { 0 };
+    if (ok) {
+        DbusMsg *m = dbus_msg_method(SV("org.freedesktop.portal.Desktop"), SV("/org/freedesktop/portal/desktop"),
+                                     SV("org.freedesktop.portal.Screenshot"), SV("Screenshot"));
+        dbus_msg_string(m, SV(""));   // no parent window
+        dbus_msg_dict_begin(m);
+        dbus_msg_dict_string(m, SV("handle_token"), sv(token));
+        dbus_msg_dict_bool(m, SV("interactive"), false);
+        dbus_msg_dict_end(m);
+        ok = dbus_link_call(link, m, 10000, &reply, error);
+    }
+    if (ok) {
+        // Old portals may answer on another path than the predicted one.
+        StringView handle = dbus_value_string(dbus_arg(&reply, 0));
+        if (handle.len && !sv_eq(handle, string_sv(&path))) {
+            string_free(&path);
+            path = string_from(handle);
+            String again = string_format("type='signal',interface='org.freedesktop.portal.Request',member='Response',path='%s'", string_cstr(&path));
+            dbus_link_add_match(link, string_sv(&again), NULL);
+            string_free(&again);
+        }
+        ok = dbus_link_wait_signal(link, string_sv(&path), SV("org.freedesktop.portal.Request"), SV("Response"), 30000, c->cancel, &response);
+        if (!ok) capture_set_error(error, string_from(cancelled(c) ? SV("cancelled") : SV("no answer from the screenshot portal")));
+    }
+    if (ok) {
+        i64 code = dbus_value_int(dbus_arg(&response, 0));
+        StringView uri = dbus_value_string(dbus_dict_get(dbus_arg(&response, 1), SV("uri")));
+        if (code != 0 || !uri.len) {
+            capture_set_error(error, string_format("the desktop refused the screenshot (portal response %lld)", (long long)code));
+            ok = false;
+        } else {
+            String file = uri_to_path(uri), bytes = { 0 };
+            ok = os_read_file(string_sv(&file), &bytes) && capture_decode_png(string_sv(&bytes), full, error, SV("portal"));
+            os_remove(string_sv(&file));   // saved for this request only (KDE puts it in ~/Pictures)
+            string_free(&bytes);
+            string_free(&file);
+        }
+    }
+    dbus_value_free(&reply);
+    dbus_value_free(&response);
+    string_free(&path);
+    return ok;
+}
+
+// ---- KWin (KDE Plasma) -----------------------------------------------------------------------------
+
+// org.kde.KWin.ScreenShot2.CaptureArea: KWin writes the area's raw pixels to a
+// pipe we pass (format, width, height, stride in the reply) and leaves Gifu's own
+// windows out. Plasma 6.8 dropped the per-app restriction on it; older versions
+// answer NoAuthorized and Gifu falls back to the portal.
+static bool read_pipe(int fd, u8 *dst, isize want, const ScreenCapture *c) {
+    isize got = 0;
+    f64 until = os_time_seconds() + 5.0;
+    while (got < want) {
+        struct pollfd p = { fd, POLLIN, 0 };
+        int r = poll(&p, 1, 100);
+        if (r < 0 && errno != EINTR) return false;
+        if (cancelled(c) || os_time_seconds() > until) return false;
+        if (r <= 0) continue;
+        ssize_t n = read(fd, dst + got, (size_t)(want - got));
+        if (n < 0 && errno != EINTR && errno != EAGAIN) return false;
+        if (n == 0) break;   // KWin closed the pipe
+        if (n > 0) got += n;
+    }
+    return got == want;
+}
+
+static bool capture_grab_kwin(ScreenCapture *c, const ScreenRect *rect, RgbaImage *out, String *error) {
+    DbusLink *link = capture_link(c, error);
+    if (!link) return false;
+    if (!rect) {
+        capture_set_error(error, string_from(SV("KWin capture needs an area")));
+        return false;
+    }
+    int fds[2];
+    if (pipe2(fds, O_CLOEXEC) != 0) {
+        capture_set_error(error, string_from(SV("pipe failed")));
+        return false;
+    }
+    DbusMsg *m = dbus_msg_method(SV("org.kde.KWin.ScreenShot2"), SV("/org/kde/KWin/ScreenShot2"), SV("org.kde.KWin.ScreenShot2"), SV("CaptureArea"));
+    dbus_msg_int32(m, rect->x);
+    dbus_msg_int32(m, rect->y);
+    dbus_msg_uint32(m, (u32)MAX(rect->width, 1));
+    dbus_msg_uint32(m, (u32)MAX(rect->height, 1));
+    dbus_msg_dict_begin(m);
+    dbus_msg_dict_bool(m, SV("include-cursor"), false);
+    dbus_msg_dict_end(m);
+    dbus_msg_fd(m, fds[1]);
+    DbusValue reply = { 0 };
+    bool ok = dbus_link_call(link, m, 5000, &reply, error);
+    close(fds[1]);   // the message carried its own copy: EOF comes when KWin closes it
+    const DbusValue *res = dbus_arg(&reply, 0);
+    i64 format = dbus_value_int(dbus_dict_get(res, SV("format")));
+    i64 w = dbus_value_int(dbus_dict_get(res, SV("width"))), h = dbus_value_int(dbus_dict_get(res, SV("height")));
+    i64 stride = dbus_value_int(dbus_dict_get(res, SV("stride")));
+    // QImage::Format (qimage.h): 4 RGB32, 5 ARGB32, 6 ARGB32_Premultiplied (0xAARRGGBB words:
+    // B G R A bytes on little-endian), 16 RGBX8888, 17 RGBA8888, 18 RGBA8888_Premultiplied.
+    bool bgra = format == 4 || format == 5 || format == 6, rgba = format == 16 || format == 17 || format == 18;
+    if (ok && (!sv_eq(dbus_value_string(dbus_dict_get(res, SV("type"))), SV("raw")) || (!bgra && !rgba) || w <= 0 || h <= 0 || stride < w * 4)) {
+        capture_set_error(error, string_format("KWin sent an image Gifu cannot read (format %lld)", (long long)format));
+        ok = false;
+    }
+    u8 *raw = NULL;
+    if (ok) {
+        raw = malloc((usize)(stride * h));
+        if (!raw) abort();
+        ok = read_pipe(fds[0], raw, stride * h, c);
+        if (!ok) capture_set_error(error, string_from(SV("KWin sent no image")));
+    }
+    if (ok && !rgba_image_alloc(out, (i32)w, (i32)h)) ok = false;
+    for (i64 y = 0; ok && y < h; ++y) {
+        const u8 *src = raw + y * stride;
+        u8 *dst = out->pixels + y * w * 4;
+        for (i64 x = 0; x < w; ++x, src += 4, dst += 4) {
+            dst[0] = bgra ? src[2] : src[0];
+            dst[1] = src[1];
+            dst[2] = bgra ? src[0] : src[2];
+            dst[3] = 255;
+        }
+    }
+    free(raw);
+    close(fds[0]);
+    dbus_value_free(&reply);
+    return ok;
+}
+
+// ---- X11 -----------------------------------------------------------------------------------------
 
 static u8 channel(unsigned long pixel, unsigned long mask) {
     if (!mask) return 0;
@@ -304,19 +396,43 @@ static bool capture_grab_x11(ScreenCapture *c, const ScreenRect *rect, RgbaImage
 
 // ---- Screen capture: this system's backends -------------------------------------------------------
 
-CaptureKind capture_default_kind(StringView command) {
-    const char *session = getenv("XDG_SESSION_TYPE");
-    bool wayland = session && strcmp(session, "wayland") == 0;
-    if (command.len) return CAPTURE_COMMAND;
-    if (wayland && capture_on_path("gdbus")) return CAPTURE_PORTAL;
-    if (wayland && capture_on_path("grim")) return CAPTURE_GRIM;
-    return CAPTURE_X11;
+// "auto": the user's command; on Wayland KWin on KDE, grim on wlroots desktops
+// (sway, Hyprland...), else the portal; on X11 the root window.
+static bool desktop_is(const char *name) {
+    const char *d = getenv("XDG_CURRENT_DESKTOP");
+    return d && strstr(d, name) != NULL;
 }
 
-bool capture_kind_available(CaptureKind kind) { return kind == CAPTURE_X11 || kind == CAPTURE_PORTAL || kind == CAPTURE_GRIM; }
+CaptureKind capture_default_kind(StringView command) {
+    const char *session = getenv("XDG_SESSION_TYPE");
+    bool wayland = (session && strcmp(session, "wayland") == 0) || getenv("WAYLAND_DISPLAY");
+    if (command.len) return CAPTURE_COMMAND;
+    if (!wayland) return CAPTURE_X11;
+    if (desktop_is("KDE") && dbus_link_available()) return CAPTURE_KWIN;
+    if (!desktop_is("GNOME") && capture_on_path("grim")) return CAPTURE_GRIM;
+    if (dbus_link_available()) return CAPTURE_PORTAL;
+    return CAPTURE_X11;   // XWayland windows only
+}
+
+bool capture_kind_available(CaptureKind kind) {
+    return kind == CAPTURE_X11 || kind == CAPTURE_GRIM || ((kind == CAPTURE_PORTAL || kind == CAPTURE_KWIN) && dbus_link_available());
+}
+
+// Errors that mean "KWin will not do this for us" (Plasma before 6.8, no KWin).
+static bool kwin_refused(StringView error) {
+    return sv_find(error, SV("NoAuthorized")) >= 0 || sv_find(error, SV("ServiceUnknown")) >= 0 || sv_find(error, SV("UnknownMethod")) >= 0 ||
+           sv_find(error, SV("not provided")) >= 0;
+}
 
 bool capture_grab_native(ScreenCapture *c, const ScreenRect *rect, RgbaImage *out, String *error) {
     if (c->kind == CAPTURE_X11) return capture_grab_x11(c, rect, out, error);
+    if (c->kind == CAPTURE_KWIN) {
+        if (capture_grab_kwin(c, rect, out, error)) return true;
+        if (cancelled(c) || !error || !kwin_refused(string_sv(error))) return false;
+        log_info("screen capture: KWin refused (%s); using the screenshot portal", string_cstr(error));
+        c->kind = CAPTURE_PORTAL;
+        string_clear(error);
+    }
     RgbaImage full;
     bool ok = c->kind == CAPTURE_PORTAL ? capture_grab_portal(c, &full, error) : capture_grab_tool(c, &full, error);
     return ok && capture_crop_to(&full, rect, out, error);
@@ -325,4 +441,6 @@ bool capture_grab_native(ScreenCapture *c, const ScreenRect *rect, RgbaImage *ou
 void capture_close_native(ScreenCapture *c) {
     if (c->display) XCloseDisplay((Display *)c->display);
     c->display = NULL;
+    dbus_link_close(c->dbus);
+    c->dbus = NULL;
 }
