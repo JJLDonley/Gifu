@@ -11,7 +11,7 @@
       "name": "linux-debug",
       "displayName": "Linux Debug (gcc, ASan/UBSan)",
       "inherits": "base",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "CATAGUI_SANITIZE": "ON" },
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "GIFU_SANITIZE": "ON" },
       "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" }
     },
     {

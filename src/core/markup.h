@@ -5,7 +5,7 @@
 //   LB            labels  "pt:text"
 //   AR LN         arrows / lines "pt:pt"
 //   TB TW         black / white territory
-// CataGui only:
+// Gifu only:
 //   CGS[rrggbb:pt]...            area shading, any colour
 //   CGP[rrggbb:x,y x,y ...]      freehand pen strokes (board coordinates, 0 = first line)
 // A node's markup is read into a Markup, edited, and written back as a whole.

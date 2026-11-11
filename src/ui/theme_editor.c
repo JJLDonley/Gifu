@@ -155,7 +155,7 @@ static void save(Ui *ui) {
 
     String dir = path_join(string_sv(&ui->app->config_dir), SV("themes"));
     String file = string_format(SV_FMT "/%s.theme", SV_ARG(string_sv(&dir)), id);
-    String text = theme_write(&e->edit, SV("Made with CataGui's theme editor (View -> Edit theme...)."));
+    String text = theme_write(&e->edit, SV("Made with Gifu's theme editor (View -> Edit theme...)."));
     os_make_dirs(string_sv(&dir));
     bool ok = os_write_file(string_sv(&file), string_sv(&text));
     string_free(&text);

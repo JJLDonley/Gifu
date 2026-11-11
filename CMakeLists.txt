@@ -1,17 +1,17 @@
 cmake_minimum_required(VERSION 3.24)
-project(CataGui VERSION 0.1.0 LANGUAGES C)
+project(Gifu VERSION 0.1.0 LANGUAGES C)
 
 set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-option(CATAGUI_SANITIZE "Build with ASan/UBSan (gcc/clang only)" OFF)
-option(CATAGUI_BUILD_TESTS "Build unit tests" ON)
+option(GIFU_SANITIZE "Build with ASan/UBSan (gcc/clang only)" OFF)
+option(GIFU_BUILD_TESTS "Build unit tests" ON)
 
 # Toolchains: GCC/Clang only (Linux gcc, MSYS2 UCRT64 gcc/clang, llvm-mingw cross).
 if(MSVC)
-    message(FATAL_ERROR "CataGui builds with GCC or Clang (Linux, MSYS2, llvm-mingw); MSVC is not supported.")
+    message(FATAL_ERROR "Gifu builds with GCC or Clang (Linux, MSYS2, llvm-mingw); MSVC is not supported.")
 endif()
 
 # ---------------------------------------------------------------------------
@@ -53,14 +53,14 @@ target_compile_options(third_party_misc PRIVATE -w)
 # ---------------------------------------------------------------------------
 # Warnings for our own code
 # ---------------------------------------------------------------------------
-function(catagui_warnings target)
+function(gifu_warnings target)
     target_compile_options(${target} PRIVATE -Wall -Wextra -Wshadow -Wno-missing-field-initializers
         -Wno-unused-parameter -Wstrict-prototypes -Wvla -Wimplicit-fallthrough)
     if(WIN32)
         target_compile_definitions(${target} PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
     else()
         target_compile_definitions(${target} PRIVATE _GNU_SOURCE)
-        if(CATAGUI_SANITIZE)
+        if(GIFU_SANITIZE)
             target_compile_options(${target} PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
             target_link_options(${target} PRIVATE -fsanitize=address,undefined)
         endif()
@@ -73,9 +73,9 @@ if(WIN32)
 endif()
 
 # ---------------------------------------------------------------------------
-# catagui_core: everything that does not touch the window (unit-testable)
+# gifu_core: everything that does not touch the window (unit-testable)
 # ---------------------------------------------------------------------------
-add_library(catagui_core STATIC
+add_library(gifu_core STATIC
     src/base/arena.c
     src/base/str.c
     src/base/vec.c
@@ -118,19 +118,19 @@ add_library(catagui_core STATIC
     src/app/screen_capture.c
     src/app/board_sync.c
     src/app/app_sync.c)
-target_include_directories(catagui_core PUBLIC src)
-target_link_libraries(catagui_core PUBLIC third_party_misc)
+target_include_directories(gifu_core PUBLIC src)
+target_link_libraries(gifu_core PUBLIC third_party_misc)
 if(WIN32)
-    target_link_libraries(catagui_core PUBLIC shell32 ole32 uuid gdi32 user32)   # gdi32: screen capture
+    target_link_libraries(gifu_core PUBLIC shell32 ole32 uuid gdi32 user32)   # gdi32: screen capture
 else()
-    target_link_libraries(catagui_core PUBLIC m pthread X11)   # X11: screen capture
+    target_link_libraries(gifu_core PUBLIC m pthread X11)   # X11: screen capture
 endif()
-catagui_warnings(catagui_core)
+gifu_warnings(gifu_core)
 
 # ---------------------------------------------------------------------------
-# catagui: the desktop app
+# gifu: the desktop app
 # ---------------------------------------------------------------------------
-add_executable(catagui
+add_executable(gifu
     src/main.c
     src/app/app.c
     src/app/file_dialog.c
@@ -160,37 +160,37 @@ add_executable(catagui
     src/ui/area_select.c
     src/ui/markup_tools.c
     src/ui/layout.c)
-target_link_libraries(catagui PRIVATE catagui_core raylib)
-catagui_warnings(catagui)
+target_link_libraries(gifu PRIVATE gifu_core raylib)
+gifu_warnings(gifu)
 if(WIN32)
     enable_language(RC)
-    target_sources(catagui PRIVATE packaging/windows/catagui.rc)
+    target_sources(gifu PRIVATE packaging/windows/gifu.rc)
     # windres does not report the icon as a dependency: rebuild when it changes.
-    set_source_files_properties(packaging/windows/catagui.rc PROPERTIES OBJECT_DEPENDS ${CMAKE_SOURCE_DIR}/packaging/windows/catagui.ico)
-    target_link_libraries(catagui PRIVATE comdlg32)
+    set_source_files_properties(packaging/windows/gifu.rc PROPERTIES OBJECT_DEPENDS ${CMAKE_SOURCE_DIR}/packaging/windows/gifu.ico)
+    target_link_libraries(gifu PRIVATE comdlg32)
     # GUI subsystem in Release (no console window), console in Debug for logs.
-    target_link_options(catagui PRIVATE $<$<CONFIG:Release>:-mwindows>)
+    target_link_options(gifu PRIVATE $<$<CONFIG:Release>:-mwindows>)
 endif()
 
 # Assets are loaded from <exe_dir>/assets, so mirror them next to the binary
 # on every build (not only when the executable relinks).
-add_custom_target(catagui_assets ALL
+add_custom_target(gifu_assets ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different
-            ${CMAKE_SOURCE_DIR}/assets $<TARGET_FILE_DIR:catagui>/assets
+            ${CMAKE_SOURCE_DIR}/assets $<TARGET_FILE_DIR:gifu>/assets
     COMMENT "Syncing assets")
-add_dependencies(catagui catagui_assets)
+add_dependencies(gifu gifu_assets)
 
 # ---------------------------------------------------------------------------
 # Install / packaging (cmake --install <build> --prefix <dir>; see tools/package.py)
 # ---------------------------------------------------------------------------
-install(TARGETS catagui RUNTIME DESTINATION .)
+install(TARGETS gifu RUNTIME DESTINATION .)
 install(DIRECTORY assets/ DESTINATION assets)
 install(FILES LICENSE README.md THIRD_PARTY_NOTICES.md DESTINATION .)
 if(NOT WIN32)
     # Desktop entry + icon: copy to ~/.local/share/applications and
     # ~/.local/share/icons/hicolor/256x256/apps (see README).
-    install(FILES packaging/linux/catagui.desktop DESTINATION share/applications)
-    install(FILES assets/icons/catagui.png DESTINATION share/icons/hicolor/256x256/apps)
+    install(FILES packaging/linux/gifu.desktop DESTINATION share/applications)
+    install(FILES assets/icons/gifu.png DESTINATION share/icons/hicolor/256x256/apps)
 endif()
 install(FILES third_party/raylib/LICENSE DESTINATION licenses RENAME raylib-LICENSE.txt)
 install(FILES third_party/clay/LICENSE.md DESTINATION licenses RENAME clay-LICENSE.md)
@@ -199,16 +199,16 @@ install(FILES third_party/yyjson/LICENSE DESTINATION licenses RENAME yyjson-LICE
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
-if(CATAGUI_BUILD_TESTS)
+if(GIFU_BUILD_TESTS)
     enable_testing()
     # Tests read assets from the source tree. When cross-compiling from WSL the
     # Windows binaries need the drive path (/mnt/c/x -> C:/x).
-    set(CATAGUI_TEST_SOURCE_DIR ${CMAKE_SOURCE_DIR})
+    set(GIFU_TEST_SOURCE_DIR ${CMAKE_SOURCE_DIR})
     if(CMAKE_CROSSCOMPILING AND WIN32 AND CMAKE_SOURCE_DIR MATCHES "^/mnt/([a-z])/(.*)$")
         string(TOUPPER ${CMAKE_MATCH_1} drive)
-        set(CATAGUI_TEST_SOURCE_DIR "${drive}:/${CMAKE_MATCH_2}")
+        set(GIFU_TEST_SOURCE_DIR "${drive}:/${CMAKE_MATCH_2}")
     endif()
-    add_executable(catagui_tests
+    add_executable(gifu_tests
         tests/test_main.c
         tests/test_str.c
         tests/test_board.c
@@ -228,22 +228,22 @@ if(CATAGUI_BUILD_TESTS)
         src/ui/layout_model.c
         src/ui/stone_anim.c
         src/ui/text_edit.c)   # pure data code: needs raylib's Color type, not the library
-    target_link_libraries(catagui_tests PRIVATE catagui_core)
-    target_include_directories(catagui_tests PRIVATE third_party/raylib/src)
-    target_compile_definitions(catagui_tests PRIVATE CATAGUI_SOURCE_DIR="${CATAGUI_TEST_SOURCE_DIR}")
-    catagui_warnings(catagui_tests)
-    add_test(NAME unit COMMAND catagui_tests)
+    target_link_libraries(gifu_tests PRIVATE gifu_core)
+    target_include_directories(gifu_tests PRIVATE third_party/raylib/src)
+    target_compile_definitions(gifu_tests PRIVATE GIFU_SOURCE_DIR="${GIFU_TEST_SOURCE_DIR}")
+    gifu_warnings(gifu_tests)
+    add_test(NAME unit COMMAND gifu_tests)
 
-    add_executable(catagui_engine_test tests/engine_smoke.c)
-    target_link_libraries(catagui_engine_test PRIVATE catagui_core)
-    target_compile_definitions(catagui_engine_test PRIVATE CATAGUI_SOURCE_DIR="${CATAGUI_TEST_SOURCE_DIR}")
-    catagui_warnings(catagui_engine_test)
-    add_test(NAME engine_smoke COMMAND catagui_engine_test)
+    add_executable(gifu_engine_test tests/engine_smoke.c)
+    target_link_libraries(gifu_engine_test PRIVATE gifu_core)
+    target_compile_definitions(gifu_engine_test PRIVATE GIFU_SOURCE_DIR="${GIFU_TEST_SOURCE_DIR}")
+    gifu_warnings(gifu_engine_test)
+    add_test(NAME engine_smoke COMMAND gifu_engine_test)
     set_tests_properties(engine_smoke PROPERTIES LABELS engine TIMEOUT 1000)
 
     # Headless batch analysis of a small game through the KataGo JSON engine.
     add_test(NAME headless_analyze
-             COMMAND catagui --analyze ${CATAGUI_TEST_SOURCE_DIR}/tests/data/sample_cjk.sgf
+             COMMAND gifu --analyze ${GIFU_TEST_SOURCE_DIR}/tests/data/sample_cjk.sgf
                      --out ${CMAKE_BINARY_DIR}/analyzed --set analysis.game_visits=20)
     set_tests_properties(headless_analyze PROPERTIES LABELS engine TIMEOUT 1000 PASS_REGULAR_EXPRESSION "DONE: 1 game")
 endif()

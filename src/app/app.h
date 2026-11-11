@@ -133,7 +133,7 @@ typedef struct App {
     // Board sync from the screen (app_sync.c).
     BoardSync *board_sync;
     BoardSyncState board_sync_state;
-    struct LineChannel *area_picker;   // `catagui --select-area` helper while picking
+    struct LineChannel *area_picker;   // `gifu --select-area` helper while picking
     GameNode *sync_node;               // where sync left off (new moves go after it, wherever the user looks)
     const GameTree *sync_tree;         // ...in this tree
     ScreenRect desktop;                // every monitor (filled by the UI each frame)

@@ -1,6 +1,6 @@
-// CataGui - a KataGo GUI in C (Clay + raylib).
+// Gifu - a KataGo GUI in C (Clay + raylib).
 //
-// Usage: catagui [file.sgf] [--theme ID] [--engine ID|none] [--portable]
+// Usage: gifu [file.sgf] [--theme ID] [--engine ID|none] [--portable]
 //                [--move N|-1] [--screenshot out.png [--delay SECONDS]]
 #include "app/app.h"
 #include "app/headless.h"
@@ -15,14 +15,14 @@
 
 static void usage(void) {
     fprintf(stderr,
-            "usage: catagui [file.sgf] [--theme ID] [--engine ID|none] [--portable] [--size WxH]\n"
+            "usage: gifu [file.sgf] [--theme ID] [--engine ID|none] [--portable] [--size WxH]\n"
             "               [--move N|-1] [--region A1:G7] [--set KEY=VALUE]... [--run COMMAND_ID]...\n"
             "               [--screenshot out.png [--delay SECONDS]] [--verbose]\n"
-            "       catagui --analyze FILE.sgf... [--out DIR] [--engine ID] [--set analysis.game_visits=N]\n"
-            "       catagui --rank FILE.sgf...   (estimate player ranks with the human SL network)\n"
-            "       catagui --read-board FILE.png|screen [--capture-area X,Y,W,H] [--size 19]   (board recognition)\n"
-            "       catagui --capture OUT.png [--capture-area X,Y,W,H] [--set sync.capture=auto|gdi|x11|portal|grim|command]\n"
-            "       catagui --install engine,network,human|all [--backend opencl|eigenavx2|eigen|cuda12.8-cudnn9.8.0] [--install-dir DIR]\n");
+            "       gifu --analyze FILE.sgf... [--out DIR] [--engine ID] [--set analysis.game_visits=N]\n"
+            "       gifu --rank FILE.sgf...   (estimate player ranks with the human SL network)\n"
+            "       gifu --read-board FILE.png|screen [--capture-area X,Y,W,H] [--size 19]   (board recognition)\n"
+            "       gifu --capture OUT.png [--capture-area X,Y,W,H] [--set sync.capture=auto|gdi|x11|portal|grim|command]\n"
+            "       gifu --install engine,network,human|all [--backend opencl|eigenavx2|eigen|cuda12.8-cudnn9.8.0] [--install-dir DIR]\n");
 }
 
 static bool parse_args(int argc, char **argv, AppOptions *opts) {
@@ -126,7 +126,7 @@ int main(int argc, char **argv) {
     SetTraceLogLevel(LOG_WARNING);
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_MSAA_4X_HINT | FLAG_VSYNC_HINT);
     InitWindow(options.window_width ? options.window_width : app->config.window_width,
-               options.window_height ? options.window_height : app->config.window_height, "CataGui");
+               options.window_height ? options.window_height : app->config.window_height, "Gifu");
     // Start at a size that fits high-DPI monitors (config sizes are at 100%).
     Vector2 dpi = GetWindowScaleDPI();
     if (dpi.x > 1.01f && !options.window_width) {
@@ -139,7 +139,7 @@ int main(int argc, char **argv) {
     SetWindowMinSize(800, 560);
     if (options.window_pos_set) SetWindowPosition(options.window_x, options.window_y);
     // Window / taskbar icon (the Windows exe also embeds it as a resource).
-    String icon_path = path_join(string_sv(&app->assets_dir), SV("icons/catagui.png"));
+    String icon_path = path_join(string_sv(&app->assets_dir), SV("icons/gifu.png"));
     Image icon = LoadImage(string_cstr(&icon_path));
     if (icon.data) {
         SetWindowIcon(icon);

@@ -1,5 +1,5 @@
 // Windows resources: application icon and version information.
-1 ICON "catagui.ico"
+1 ICON "gifu.ico"
 
 1 VERSIONINFO
 FILEVERSION 0,1,0,0
@@ -9,13 +9,13 @@ BEGIN
   BEGIN
     BLOCK "040904B0"
     BEGIN
-      VALUE "CompanyName", "CataGui"
-      VALUE "FileDescription", "CataGui - KataGo GUI"
+      VALUE "CompanyName", "Gifu"
+      VALUE "FileDescription", "Gifu - KataGo GUI"
       VALUE "FileVersion", "0.1.0"
-      VALUE "InternalName", "catagui"
+      VALUE "InternalName", "gifu"
       VALUE "LegalCopyright", "GPL-3.0"
-      VALUE "OriginalFilename", "catagui.exe"
-      VALUE "ProductName", "CataGui"
+      VALUE "OriginalFilename", "gifu.exe"
+      VALUE "ProductName", "Gifu"
       VALUE "ProductVersion", "0.1.0"
     END
   END

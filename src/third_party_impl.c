@@ -4,8 +4,8 @@
 
 // Raw-deflate decoder for zip extraction. raylib exports `sinflate` itself, so
 // our copy is renamed to avoid duplicate symbols when both are linked.
-#define sinflate catagui_sinflate
-#define zsinflate catagui_zsinflate
+#define sinflate gifu_sinflate
+#define zsinflate gifu_zsinflate
 #define SINFL_IMPLEMENTATION
 #define SINFL_NO_SIMD
 #include "sinfl.h"

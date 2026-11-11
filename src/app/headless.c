@@ -1,4 +1,4 @@
-// Headless batch analysis: catagui --analyze a.sgf b.sgf ... [--out DIR]
+// Headless batch analysis: gifu --analyze a.sgf b.sgf ... [--out DIR]
 //
 // Every game is submitted to the KataGo JSON analysis engine at once (it
 // batches positions across games on the GPU); results are written back as
@@ -354,7 +354,7 @@ int headless_rank(App *app) {
     StringView wanted = o->engine.len ? o->engine : string_sv(&app->config.engine);
     const EngineProfile *profile = engine_profiles_find_human(&app->engine_profiles, wanted);
     if (!profile) {
-        fprintf(stderr, "no engine profile with a human network (catagui --install human)\n");
+        fprintf(stderr, "no engine profile with a human network (gifu --install human)\n");
         return 2;
     }
     if (engine_profile_can_batch(profile)) return rank_batched(app, profile);

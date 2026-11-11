@@ -32,13 +32,13 @@ static i32 run_curl(const StringView *args, isize argc, String *out, String *err
 }
 
 bool http_get(StringView url, String *body, String *error) {
-    StringView args[] = { SV("-sSfL"), SV("--max-time"), SV("60"), SV("-A"), SV("CataGui"), url };
+    StringView args[] = { SV("-sSfL"), SV("--max-time"), SV("60"), SV("-A"), SV("Gifu"), url };
     string_clear(body);
     return run_curl(args, countof(args), body, error) == 0;
 }
 
 i64 http_content_length(StringView url) {
-    StringView args[] = { SV("-sSfIL"), SV("--max-time"), SV("30"), SV("-A"), SV("CataGui"), url };
+    StringView args[] = { SV("-sSfIL"), SV("--max-time"), SV("30"), SV("-A"), SV("Gifu"), url };
     String headers = { 0 };
     i64 size = -1;
     if (run_curl(args, countof(args), &headers, NULL) == 0) {
@@ -61,7 +61,7 @@ bool http_download(StringView url, StringView dest, i64 total, HttpProgressFn pr
     String part = string_format(SV_FMT ".part", SV_ARG(dest));
     os_make_dirs(path_dirname(dest));
     os_remove(string_sv(&part));
-    StringView args[] = { SV("-sSfL"), SV("--retry"), SV("3"), SV("-A"), SV("CataGui"), SV("-o"), string_sv(&part), url };
+    StringView args[] = { SV("-sSfL"), SV("--retry"), SV("3"), SV("-A"), SV("Gifu"), SV("-o"), string_sv(&part), url };
     ProcessSpec spec = { CURL, args, countof(args), SV_NULL, NULL, 0 };
     String spawn_error = { 0 };
     Process *p = process_spawn(&spec, &spawn_error);

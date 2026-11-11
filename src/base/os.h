@@ -16,6 +16,7 @@ i64 os_file_mtime(StringView path);   // modification time (opaque units), 0 if 
 i64 os_file_size(StringView path);    // bytes, -1 if missing
 bool os_rename(StringView from, StringView to);   // replaces `to`
 bool os_remove(StringView path);
+bool os_remove_dir(StringView path);   // an empty directory
 bool os_set_executable(StringView path);          // chmod +x (no-op on Windows)
 bool os_dir_exists(StringView path);
 bool os_make_dirs(StringView path);
@@ -24,12 +25,12 @@ bool os_list_dir(StringView dir, StringVec *out_names);
 
 f64 os_time_seconds(void);   // monotonic
 void os_sleep_ms(i32 ms);
-// Logs the caller's stack as offsets into the executable ("#3 catagui+0x38020"),
+// Logs the caller's stack as offsets into the executable ("#3 gifu+0x38020"),
 // for symbolizing a user's log with llvm-symbolizer (debug builds have the symbols).
 void os_log_backtrace(void);
 
 String os_executable_dir(void);
-String os_config_dir(void);  // %APPDATA%\CataGui, $XDG_CONFIG_HOME/catagui, ~/.config/catagui
+String os_config_dir(void);  // %APPDATA%\Gifu, $XDG_CONFIG_HOME/gifu, ~/.config/gifu
 const char *os_platform_name(void);   // "windows" | "linux" | "macos"
 
 String path_join(StringView a, StringView b);

@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-int catagui_sinflate(void *out, int cap, const void *in, int size);   // third_party/sinfl (renamed)
+int gifu_sinflate(void *out, int cap, const void *in, int size);   // third_party/sinfl (renamed)
 
 static const char B64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
@@ -98,7 +98,7 @@ bool gzip_decompress(StringView gz, String *out) {
     if (size > (64u << 20)) return false;   // these payloads are small; refuse absurd sizes
     char *buf = malloc(size ? size : 1);
     if (!buf) return false;
-    int got = catagui_sinflate(buf, (int)size, p + pos, (int)(gz.len - 8 - pos));
+    int got = gifu_sinflate(buf, (int)size, p + pos, (int)(gz.len - 8 - pos));
     bool ok = got == (int)size && crc32_update(0, sv_from_parts(buf, size)) == crc;
     if (ok) string_push(out, sv_from_parts(buf, size));
     free(buf);

@@ -56,7 +56,7 @@ static void setup_body(Ui *ui, void *user) {
         ui->setup_init = true;
     }
 
-    ui_label(ui, tr(ui, "setup.intro", "CataGui uses KataGo to analyse games. Files are installed into"), FONT_UI, 13, c->text_muted);
+    ui_label(ui, tr(ui, "setup.intro", "Gifu uses KataGo to analyse games. Files are installed into"), FONT_UI, 13, c->text_muted);
     ui_label(ui, elide_left(ui, string_sv(&dir), 12, ui_px(ui, 600 - 48)), FONT_MONO, 12, c->text);
 
     ui_card_title(ui, tr(ui, "setup.backend", "Engine build"));

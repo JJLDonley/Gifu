@@ -145,6 +145,13 @@ bool os_remove(StringView path) {
     return ok;
 }
 
+bool os_remove_dir(StringView path) {
+    wchar_t *w = os_utf8_to_wide(path);
+    BOOL ok = RemoveDirectoryW(w);
+    free(w);
+    return ok;
+}
+
 bool os_set_executable(StringView path) {
     UNUSED(path);
     return true;
@@ -209,7 +216,7 @@ String os_config_dir(void) {
     String out = { 0 };
     if (SHGetKnownFolderPath(&FOLDERID_RoamingAppData, 0, NULL, &appdata) == S_OK) {
         String base = os_wide_to_utf8(appdata);
-        out = path_join(string_sv(&base), SV("CataGui"));
+        out = path_join(string_sv(&base), SV("Gifu"));
         string_free(&base);
     } else {
         out = string_from(SV("."));
@@ -306,6 +313,13 @@ bool os_remove(StringView path) {
     return rc == 0;
 }
 
+bool os_remove_dir(StringView path) {
+    char *c = to_cstr(path);
+    int rc = rmdir(c);
+    free(c);
+    return rc == 0;
+}
+
 bool os_set_executable(StringView path) {
     char *c = to_cstr(path);
     int rc = chmod(c, 0755);
@@ -364,10 +378,10 @@ String os_executable_dir(void) {
 
 String os_config_dir(void) {
     const char *xdg = getenv("XDG_CONFIG_HOME");
-    if (xdg && *xdg) return path_join(sv(xdg), SV("catagui"));
+    if (xdg && *xdg) return path_join(sv(xdg), SV("gifu"));
     const char *home = getenv("HOME");
     String base = path_join(sv(home ? home : "."), SV(".config"));
-    String out = path_join(string_sv(&base), SV("catagui"));
+    String out = path_join(string_sv(&base), SV("gifu"));
     string_free(&base);
     return out;
 }
@@ -394,7 +408,7 @@ void os_log_backtrace(void) {
     void *frames[32];
     u16 n = CaptureStackBackTrace(1, 32, frames, NULL);
     uintptr_t base = (uintptr_t)GetModuleHandleW(NULL);
-    for (u16 i = 0; i < n; ++i) log_warn("  #%u catagui.exe+0x%llx", (unsigned)i, (unsigned long long)((uintptr_t)frames[i] - base));
+    for (u16 i = 0; i < n; ++i) log_warn("  #%u gifu.exe+0x%llx", (unsigned)i, (unsigned long long)((uintptr_t)frames[i] - base));
 }
 #elif defined(__linux__)
 #include <execinfo.h>

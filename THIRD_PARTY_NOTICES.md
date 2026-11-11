@@ -1,6 +1,6 @@
 # Third-party notices
 
-CataGui is licensed under the GNU General Public License v3.0 (see `LICENSE`).
+Gifu is licensed under the GNU General Public License v3.0 (see `LICENSE`).
 It is a reimplementation of LizzieYzy (https://github.com/yzyray/lizzieyzy, GPL-3.0)
 and bundles the following components:
 

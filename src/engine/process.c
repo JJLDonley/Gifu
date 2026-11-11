@@ -64,7 +64,7 @@ static void append_quoted(String *cmd, StringView arg) {
     string_push_char(cmd, '"');
 }
 
-// Every engine runs in one job object that dies with CataGui: a crash or a killed
+// Every engine runs in one job object that dies with Gifu: a crash or a killed
 // GUI must not leave KataGo processes holding the GPU (KataGo's analysis mode
 // keeps working through its queued queries after stdin closes).
 static HANDLE g_job;

@@ -98,7 +98,7 @@ static bool grab_tool(ScreenCapture *c, RgbaImage *full, String *error) {
 #ifdef _WIN32
         if (!dir) dir = getenv("TEMP");
 #endif
-        file = string_format("%s/catagui-capture-%u.png", dir ? dir : "/tmp", ++c->serial);
+        file = string_format("%s/gifu-capture-%u.png", dir ? dir : "/tmp", ++c->serial);
         StringView rest = string_sv(&c->command);
         for (StringView tok = sv_chop_token(&rest); tok.len && argc < (isize)countof(argv); tok = sv_chop_token(&rest)) {
             bool placeholder = sv_eq(tok, SV("%f"));
@@ -151,7 +151,7 @@ static bool grab_portal(ScreenCapture *c, RgbaImage *full, String *error) {
         os_sleep_ms(150);   // let it subscribe before the first request
     }
     char token[32], options[96];
-    snprintf(token, sizeof(token), "catagui_%u_%u", (u32)os_time_seconds(), ++c->serial);
+    snprintf(token, sizeof(token), "gifu_%u_%u", (u32)os_time_seconds(), ++c->serial);
     snprintf(options, sizeof(options), "{'handle_token': <'%s'>, 'interactive': <false>}", token);
     StringView argv[] = { SV("gdbus"), SV("call"), SV("--session"), SV("--dest"), SV("org.freedesktop.portal.Desktop"),
                           SV("--object-path"), SV("/org/freedesktop/portal/desktop"), SV("--method"),

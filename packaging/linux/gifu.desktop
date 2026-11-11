@@ -1,10 +1,10 @@
 [Desktop Entry]
 Type=Application
-Name=CataGui
+Name=Gifu
 GenericName=Go analysis
 Comment=KataGo GUI for analysing Go games
-Exec=catagui %f
-Icon=catagui
+Exec=gifu %f
+Icon=gifu
 Terminal=false
 Categories=Game;BoardGame;
 MimeType=application/x-go-sgf;

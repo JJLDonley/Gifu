@@ -55,7 +55,7 @@ void app_sync_select(App *app) {
         return;
     }
     // The picker is this program again: a transparent window over every monitor.
-    String exe = path_join(string_sv(&app->exe_dir), SV("catagui"));
+    String exe = path_join(string_sv(&app->exe_dir), SV("gifu"));
 #ifdef _WIN32
     string_push(&exe, SV(".exe"));
 #endif

@@ -1,6 +1,6 @@
 // board_reader.h - reads a Go board from a picture (board sync from the screen).
 //
-// Works on any 2D board rendering with dark grid lines: CataGui, OGS, Fox,
+// Works on any 2D board rendering with dark grid lines: Gifu, OGS, Fox,
 // Tygem, KGS, Sabaki ... The picture is the area the user marked around the
 // board (it may include coordinates and margins).
 //   1. Grid: per axis, a profile of thin dark lines (darker than the pixels a

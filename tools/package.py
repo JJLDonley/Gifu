@@ -5,12 +5,12 @@ Usage (from the repository root, on Linux/WSL):
     python3 tools/package.py [linux] [windows] [appimage] [appdir]
 
 Builds the `linux-release` and/or `windows-release` (llvm-mingw cross) presets,
-installs each into dist/CataGui-<version>-<platform>/ and archives it
+installs each into dist/Gifu-<version>-<platform>/ and archives it
 (.tar.xz for Linux, .zip for Windows). KataGo is not bundled.
 
-`appimage` builds dist/CataGui-<version>-x86_64.AppImage with appimagetool
+`appimage` builds dist/Gifu-<version>-x86_64.AppImage with appimagetool
 (from PATH, $APPIMAGETOOL, or downloaded once into build/tools/). Inside the
-AppImage, KataGo is installed to ~/.local/share/CataGui/katago (the image is
+AppImage, KataGo is installed to ~/.local/share/Gifu/katago (the image is
 read-only).
 """
 import os, re, shutil, stat, subprocess, sys, tarfile, urllib.request, zipfile
@@ -21,7 +21,7 @@ CMAKE = shutil.which("cmake") or os.path.expanduser("~/.local/bin/cmake")
 
 def version():
     text = open(os.path.join(ROOT, "CMakeLists.txt")).read()
-    return re.search(r"project\(CataGui VERSION ([0-9.]+)", text).group(1)
+    return re.search(r"project\(Gifu VERSION ([0-9.]+)", text).group(1)
 
 def run(*args):
     print("+", " ".join(args), flush=True)
@@ -30,8 +30,8 @@ def run(*args):
 def package(platform):
     preset = f"{platform}-release"
     run(CMAKE, "--preset", preset)
-    run(CMAKE, "--build", os.path.join(ROOT, "build", preset), "--target", "catagui")
-    name = f"CataGui-{version()}-{platform}-x64"
+    run(CMAKE, "--build", os.path.join(ROOT, "build", preset), "--target", "gifu")
+    name = f"Gifu-{version()}-{platform}-x64"
     stage = os.path.join(DIST, name)
     shutil.rmtree(stage, ignore_errors=True)
     run(CMAKE, "--install", os.path.join(ROOT, "build", preset), "--prefix", stage)
@@ -70,20 +70,20 @@ def appimagetool():
 def package_appimage(pack=True):
     preset = "linux-release"
     run(CMAKE, "--preset", preset)
-    run(CMAKE, "--build", os.path.join(ROOT, "build", preset), "--target", "catagui")
-    appdir = os.path.join(DIST, "CataGui.AppDir")
+    run(CMAKE, "--build", os.path.join(ROOT, "build", preset), "--target", "gifu")
+    appdir = os.path.join(DIST, "Gifu.AppDir")
     shutil.rmtree(appdir, ignore_errors=True)
-    app = os.path.join(appdir, "usr", "lib", "catagui")   # the program finds assets/ next to itself
+    app = os.path.join(appdir, "usr", "lib", "gifu")   # the program finds assets/ next to itself
     run(CMAKE, "--install", os.path.join(ROOT, "build", preset), "--prefix", app)
     with open(os.path.join(appdir, "AppRun"), "w") as f:
-        f.write('#!/bin/sh\nHERE="$(dirname "$(readlink -f "$0")")"\nexec "$HERE/usr/lib/catagui/catagui" "$@"\n')
+        f.write('#!/bin/sh\nHERE="$(dirname "$(readlink -f "$0")")"\nexec "$HERE/usr/lib/gifu/gifu" "$@"\n')
     os.chmod(os.path.join(appdir, "AppRun"), 0o755)
-    shutil.copy(os.path.join(ROOT, "packaging", "linux", "catagui.desktop"), os.path.join(appdir, "catagui.desktop"))
-    shutil.copy(os.path.join(ROOT, "assets", "icons", "catagui.png"), os.path.join(appdir, "catagui.png"))
+    shutil.copy(os.path.join(ROOT, "packaging", "linux", "gifu.desktop"), os.path.join(appdir, "gifu.desktop"))
+    shutil.copy(os.path.join(ROOT, "assets", "icons", "gifu.png"), os.path.join(appdir, "gifu.png"))
     print(f"-> {os.path.relpath(appdir, ROOT)} (AppDir)")
     if not pack:
         return
-    out = os.path.join(DIST, f"CataGui-{version()}-x86_64.AppImage")
+    out = os.path.join(DIST, f"Gifu-{version()}-x86_64.AppImage")
     env = dict(os.environ, ARCH="x86_64")
     # --appimage-extract-and-run: works without FUSE (containers, WSL).
     cmd = [appimagetool(), "--appimage-extract-and-run", "--no-appstream", appdir, out]

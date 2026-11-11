@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-int catagui_sinflate(void *out, int cap, const void *in, int size);   // third_party/sinfl (renamed)
+int gifu_sinflate(void *out, int cap, const void *in, int size);   // third_party/sinfl (renamed)
 
 static u32 rd16(const u8 *p) { return (u32)p[0] | ((u32)p[1] << 8); }
 static u32 rd32(const u8 *p) { return (u32)p[0] | ((u32)p[1] << 8) | ((u32)p[2] << 16) | ((u32)p[3] << 24); }
@@ -70,7 +70,7 @@ bool zip_extract_memory(StringView data, StringView dest_dir, ZipStats *stats, S
             if (comp_size != size) ok = false;
             else memcpy(out, z + start, size);
         } else if (method == 8) {
-            ok = catagui_sinflate(out, (int)size, z + start, (int)comp_size) == (int)size;
+            ok = gifu_sinflate(out, (int)size, z + start, (int)comp_size) == (int)size;
         } else {
             free(out);
             return fail(error, "unsupported zip compression method");

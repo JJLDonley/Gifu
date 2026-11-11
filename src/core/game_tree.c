@@ -24,7 +24,7 @@ GameTree *game_tree_new(i32 width, i32 height, f64 komi) {
     game_node_set_prop(tree, tree->root, SV("GM"), SV("1"));
     game_node_set_prop(tree, tree->root, SV("FF"), SV("4"));
     game_node_set_prop(tree, tree->root, SV("CA"), SV("UTF-8"));
-    game_node_set_prop(tree, tree->root, SV("AP"), SV("CataGui:0.1"));
+    game_node_set_prop(tree, tree->root, SV("AP"), SV("Gifu:0.1"));
     if (width == height) snprintf(buffer, sizeof(buffer), "%d", width);
     else snprintf(buffer, sizeof(buffer), "%d:%d", width, height);
     game_node_set_prop(tree, tree->root, SV("SZ"), sv(buffer));

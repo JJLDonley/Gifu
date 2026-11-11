@@ -1,4 +1,4 @@
-// area_select.c - `catagui --select-area X,Y,W,H [--select-hint TEXT]`.
+// area_select.c - `gifu --select-area X,Y,W,H [--select-hint TEXT]`.
 //
 // A transparent, borderless, always-on-top window over that desktop rectangle:
 // the user drags a box around the board of another program, right on the
@@ -14,7 +14,7 @@
 int area_select_run(i32 x, i32 y, i32 width, i32 height, const char *hint) {
     SetTraceLogLevel(LOG_WARNING);
     SetConfigFlags(FLAG_WINDOW_TRANSPARENT | FLAG_WINDOW_UNDECORATED | FLAG_WINDOW_TOPMOST | FLAG_VSYNC_HINT);
-    InitWindow(width, height, "CataGui - select the board");
+    InitWindow(width, height, "Gifu - select the board");
     SetWindowPosition(x, y);
     SetExitKey(KEY_NULL);
     SetTargetFPS(60);

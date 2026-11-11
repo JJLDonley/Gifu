@@ -349,7 +349,7 @@ static void draw_human_policy(Ui *ui, const BoardGeometry *g, const HumanPolicy 
     }
 }
 
-// ---- Markup (TR SQ CR MA LB AR LN TB TW, CataGui shading and pen) -------------------------------------
+// ---- Markup (TR SQ CR MA LB AR LN TB TW, Gifu shading and pen) -------------------------------------
 
 static Vector2 board_xy(const BoardGeometry *g, f32 x, f32 y) { return (Vector2){ g->origin.x + g->cell * x, g->origin.y + g->cell * y }; }
 

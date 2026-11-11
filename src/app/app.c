@@ -1374,6 +1374,43 @@ void app_reload_engines(App *app) {
 
 // ---- Lifecycle ----------------------------------------------------------------------------
 
+// The program was called CataGui: its folders (settings, layout, themes, the AppImage's
+// downloads) move to the new name once. If the new folder already exists without
+// settings (created by a test run, say), the old folder's items are moved into it.
+static void migrate_old_dir(StringView dir) {
+    StringView name = path_basename(dir);
+    StringView old_name = sv_eq(name, SV("Gifu")) ? SV("CataGui") : sv_eq(name, SV("gifu")) ? SV("catagui") : SV("");
+    if (!old_name.len) return;
+    String old = path_join(path_dirname(dir), old_name);
+    String settings = path_join(dir, SV("config.kv"));
+    bool has_settings = os_file_exists(string_sv(&settings));
+    string_free(&settings);
+    if (!os_dir_exists(string_sv(&old)) || has_settings) {
+        string_free(&old);
+        return;
+    }
+    if (!os_dir_exists(dir)) {
+        if (os_rename(string_sv(&old), dir)) log_info("moved " SV_FMT " to " SV_FMT, SV_ARG(string_sv(&old)), SV_ARG(dir));
+        else log_warn("could not move " SV_FMT " to " SV_FMT, SV_ARG(string_sv(&old)), SV_ARG(dir));
+        string_free(&old);
+        return;
+    }
+    StringVec names = { 0 };
+    i32 moved = 0;
+    if (os_list_dir(string_sv(&old), &names)) {
+        vec_foreach(String, n, &names) {
+            String from = path_join(string_sv(&old), string_sv(n)), to = path_join(dir, string_sv(n));
+            if (!os_file_exists(string_sv(&to)) && !os_dir_exists(string_sv(&to)) && os_rename(string_sv(&from), string_sv(&to))) moved++;
+            string_free(&from);
+            string_free(&to);
+        }
+    }
+    string_vec_free(&names);
+    os_remove_dir(string_sv(&old));   // only if it is now empty
+    log_info("moved %d item(s) from " SV_FMT " to " SV_FMT, moved, SV_ARG(string_sv(&old)), SV_ARG(dir));
+    string_free(&old);
+}
+
 bool app_init(App *app, const AppOptions *options) {
     *app = (App){ 0 };
     app->options = *options;
@@ -1390,8 +1427,9 @@ bool app_init(App *app, const AppOptions *options) {
         const char *xdg = getenv("XDG_DATA_HOME"), *home = getenv("HOME");
         String base = xdg && *xdg ? string_from(sv(xdg)) : path_join(sv(home ? home : "."), SV(".local/share"));
         string_free(&app->root_dir);
-        app->root_dir = path_join(string_sv(&base), SV("CataGui"));
+        app->root_dir = path_join(string_sv(&base), SV("Gifu"));
         string_free(&base);
+        if (!options->screenshot.len) migrate_old_dir(string_sv(&app->root_dir));
         String katago = path_join(string_sv(&app->root_dir), SV("katago"));
         os_make_dirs(string_sv(&katago));
         string_free(&katago);
@@ -1405,6 +1443,7 @@ bool app_init(App *app, const AppOptions *options) {
         app->assets_dir = path_join(string_sv(&app->root_dir), SV("assets"));
     }
     app->config_dir = options->portable ? string_from(string_sv(&app->exe_dir)) : os_config_dir();
+    if (!options->portable && !options->screenshot.len) migrate_old_dir(string_sv(&app->config_dir));   // test screenshots leave user folders alone
     log_info("root %s, assets %s, config %s", string_cstr(&app->root_dir), string_cstr(&app->assets_dir),
              string_cstr(&app->config_dir));
 

@@ -1,4 +1,4 @@
-// base.h - fundamental types and macros used everywhere in CataGui.
+// base.h - fundamental types and macros used everywhere in Gifu.
 //
 // Conventions:
 //   * Fixed-width integer aliases (i8..i64, u8..u64), f32/f64, isize/usize.

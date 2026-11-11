@@ -205,7 +205,7 @@ bool config_load(Config *config, String *error) {
 }
 
 bool config_save(const Config *config) {
-    String out = string_from(SV("# CataGui settings (written by the app; edit while it is closed).\n"
+    String out = string_from(SV("# Gifu settings (written by the app; edit while it is closed).\n"
                                 "# Keymap, engines, layout and themes overrides live next to this file:\n"
                                 "# keymap.kv, engines.kv, layout.lisp, themes/*.theme\n"));
     StringView group = SV_NULL;

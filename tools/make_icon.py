@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Draws the CataGui icon: a close-up of two diagonal intersections, Black then White over it.
+"""Draws the Gifu icon: a close-up of two diagonal intersections, Black then White over it.
 
-Writes assets/icons/catagui.png (256x256) and packaging/windows/catagui.ico
+Writes assets/icons/gifu.png (256x256) and packaging/windows/gifu.ico
 (16..256, PNG-compressed entries). Standard library only; 4x supersampled.
 """
 import math, os, struct, zlib
@@ -92,6 +92,6 @@ def ico_bytes(pngs):
 if __name__ == "__main__":
     sizes = [16, 24, 32, 48, 64, 128, 256]
     pngs = [(s, png_bytes(render(s))) for s in sizes]
-    open(os.path.join(ROOT, "assets", "icons", "catagui.png"), "wb").write(pngs[-1][1])
-    open(os.path.join(ROOT, "packaging", "windows", "catagui.ico"), "wb").write(ico_bytes(pngs))
+    open(os.path.join(ROOT, "assets", "icons", "gifu.png"), "wb").write(pngs[-1][1])
+    open(os.path.join(ROOT, "packaging", "windows", "gifu.ico"), "wb").write(ico_bytes(pngs))
     print("icons written")

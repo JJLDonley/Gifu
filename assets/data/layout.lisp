@@ -1,4 +1,4 @@
-;; CataGui window layout. Edit freely: the app reloads this file when it
+;; Gifu window layout. Edit freely: the app reloads this file when it
 ;; changes. A copy in <config_dir>/layout.lisp overrides this one.
 ;;
 ;;   (component positional... :prop value :flag (child ...) ...)

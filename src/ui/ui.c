@@ -411,7 +411,7 @@ static void update_title(Ui *ui) {
     static char last[512];
     char title[512];
     StringView name = ui->app->sgf_path.len ? path_basename(string_sv(&ui->app->sgf_path)) : SV("untitled");
-    snprintf(title, sizeof(title), SV_FMT "%s — CataGui", SV_ARG(name), ui->app->dirty ? " •" : "");
+    snprintf(title, sizeof(title), SV_FMT "%s — Gifu", SV_ARG(name), ui->app->dirty ? " •" : "");
     if (strcmp(title, last) != 0) {
         SetWindowTitle(title);
         snprintf(last, sizeof(last), "%s", title);

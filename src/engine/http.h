@@ -1,5 +1,5 @@
 // http.h - HTTPS downloads through the system `curl` (bundled with Windows 10+
-// and virtually every Linux), so CataGui needs no TLS library of its own.
+// and virtually every Linux), so Gifu needs no TLS library of its own.
 // Calls block; run them on a worker thread.
 #pragma once
 

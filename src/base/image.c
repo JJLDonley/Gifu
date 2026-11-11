@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-int catagui_sinflate(void *out, int cap, const void *in, int size);   // third_party/sinfl (renamed)
+int gifu_sinflate(void *out, int cap, const void *in, int size);   // third_party/sinfl (renamed)
 
 bool rgba_image_alloc(RgbaImage *image, i32 width, i32 height) {
     *image = (RgbaImage){ 0 };
@@ -91,7 +91,7 @@ bool png_decode(StringView bytes, RgbaImage *out, const char **error) {
     u8 *raw = malloc(raw_size);
     if (!raw) abort();
     // zlib: 2-byte header, raw deflate, adler32 (not checked: chunk CRCs already passed through the tool that wrote it).
-    int got = catagui_sinflate(raw, (int)raw_size, idat.data + 2, (int)(idat.len - 2));
+    int got = gifu_sinflate(raw, (int)raw_size, idat.data + 2, (int)(idat.len - 2));
     string_free(&idat);
     if (got != (int)raw_size || !rgba_image_alloc(out, width, height)) {
         free(raw);
