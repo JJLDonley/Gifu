@@ -5,6 +5,10 @@
 
 int platform_compare_strings(const void *a, const void *b);   // qsort over String
 
+// POSIX systems name the modification time differently (st_mtim / st_mtimespec).
+struct stat;
+i64 platform_stat_mtime_ns(const struct stat *st);   // platform_linux.c / platform_macos.c
+
 // Canonical charset family for a label (case/punctuation-insensitive); text_to_utf8 is per system.
 typedef enum Charset { CS_UNKNOWN, CS_UTF8, CS_GB18030, CS_BIG5, CS_SHIFT_JIS, CS_EUC_JP, CS_EUC_KR, CS_LATIN1 } Charset;
 Charset charset_from_label(StringView label);

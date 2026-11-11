@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 // ---- Folders, URLs --------------------------------------------------------------------------------
 
@@ -32,6 +33,8 @@ String os_config_dir(void) {
 }
 
 const char *os_platform_name(void) { return "macos"; }
+
+i64 platform_stat_mtime_ns(const struct stat *st) { return (i64)st->st_mtimespec.tv_sec * 1000000000LL + (i64)st->st_mtimespec.tv_nsec; }
 
 void os_open_url(StringView url) {
     StringView args[] = { url };

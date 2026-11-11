@@ -78,7 +78,7 @@ i64 os_file_mtime(StringView path) {
     int rc = stat(cpath, &st);
     free(cpath);
     if (rc != 0) return 0;
-    return (i64)st.st_mtim.tv_sec * 1000000000LL + (i64)st.st_mtim.tv_nsec;
+    return platform_stat_mtime_ns(&st);
 }
 
 i64 os_file_size(StringView path) {

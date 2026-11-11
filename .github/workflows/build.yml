@@ -111,7 +111,7 @@ jobs:
       - name: Build and run the tests (platform layer included)
         run: |
           cmake --preset macos-debug
-          cmake --build build/macos-debug
+          cmake --build build/macos-debug -- -k 0   # report every compile error at once
           ./build/macos-debug/gifu_tests
       - name: Start Gifu once (screenshot)
         continue-on-error: true   # a runner without a usable display should not fail the build

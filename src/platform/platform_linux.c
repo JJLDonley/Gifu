@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <X11/Xlib.h>
@@ -34,6 +35,8 @@ String os_config_dir(void) {
 }
 
 const char *os_platform_name(void) { return "linux"; }
+
+i64 platform_stat_mtime_ns(const struct stat *st) { return (i64)st->st_mtim.tv_sec * 1000000000LL + (i64)st->st_mtim.tv_nsec; }
 
 void os_open_url(StringView url) {
     StringView args[] = { url };
