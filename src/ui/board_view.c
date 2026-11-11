@@ -1,6 +1,7 @@
 #include "ui/ui.h"
 
 #include "core/markup.h"
+#include "ui/clay_render.h"
 
 #include <math.h>
 #include <rlgl.h>
@@ -381,13 +382,37 @@ static void board_draw_markup(Ui *ui, const BoardGeometry *g, const Markup *m, c
     const Theme *t = ui->theme;
     i32 n = m->width * m->height;
     if (m->width != board->width || m->height != board->height) return;
-    // Area shading: translucent cells, over stones too (dead stones are counted with their area).
-    for (i32 i = 0; i < n; ++i) {
-        if (!m->shaded[i]) continue;
-        u32 rgb = m->shade[i];
-        Color c = { (u8)(rgb >> 16), (u8)(rgb >> 8), (u8)rgb, 105 };
-        Vector2 p = point_center(g, board_point(board, i));
-        DrawRectangleV((Vector2){ p.x - g->cell * 0.5f, p.y - g->cell * 0.5f }, (Vector2){ g->cell, g->cell }, c);
+    // Area shading: translucent cells, over stones too (dead stones are counted with
+    // their area), with slowly moving diagonal stripes. Runs of one colour along a row
+    // are drawn as one area, and the stripes follow the screen's diagonal, so they run
+    // on across neighbouring points and rows without seams and wrap around forever.
+    f32 spacing = g->cell * 0.46f, stripe = spacing * 0.36f;
+    f32 phase = fmodf((f32)(GetTime() * 0.3) * g->cell, spacing);
+    for (i32 y = 0; y < m->height; ++y) {
+        for (i32 x = 0; x < m->width;) {
+            i32 i = y * m->width + x;
+            if (!m->shaded[i]) {
+                ++x;
+                continue;
+            }
+            u32 rgb = m->shade[i];
+            i32 end = x;
+            while (end + 1 < m->width && m->shaded[i + end + 1 - x] && m->shade[i + end + 1 - x] == rgb) ++end;
+            Vector2 a = point_center(g, (Point){ (i8)x, (i8)y });
+            Rectangle r = { a.x - g->cell * 0.5f, a.y - g->cell * 0.5f, g->cell * (f32)(end - x + 1), g->cell };
+            Color fill = { (u8)(rgb >> 16), (u8)(rgb >> 8), (u8)rgb, 105 };
+            DrawRectangleRec(r, fill);
+            f32 luma = 0.299f * fill.r + 0.587f * fill.g + 0.114f * fill.b;   // light shades: darker stripes, dark ones: lighter
+            Color band = color_lerp(fill, luma > 150.0f ? (Color){ 0, 0, 0, 255 } : (Color){ 255, 255, 255, 255 }, 0.35f);
+            band.a = 120;
+            render_push_scissor(r);   // within whatever clip the board is drawn in
+            f32 first = floorf((r.x + r.y) / spacing) * spacing - spacing + phase;
+            for (f32 c = first; c < r.x + r.width + r.y + r.height + spacing; c += spacing) {   // lines x + y = c
+                DrawLineEx((Vector2){ c - r.y, r.y }, (Vector2){ c - (r.y + r.height), r.y + r.height }, stripe, band);
+            }
+            render_pop_scissor();
+            x = end + 1;
+        }
     }
     // Territory (TB / TW): small squares.
     for (i32 i = 0; i < n; ++i) {
