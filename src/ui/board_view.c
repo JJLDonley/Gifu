@@ -1,5 +1,7 @@
 #include "ui/ui.h"
 
+#include "core/markup.h"
+
 #include <math.h>
 #include <rlgl.h>
 #include <stdio.h>
@@ -346,6 +348,104 @@ static void draw_human_policy(Ui *ui, const BoardGeometry *g, const HumanPolicy 
     }
 }
 
+// ---- Markup (TR SQ CR MA LB AR LN TB TW, CataGui shading and pen) -------------------------------------
+
+static Vector2 board_xy(const BoardGeometry *g, f32 x, f32 y) { return (Vector2){ g->origin.x + g->cell * x, g->origin.y + g->cell * y }; }
+
+// Ink that reads on whatever is under the point.
+static Color mark_ink(const Theme *t, Stone under) {
+    if (under == STONE_BLACK) return t->colors.white_stone;
+    if (under == STONE_WHITE) return t->colors.black_stone;
+    return color_with_alpha(t->colors.black_stone, 0.9f);
+}
+
+static void draw_arrow(const BoardGeometry *g, Point a, Point b, Color c, bool head) {
+    Vector2 p = point_center(g, a), q = point_center(g, b);
+    f32 dx = q.x - p.x, dy = q.y - p.y, len = sqrtf(dx * dx + dy * dy);
+    if (len < 1.0f) return;
+    f32 ux = dx / len, uy = dy / len, w = g->cell * 0.08f, hl = g->cell * 0.36f;
+    Vector2 end = head ? (Vector2){ q.x - ux * hl * 0.7f, q.y - uy * hl * 0.7f } : q;
+    DrawLineEx(p, end, w, c);
+    DrawCircleV(p, w * 0.5f, c);
+    if (!head) {
+        DrawCircleV(q, w * 0.5f, c);
+        return;
+    }
+    Vector2 left = { q.x - ux * hl - uy * hl * 0.45f, q.y - uy * hl + ux * hl * 0.45f };
+    Vector2 right = { q.x - ux * hl + uy * hl * 0.45f, q.y - uy * hl - ux * hl * 0.45f };
+    DrawTriangle(q, left, right, c);
+    DrawTriangle(q, right, left, c);   // either winding
+}
+
+static void board_draw_markup(Ui *ui, const BoardGeometry *g, const Markup *m, const Board *board) {
+    const Theme *t = ui->theme;
+    i32 n = m->width * m->height;
+    if (m->width != board->width || m->height != board->height) return;
+    // Area shading: translucent cells, over stones too (dead stones are counted with their area).
+    for (i32 i = 0; i < n; ++i) {
+        if (!m->shaded[i]) continue;
+        u32 rgb = m->shade[i];
+        Color c = { (u8)(rgb >> 16), (u8)(rgb >> 8), (u8)rgb, 105 };
+        Vector2 p = point_center(g, board_point(board, i));
+        DrawRectangleV((Vector2){ p.x - g->cell * 0.5f, p.y - g->cell * 0.5f }, (Vector2){ g->cell, g->cell }, c);
+    }
+    // Territory (TB / TW): small squares.
+    for (i32 i = 0; i < n; ++i) {
+        if (!m->territory[i]) continue;
+        Vector2 p = point_center(g, board_point(board, i));
+        f32 s = g->cell * 0.36f;
+        Color fill = m->territory[i] == STONE_BLACK ? t->colors.black_stone : t->colors.white_stone;
+        Color edge = m->territory[i] == STONE_BLACK ? t->colors.black_stone_edge : t->colors.white_stone_edge;
+        DrawRectangleV((Vector2){ p.x - s * 0.5f, p.y - s * 0.5f }, (Vector2){ s, s }, fill);
+        DrawRectangleLinesEx((Rectangle){ p.x - s * 0.5f, p.y - s * 0.5f, s, s }, 1.0f, edge);
+    }
+    // Shapes and labels.
+    f32 w = fmaxf(1.5f, g->cell * 0.07f);
+    for (i32 i = 0; i < n; ++i) {
+        Stone under = (Stone)board->cells[i];
+        Vector2 p = point_center(g, board_point(board, i));
+        Color ink = mark_ink(t, under);
+        f32 r = g->cell * 0.26f;
+        switch ((MarkShape)m->shape[i]) {
+            case MARK_TRIANGLE: {
+                Vector2 a = { p.x, p.y - r * 1.05f }, b = { p.x - r * 0.95f, p.y + r * 0.62f }, c = { p.x + r * 0.95f, p.y + r * 0.62f };
+                DrawLineEx(a, b, w, ink), DrawLineEx(b, c, w, ink), DrawLineEx(c, a, w, ink);
+                break;
+            }
+            case MARK_SQUARE: DrawRectangleLinesEx((Rectangle){ p.x - r * 0.8f, p.y - r * 0.8f, r * 1.6f, r * 1.6f }, w, ink); break;
+            case MARK_CIRCLE: DrawRing(p, r * 0.85f - w * 0.5f, r * 0.85f + w * 0.5f, 0, 360, 40, ink); break;
+            case MARK_CROSS:
+                DrawLineEx((Vector2){ p.x - r * 0.75f, p.y - r * 0.75f }, (Vector2){ p.x + r * 0.75f, p.y + r * 0.75f }, w, ink);
+                DrawLineEx((Vector2){ p.x - r * 0.75f, p.y + r * 0.75f }, (Vector2){ p.x + r * 0.75f, p.y - r * 0.75f }, w, ink);
+                break;
+            default: break;
+        }
+        if (m->label[i].text[0]) {
+            StringView text = sv(m->label[i].text);
+            if (under == STONE_EMPTY) {   // clear the grid under the text
+                Color bg = m->shaded[i] ? (Color){ (u8)(m->shade[i] >> 16), (u8)(m->shade[i] >> 8), (u8)m->shade[i], 255 } : t->colors.board;
+                DrawCircleV(p, g->cell * 0.36f, m->shaded[i] ? color_lerp(t->colors.board, bg, 0.41f) : bg);
+            }
+            font_draw_centered(ui->fonts, FONT_UI_BOLD, g->cell * (text.len >= 3 ? 0.36f : text.len == 2 ? 0.44f : 0.52f), text, p, ink);
+        }
+    }
+    // Lines and arrows, then pen strokes, on top.
+    Color line_ink = color_with_alpha(t->colors.accent, 0.95f);
+    for (i32 i = 0; i < m->line_count; ++i) draw_arrow(g, m->lines[i].from, m->lines[i].to, line_ink, false);
+    for (i32 i = 0; i < m->arrow_count; ++i) draw_arrow(g, m->arrows[i].from, m->arrows[i].to, line_ink, true);
+    for (i32 s = 0; s < m->stroke_count; ++s) {
+        const PenStroke *st = &m->strokes[s];
+        Color c = { (u8)(st->rgb >> 16), (u8)(st->rgb >> 8), (u8)st->rgb, 235 };
+        f32 pw = fmaxf(2.0f, g->cell * 0.09f);
+        for (i32 k = 0; k + 1 < st->count; ++k) {
+            Vector2 a = board_xy(g, st->points[k][0], st->points[k][1]), b = board_xy(g, st->points[k + 1][0], st->points[k + 1][1]);
+            DrawLineEx(a, b, pw, c);
+            DrawCircleV(b, pw * 0.5f, c);
+        }
+        if (st->count) DrawCircleV(board_xy(g, st->points[0][0], st->points[0][1]), pw * 0.5f, c);
+    }
+}
+
 static void draw_board(void *user, Rectangle bounds) {
     Ui *ui = user;
     App *app = ui->app;
@@ -403,10 +503,17 @@ static void draw_board(void *user, Rectangle bounds) {
             font_draw_centered(ui->fonts, FONT_UI_BOLD, g.cell * (numbers[i] >= 100 ? 0.34f : 0.42f), sv(text),
                                point_center(&g, board_point(board, i)), fg);
         }
-    } else if (node->has_move && !point_is_pass(node->move.point)) {
-        i32 i = board_index(board, node->move.point);
-        DrawCircleV(point_center(&g, node->move.point), g.cell * 0.16f * stone_anim_marker(&ui->stone_anim, i, now), ui->theme->colors.last_move);
     }
+    Markup *markup = arena_new(&ui->frame, Markup);
+    markup_read(node, board->width, board->height, markup);
+    if (!app->config.show_move_numbers && node->has_move && !point_is_pass(node->move.point)) {
+        i32 i = board_index(board, node->move.point);
+        if (!markup->shape[i] && !markup->label[i].text[0]) {   // a mark on the last move replaces the marker
+            DrawCircleV(point_center(&g, node->move.point), g.cell * 0.16f * stone_anim_marker(&ui->stone_anim, i, now), ui->theme->colors.last_move);
+        }
+    }
+    board_draw_markup(ui, &g, markup, board);
+    markup_free(markup);
 
     // Candidate preview: hovered on the board or in the candidates panel.
     i32 pv_index = ui->hover_candidate >= 0 ? ui->hover_candidate : ui->hover_list_candidate;

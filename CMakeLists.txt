@@ -96,6 +96,7 @@ add_library(catagui_core STATIC
     src/core/game_report.c
     src/core/tsumego_frame.c
     src/core/board_reader.c
+    src/core/markup.c
     src/core/sgf_analysis.c
     src/engine/process.c
     src/engine/line_channel.c
@@ -221,6 +222,7 @@ if(CATAGUI_BUILD_TESTS)
     tests/test_image.c
     tests/test_board_reader.c
     tests/test_stone_anim.c
+    tests/test_markup.c
         src/ui/theme.c
         src/ui/layout_model.c
         src/ui/stone_anim.c
