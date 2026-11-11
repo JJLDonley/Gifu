@@ -1,6 +1,11 @@
 # Builds Gifu on Linux (gcc) and Windows (MSYS2 UCRT64 gcc; no MSVC) for every
-# push and pull request, and uploads the release packages as artifacts.
-# A tag v* (e.g. v0.1.0) also publishes them as a GitHub release.
+# push and pull request and keeps the packages as run artifacts.
+#
+# Releases come from tags (tools/release.py makes them):
+#   v0.2.0          a release: every user's updater offers it
+#   v0.2.0-alpha.1  a pre-release (also -beta.N, -rc.N): only the alpha channel gets it
+# The tag must match project(VERSION) in CMakeLists.txt. The release carries the
+# Windows zip, the Linux tar.xz and AppImage, and SHA256SUMS (the updater checks it).
 name: Build
 
 on:
@@ -18,10 +23,12 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+      - name: Version from the tag
+        run: tools/ci_version.sh
       - name: Build tools and X11 headers (GLFW's X11 backend)
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev
+          sudo apt-get install -y ninja-build file libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev
       - name: Cache third-party downloads
         uses: actions/cache@v6
         with:
@@ -30,12 +37,16 @@ jobs:
             third_party/clay
             third_party/yyjson
           key: third-party-${{ hashFiles('cmake/Dependencies.cmake') }}
-      - name: Build and package
-        run: python3 tools/package.py linux
+      - name: Build and package (tar.xz, AppImage)
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"   # appimagetool without FUSE on the runner
+        run: python3 tools/package.py linux appimage
       - uses: actions/upload-artifact@v7
         with:
           name: Gifu-linux-x64
-          path: dist/*.tar.xz
+          path: |
+            dist/*.tar.xz
+            dist/*.AppImage
 
   windows:
     runs-on: windows-latest
@@ -53,6 +64,8 @@ jobs:
             mingw-w64-ucrt-x86_64-cmake
             mingw-w64-ucrt-x86_64-ninja
             mingw-w64-ucrt-x86_64-python
+      - name: Version from the tag
+        run: tools/ci_version.sh
       - name: Cache third-party downloads
         uses: actions/cache@v6
         with:
@@ -61,7 +74,7 @@ jobs:
             third_party/clay
             third_party/yyjson
           key: third-party-${{ hashFiles('cmake/Dependencies.cmake') }}
-      - name: Build and package
+      - name: Build and package (zip)
         run: python tools/package.py msys2
       - uses: actions/upload-artifact@v7
         with:
@@ -76,7 +89,15 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           path: artifacts
-      - name: Publish the packages
+          merge-multiple: true
+      - name: Checksums
+        working-directory: artifacts
+        run: sha256sum Gifu-* > SHA256SUMS && cat SHA256SUMS
+      - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${GITHUB_REF_NAME}" artifacts/*/* --repo "${GITHUB_REPOSITORY}" --title "Gifu ${GITHUB_REF_NAME}" --generate-notes
+        run: |
+          pre=""
+          case "${GITHUB_REF_NAME}" in *-*) pre="--prerelease" ;; esac
+          gh release create "${GITHUB_REF_NAME}" artifacts/* --repo "${GITHUB_REPOSITORY}" \
+            --title "Gifu ${GITHUB_REF_NAME#v}" --generate-notes $pre

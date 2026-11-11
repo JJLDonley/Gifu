@@ -20,9 +20,16 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DIST = os.path.join(ROOT, "dist")
 CMAKE = shutil.which("cmake") or os.path.expanduser("~/.local/bin/cmake")
 
+# Pre-release label (alpha.1, beta.2, ...), set by CI from the tag; empty for stable.
+LABEL = os.environ.get("GIFU_VERSION_LABEL", "").strip()
+
 def version():
     text = open(os.path.join(ROOT, "CMakeLists.txt"), encoding="utf-8").read()
-    return re.search(r"project\(Gifu VERSION ([0-9.]+)", text).group(1)
+    core = re.search(r"project\(Gifu VERSION ([0-9.]+)", text).group(1)
+    return f"{core}-{LABEL}" if LABEL else core
+
+def configure(preset):
+    run(CMAKE, "--preset", preset, f"-DGIFU_VERSION_LABEL={LABEL}")
 
 def run(*args):
     print("+", " ".join(args), flush=True)
@@ -30,7 +37,7 @@ def run(*args):
 
 def package(platform, preset=None):
     preset = preset or f"{platform}-release"
-    run(CMAKE, "--preset", preset)
+    configure(preset)
     run(CMAKE, "--build", os.path.join(ROOT, "build", preset), "--target", "gifu")
     name = f"Gifu-{version()}-{platform}-x64"
     stage = os.path.join(DIST, name)
@@ -70,7 +77,7 @@ def appimagetool():
 
 def package_appimage(pack=True):
     preset = "linux-release"
-    run(CMAKE, "--preset", preset)
+    configure(preset)
     run(CMAKE, "--build", os.path.join(ROOT, "build", preset), "--target", "gifu")
     appdir = os.path.join(DIST, "Gifu.AppDir")
     shutil.rmtree(appdir, ignore_errors=True)
