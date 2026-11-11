@@ -115,8 +115,7 @@ static isize collect_options(Ui *ui, const Sexpr *v, ChoiceOption *out, isize ca
             if (n < cap) out[n++] = (ChoiceOption){ string_sv(&p->id), 0, string_sv(&p->name), engine_profile_available(p) };
         }
     } else if (sv_eq(source, SV("networks")) || sv_eq(source, SV("human_networks"))) {
-        // The networks in katago/networks (or its human/ folder): "" picks the newest.
-        out[n++] = (ChoiceOption){ SV(""), 0, app_tr(ui->app, "settings.network_newest", "Newest installed"), true };
+        // The networks in katago/networks (or its human/ folder); the one in use is highlighted.
         String katago = app_katago_dir(ui->app);
         String dir = path_join(string_sv(&katago), sv_eq(source, SV("networks")) ? SV("networks") : SV("networks/human"));
         StringVec names = { 0 };
@@ -156,6 +155,10 @@ static void choice_field(Ui *ui, const Sexpr *v, const ConfigField *f, u32 index
     f64 current_number = config_get_number(config, f);
     // An empty engine id means "first available": highlight what is running.
     if (sv_eq(sv(f->key), SV("engine")) && current.len == 0 && ui->app->main.profile) current = string_sv(&ui->app->main.profile->id);
+    // No network chosen yet: highlight the one the running engine loaded.
+    const EngineProfile *running = ui->app->main.profile;
+    if (sv_eq(sv(f->key), SV("katago.network")) && current.len == 0 && running) current = path_basename(string_sv(&running->model));
+    if (sv_eq(sv(f->key), SV("katago.human_network")) && current.len == 0 && running) current = path_basename(string_sv(&running->human_model));
 
     CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM,
                        .childGap = ui_u16(ui, 6) } }) {
