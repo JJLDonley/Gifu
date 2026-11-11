@@ -1,0 +1,41 @@
+# Ocean — deep teal water, a sea-glass board, glossy stones.
+
+extends = dark
+name = Ocean
+dark = true
+
+background.kind  = solid
+board.style      = flat
+board.line_width = 1.0
+board.shadow     = true
+stones.style     = glossy
+stones.shadow    = 0.45
+shape.radius     = 12
+
+colors.background       = #071A22
+colors.surface          = #0C2630
+colors.surface_alt      = #11313D
+colors.border           = #1B4352
+colors.text             = #DDF3F6
+colors.text_muted       = #7FA6AF
+colors.accent           = #2EC4B6
+colors.accent_text      = #03201D
+colors.hover            = #2EC4B61F
+colors.danger           = #FF6B6B
+colors.board            = #1D5566
+colors.board_line       = #A8DCE3
+colors.board_label      = #6FB3C0
+colors.black_stone      = #03141A
+colors.white_stone      = #F1FBFC
+colors.black_stone_edge = #010A0D
+colors.white_stone_edge = #9CC9D1
+colors.last_move        = #FF9F43
+colors.winrate_black    = #03141A
+colors.winrate_white    = #F1FBFC
+colors.graph_line       = #2EC4B6
+colors.score_line       = #FF9F43
+colors.candidate_best   = #5CE08A
+colors.candidate_good   = #4DB8FF
+colors.candidate_bad    = #FF6B6B
+colors.candidate_text   = #000000
+colors.human_policy     = #C59BFF

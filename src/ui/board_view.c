@@ -120,8 +120,8 @@ static void draw_surface(Ui *ui, const BoardGeometry *g) {
             if (ui->board_texture.id) {
                 Texture2D tex = ui->board_texture;
                 DrawTexturePro(tex, (Rectangle){ 0, 0, (f32)tex.width, (f32)tex.height }, g->board, (Vector2){ 0, 0 }, 0, WHITE);
-                // Tint towards the theme's board colour so palettes stay coherent.
-                DrawRectangleRec(g->board, color_with_alpha(t->colors.board, 0.25f));
+                // Tint towards the theme's board colour (board.tint) so palettes stay coherent.
+                DrawRectangleRec(g->board, color_with_alpha(t->colors.board, CLAMP(t->board.tint, 0.0f, 1.0f)));
                 break;
             }
             DrawRectangleRounded(g->board, roundness, 8, t->colors.board);

@@ -1,0 +1,43 @@
+# Midnight — deep navy chrome, a dark walnut board, glossy stones, gold accents.
+
+extends = dark
+name = Midnight
+dark = true
+
+background.kind  = solid
+board.style      = wood
+board.texture    = textures/board-wood.png
+board.shadow     = true
+board.tint       = 0.62
+board.line_width = 1.0
+stones.style     = glossy
+stones.shadow    = 0.5
+shape.radius     = 10
+
+colors.background       = #0B1220
+colors.surface          = #111A2E
+colors.surface_alt      = #17223A
+colors.border           = #22304D
+colors.text             = #E6ECF7
+colors.text_muted       = #8492AD
+colors.accent           = #E0B354
+colors.accent_text      = #1A1305
+colors.hover            = #E0B3541A
+colors.danger           = #EF5350
+colors.board            = #5A3A1E
+colors.board_line       = #140C04
+colors.board_label      = #C9A877
+colors.black_stone      = #0A0A0C
+colors.white_stone      = #F2F0EA
+colors.black_stone_edge = #2A2A30
+colors.white_stone_edge = #BDB7AA
+colors.last_move        = #FF6B6B
+colors.winrate_black    = #0A0F1C
+colors.winrate_white    = #E6ECF7
+colors.graph_line       = #E0B354
+colors.score_line       = #7FA7E0
+colors.candidate_best   = #4CD97B
+colors.candidate_good   = #5AB0FF
+colors.candidate_bad    = #FF6B6B
+colors.candidate_text   = #000000
+colors.human_policy     = #C792EA

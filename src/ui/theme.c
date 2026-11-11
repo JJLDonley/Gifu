@@ -122,6 +122,7 @@ Theme theme_fallback(void) {
     t.background.paper = (PaperParams){ 0.03f, 0.0f, 0.1f, 0, { 139, 90, 43, 255 }, 1 };
     t.board.style = BOARD_STYLE_FLAT;
     t.board.line_width = 1.0f;
+    t.board.tint = 0.25f;
     t.stones.style = STONE_STYLE_FLAT;
     t.shape.radius = 8;
     t.shape.border_width = 1;
@@ -188,6 +189,7 @@ static const ThemeField THEME_FIELDS[] = {
     FIELD("board.texture", TF_STRING, board.texture),
     FIELD("board.line_width", TF_F32, board.line_width),
     FIELD("board.shadow", TF_BOOL, board.shadow),
+    FIELD("board.tint", TF_F32, board.tint),
     ENUM("stones.style", stones.style, STONE_STYLES),
     FIELD("stones.shadow", TF_F32, stones.shadow),
     FIELD("shape.radius", TF_F32, shape.radius),

@@ -1,0 +1,46 @@
+# Sakura — cherry-blossom pinks, soft rounded chrome, glossy stones.
+
+extends = light
+name = Sakura
+dark = false
+
+background.kind  = paper
+background.paper.grain = 0.02
+background.paper.fibers = 0.1
+background.paper.vignette = 0.06
+background.paper.stains = 0
+background.paper.seed = 8
+board.style      = flat
+board.line_width = 1.0
+board.shadow     = true
+stones.style     = glossy
+stones.shadow    = 0.3
+shape.radius     = 16
+
+colors.background       = #FFF4F6
+colors.surface          = #FFFFFF
+colors.surface_alt      = #FFE9EE
+colors.border           = #F6CCD7
+colors.text             = #4A2632
+colors.text_muted       = #A2737F
+colors.accent           = #D6578A
+colors.accent_text      = #FFFFFF
+colors.hover            = #D6578A17
+colors.danger           = #D32F2F
+colors.board            = #FBE3EA
+colors.board_line       = #8E4A62
+colors.board_label      = #B07A8A
+colors.black_stone      = #2A1A20
+colors.white_stone      = #FFFFFF
+colors.black_stone_edge = #120A0D
+colors.white_stone_edge = #E3BFCB
+colors.last_move        = #D6578A
+colors.winrate_black    = #3A2430
+colors.winrate_white    = #FFFFFF
+colors.graph_line       = #D6578A
+colors.score_line       = #8E7CC3
+colors.candidate_best   = #3FA34D
+colors.candidate_good   = #5C8DD6
+colors.candidate_bad    = #D32F2F
+colors.candidate_text   = #FFFFFF
+colors.human_policy     = #9B6BD6

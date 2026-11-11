@@ -1,0 +1,41 @@
+# Solar Dark — the same calm palette at night (after the Solarized dark palette).
+
+extends = dark
+name = Solar Dark
+dark = true
+
+background.kind  = solid
+board.style      = flat
+board.line_width = 1.0
+board.shadow     = false
+stones.style     = flat
+stones.shadow    = 0.25
+shape.radius     = 6
+
+colors.background       = #002B36
+colors.surface          = #073642
+colors.surface_alt      = #0B4150
+colors.border           = #174B59
+colors.text             = #93A1A1
+colors.text_muted       = #657B83
+colors.accent           = #B58900
+colors.accent_text      = #002B36
+colors.hover            = #B589001F
+colors.danger           = #DC322F
+colors.board            = #0F4B5A
+colors.board_line       = #93A1A1
+colors.board_label      = #839496
+colors.black_stone      = #001E26
+colors.white_stone      = #EEE8D5
+colors.black_stone_edge = #000F13
+colors.white_stone_edge = #93A1A1
+colors.last_move        = #DC322F
+colors.winrate_black    = #001E26
+colors.winrate_white    = #EEE8D5
+colors.graph_line       = #B58900
+colors.score_line       = #2AA198
+colors.candidate_best   = #859900
+colors.candidate_good   = #2AA198
+colors.candidate_bad    = #DC322F
+colors.candidate_text   = #000000
+colors.human_policy     = #6C71C4

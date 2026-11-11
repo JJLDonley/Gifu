@@ -1,0 +1,42 @@
+# Synthwave — an '80s neon sunset: magenta grid on deep purple, cyan- and gold-rimmed stones.
+
+extends = dark
+name = Synthwave
+dark = true
+
+background.kind  = solid
+board.style      = neon
+board.line_width = 1.2
+board.shadow     = false
+stones.style     = neon
+stones.shadow    = 0.0
+shape.radius     = 6
+shape.border_width = 1
+
+colors.background       = #0D0518
+colors.surface          = #160A26
+colors.surface_alt      = #1F0F35
+colors.border           = #4A1F6E
+colors.text             = #F5E6FF
+colors.text_muted       = #A98BC4
+colors.accent           = #FF2BD6
+colors.accent_text      = #1A0016
+colors.hover            = #FF2BD61F
+colors.danger           = #FF4D6D
+colors.board            = #12062A
+colors.board_line       = #FF2BD6
+colors.board_label      = #C266E0
+colors.black_stone      = #0A0418
+colors.white_stone      = #FFF4FB
+colors.black_stone_edge = #00F0FF
+colors.white_stone_edge = #FFD319
+colors.last_move        = #FFD319
+colors.winrate_black    = #3A1466
+colors.winrate_white    = #FFF4FB
+colors.graph_line       = #FF2BD6
+colors.score_line       = #00F0FF
+colors.candidate_best   = #39FF88
+colors.candidate_good   = #00F0FF
+colors.candidate_bad    = #FF4D6D
+colors.candidate_text   = #000000
+colors.human_policy     = #FFD319

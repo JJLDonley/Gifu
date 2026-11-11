@@ -1,0 +1,41 @@
+# Nightshade — purple-grey night with vivid accents (after the Dracula palette).
+
+extends = dark
+name = Nightshade
+dark = true
+
+background.kind  = solid
+board.style      = flat
+board.line_width = 1.0
+board.shadow     = true
+stones.style     = glossy
+stones.shadow    = 0.45
+shape.radius     = 10
+
+colors.background       = #21222C
+colors.surface          = #282A36
+colors.surface_alt      = #303341
+colors.border           = #44475A
+colors.text             = #F8F8F2
+colors.text_muted       = #9EA3C0
+colors.accent           = #BD93F9
+colors.accent_text      = #21222C
+colors.hover            = #BD93F91F
+colors.danger           = #FF5555
+colors.board            = #3A3D52
+colors.board_line       = #B5B9D6
+colors.board_label      = #8C91B4
+colors.black_stone      = #16161E
+colors.white_stone      = #F8F8F2
+colors.black_stone_edge = #0D0D12
+colors.white_stone_edge = #BFBFB8
+colors.last_move        = #FF79C6
+colors.winrate_black    = #16161E
+colors.winrate_white    = #F8F8F2
+colors.graph_line       = #BD93F9
+colors.score_line       = #8BE9FD
+colors.candidate_best   = #50FA7B
+colors.candidate_good   = #8BE9FD
+colors.candidate_bad    = #FF5555
+colors.candidate_text   = #000000
+colors.human_policy     = #FFB86C

@@ -49,6 +49,7 @@ typedef struct Theme {
         String texture;
         f32 line_width;
         bool shadow;
+        f32 tint;   // wood / image boards: how much colors.board tints the texture (0..1)
     } board;
     struct {
         StoneStyle style;

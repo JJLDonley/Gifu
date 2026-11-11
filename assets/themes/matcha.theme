@@ -1,0 +1,41 @@
+# Matcha — tea-green chrome, a green-tinted board, brushed ink stones.
+
+extends = light
+name = Matcha
+dark = false
+
+background.kind  = solid
+board.style      = flat
+board.line_width = 1.1
+board.shadow     = false
+stones.style     = ink
+stones.shadow    = 0.0
+shape.radius     = 8
+
+colors.background       = #EEF2E6
+colors.surface          = #FAFCF6
+colors.surface_alt      = #E3EAD6
+colors.border           = #CCD8B8
+colors.text             = #26331C
+colors.text_muted       = #6F7F5E
+colors.accent           = #5B7F3A
+colors.accent_text      = #FFFFFF
+colors.hover            = #5B7F3A17
+colors.danger           = #B3261E
+colors.board            = #C7D6AE
+colors.board_line       = #2F4021
+colors.board_label      = #5A6C47
+colors.black_stone      = #1C2416
+colors.white_stone      = #F8FAF2
+colors.black_stone_edge = #0E130B
+colors.white_stone_edge = #4A5A3A
+colors.last_move        = #B3261E
+colors.winrate_black    = #1C2416
+colors.winrate_white    = #F8FAF2
+colors.graph_line       = #5B7F3A
+colors.score_line       = #A0763C
+colors.candidate_best   = #2E7D32
+colors.candidate_good   = #2F6EA3
+colors.candidate_bad    = #B3261E
+colors.candidate_text   = #FFFFFF
+colors.human_policy     = #7B5EA7

@@ -1,0 +1,46 @@
+# Sumi-e — ink-wash painting: rice-paper board, brushed ink stones, a vermilion seal accent.
+
+extends = light
+name = Sumi-e
+dark = false
+
+background.kind  = paper
+background.paper.grain = 0.05
+background.paper.fibers = 0.45
+background.paper.vignette = 0.2
+background.paper.stains = 0
+background.paper.seed = 21
+board.style      = paper
+board.line_width = 1.2
+board.shadow     = false
+stones.style     = ink
+stones.shadow    = 0.0
+shape.radius     = 2
+
+colors.background       = #F4F1EA
+colors.surface          = #FAF8F3
+colors.surface_alt      = #ECE8DE
+colors.border           = #D6D0C2
+colors.text             = #1E1E1E
+colors.text_muted       = #77726A
+colors.accent           = #C8102E
+colors.accent_text      = #FFFFFF
+colors.hover            = #1E1E1E12
+colors.danger           = #C8102E
+colors.board            = #F1EDE3
+colors.board_line       = #2A2A2A
+colors.board_label      = #6F6A62
+colors.black_stone      = #141414
+colors.white_stone      = #FBFAF6
+colors.black_stone_edge = #000000
+colors.white_stone_edge = #2A2A2A
+colors.last_move        = #C8102E
+colors.winrate_black    = #141414
+colors.winrate_white    = #FBFAF6
+colors.graph_line       = #1E1E1E
+colors.score_line       = #C8102E
+colors.candidate_best   = #3B7D3E
+colors.candidate_good   = #3D5A80
+colors.candidate_bad    = #C8102E
+colors.candidate_text   = #FFFFFF
+colors.human_policy     = #7A5C99

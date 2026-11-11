@@ -1,0 +1,44 @@
+# Terminal — green phosphor on black: a glowing grid, monospace chrome, square corners.
+
+extends = dark
+name = Terminal
+dark = true
+
+background.kind  = solid
+board.style      = neon
+board.line_width = 1.1
+board.shadow     = false
+stones.style     = neon
+stones.shadow    = 0.0
+shape.radius     = 0
+shape.border_width = 1
+fonts.ui         = fonts/SourceCodePro-Regular.ttf
+fonts.ui_bold    = fonts/SourceCodePro-Regular.ttf
+
+colors.background       = #000400
+colors.surface          = #020A03
+colors.surface_alt      = #041206
+colors.border           = #0E3A16
+colors.text             = #B8FFC8
+colors.text_muted       = #4FA862
+colors.accent           = #00FF5A
+colors.accent_text      = #001A08
+colors.hover            = #00FF5A1A
+colors.danger           = #FF5555
+colors.board            = #010802
+colors.board_line       = #00E050
+colors.board_label      = #2E9E4A
+colors.black_stone      = #000000
+colors.white_stone      = #D9FFE2
+colors.black_stone_edge = #00FF5A
+colors.white_stone_edge = #E8FFEC
+colors.last_move        = #FFE14D
+colors.winrate_black    = #0B5A22
+colors.winrate_white    = #D9FFE2
+colors.graph_line       = #00FF5A
+colors.score_line       = #FFE14D
+colors.candidate_best   = #00FF5A
+colors.candidate_good   = #7CFFB0
+colors.candidate_bad    = #FF5555
+colors.candidate_text   = #000000
+colors.human_policy     = #FFE14D

@@ -1,0 +1,41 @@
+# Solar Light — warm and low-glare (after the Solarized light palette).
+
+extends = light
+name = Solar Light
+dark = false
+
+background.kind  = solid
+board.style      = flat
+board.line_width = 1.0
+board.shadow     = false
+stones.style     = ink
+stones.shadow    = 0.0
+shape.radius     = 6
+
+colors.background       = #FDF6E3
+colors.surface          = #FFFBF0
+colors.surface_alt      = #EEE8D5
+colors.border           = #DDD6C1
+colors.text             = #586E75
+colors.text_muted       = #93A1A1
+colors.accent           = #268BD2
+colors.accent_text      = #FDF6E3
+colors.hover            = #268BD21A
+colors.danger           = #DC322F
+colors.board            = #EEE8D5
+colors.board_line       = #657B83
+colors.board_label      = #93A1A1
+colors.black_stone      = #073642
+colors.white_stone      = #FDF6E3
+colors.black_stone_edge = #002B36
+colors.white_stone_edge = #657B83
+colors.last_move        = #DC322F
+colors.winrate_black    = #073642
+colors.winrate_white    = #FDF6E3
+colors.graph_line       = #268BD2
+colors.score_line       = #CB4B16
+colors.candidate_best   = #859900
+colors.candidate_good   = #268BD2
+colors.candidate_bad    = #DC322F
+colors.candidate_text   = #FFFFFF
+colors.human_policy     = #6C71C4

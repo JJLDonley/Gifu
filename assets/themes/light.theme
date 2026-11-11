@@ -37,6 +37,8 @@ background.kind = solid
 board.style      = flat
 board.line_width = 1.0
 board.shadow     = false
+# board.tint: wood / image boards, how much colors.board tints the texture (0..1)
+board.tint       = 0.25
 
 stones.style  = flat
 stones.shadow = 0.0

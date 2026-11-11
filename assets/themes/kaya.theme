@@ -1,0 +1,47 @@
+# Kaya — the traditional look: a pale kaya-wood board, glossy shell and slate stones, warm ivory chrome.
+
+extends = light
+name = Kaya
+dark = false
+
+background.kind  = paper
+background.paper.grain = 0.02
+background.paper.fibers = 0.0
+background.paper.vignette = 0.08
+background.paper.stains = 0
+background.paper.seed = 5
+board.style      = wood
+board.texture    = textures/board-wood.png
+board.shadow     = true
+board.line_width = 1.0
+stones.style     = glossy
+stones.shadow    = 0.4
+shape.radius     = 10
+
+colors.background       = #F6F1E7
+colors.surface          = #FFFBF3
+colors.surface_alt      = #F0E8D8
+colors.border           = #E2D6BF
+colors.text             = #2B2118
+colors.text_muted       = #8A7A66
+colors.accent           = #9C2A1B
+colors.accent_text      = #FFFFFF
+colors.hover            = #9C2A1B14
+colors.danger           = #C62828
+colors.board            = #E8C88A
+colors.board_line       = #3A2A18
+colors.board_label      = #6B5638
+colors.black_stone      = #141414
+colors.white_stone      = #F7F5F0
+colors.black_stone_edge = #000000
+colors.white_stone_edge = #C9C2B5
+colors.last_move        = #C62828
+colors.winrate_black    = #1F1A16
+colors.winrate_white    = #F7F5F0
+colors.graph_line       = #9C2A1B
+colors.score_line       = #8A7A66
+colors.candidate_best   = #2E7D32
+colors.candidate_good   = #1565C0
+colors.candidate_bad    = #C62828
+colors.candidate_text   = #FFFFFF
+colors.human_policy     = #8E44AD

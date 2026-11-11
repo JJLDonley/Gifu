@@ -1,0 +1,42 @@
+# High Contrast — for low vision and bright rooms: black chrome, a yellow board, heavy lines and outlines.
+
+extends = dark
+name = High Contrast
+dark = true
+
+background.kind  = solid
+board.style      = flat
+board.line_width = 1.8
+board.shadow     = false
+stones.style     = ink
+stones.shadow    = 0.0
+shape.radius     = 4
+shape.border_width = 2
+
+colors.background       = #000000
+colors.surface          = #000000
+colors.surface_alt      = #141414
+colors.border           = #FFFFFF
+colors.text             = #FFFFFF
+colors.text_muted       = #E0E0E0
+colors.accent           = #FFD400
+colors.accent_text      = #000000
+colors.hover            = #FFD40033
+colors.danger           = #FF6060
+colors.board            = #F2C94C
+colors.board_line       = #000000
+colors.board_label      = #FFFFFF
+colors.black_stone      = #000000
+colors.white_stone      = #FFFFFF
+colors.black_stone_edge = #000000
+colors.white_stone_edge = #000000
+colors.last_move        = #FF2020
+colors.winrate_black    = #000000
+colors.winrate_white    = #FFFFFF
+colors.graph_line       = #FFD400
+colors.score_line       = #00E5FF
+colors.candidate_best   = #00C853
+colors.candidate_good   = #00B0FF
+colors.candidate_bad    = #FF3030
+colors.candidate_text   = #000000
+colors.human_policy     = #FF80FF

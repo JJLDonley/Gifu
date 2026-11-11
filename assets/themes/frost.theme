@@ -1,0 +1,41 @@
+# Frost — cool arctic blue-greys (after the Nord palette), a frosted board, flat stones.
+
+extends = dark
+name = Frost
+dark = true
+
+background.kind  = solid
+board.style      = flat
+board.line_width = 1.1
+board.shadow     = false
+stones.style     = flat
+stones.shadow    = 0.2
+shape.radius     = 8
+
+colors.background       = #2E3440
+colors.surface          = #3B4252
+colors.surface_alt      = #434C5E
+colors.border           = #4C566A
+colors.text             = #ECEFF4
+colors.text_muted       = #A3ACBD
+colors.accent           = #88C0D0
+colors.accent_text      = #2E3440
+colors.hover            = #88C0D01F
+colors.danger           = #BF616A
+colors.board            = #9FB4C8
+colors.board_line       = #2E3440
+colors.board_label      = #D8DEE9
+colors.black_stone      = #2E3440
+colors.white_stone      = #ECEFF4
+colors.black_stone_edge = #232831
+colors.white_stone_edge = #AEB8C8
+colors.last_move        = #BF616A
+colors.winrate_black    = #2E3440
+colors.winrate_white    = #ECEFF4
+colors.graph_line       = #88C0D0
+colors.score_line       = #B48EAD
+colors.candidate_best   = #A3BE8C
+colors.candidate_good   = #81A1C1
+colors.candidate_bad    = #BF616A
+colors.candidate_text   = #000000
+colors.human_policy     = #B48EAD

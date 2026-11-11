@@ -1,0 +1,43 @@
+# Autumn — dusk browns and maple orange, a warm wood board, glossy stones.
+
+extends = dark
+name = Autumn
+dark = true
+
+background.kind  = solid
+board.style      = wood
+board.texture    = textures/board-wood.png
+board.shadow     = true
+board.tint       = 0.42
+board.line_width = 1.0
+stones.style     = glossy
+stones.shadow    = 0.5
+shape.radius     = 10
+
+colors.background       = #1A110C
+colors.surface          = #241811
+colors.surface_alt      = #2E1F16
+colors.border           = #46301F
+colors.text             = #F6E7D8
+colors.text_muted       = #B49479
+colors.accent           = #E07A2E
+colors.accent_text      = #1A0B02
+colors.hover            = #E07A2E1F
+colors.danger           = #FF5A4E
+colors.board            = #B07A3C
+colors.board_line       = #241405
+colors.board_label      = #D9A877
+colors.black_stone      = #120B07
+colors.white_stone      = #F8F1E6
+colors.black_stone_edge = #050302
+colors.white_stone_edge = #C8B79F
+colors.last_move        = #FF5A4E
+colors.winrate_black    = #120B07
+colors.winrate_white    = #F8F1E6
+colors.graph_line       = #E07A2E
+colors.score_line       = #E8C26A
+colors.candidate_best   = #8BC34A
+colors.candidate_good   = #64B5F6
+colors.candidate_bad    = #FF5A4E
+colors.candidate_text   = #000000
+colors.human_policy     = #CE93D8
