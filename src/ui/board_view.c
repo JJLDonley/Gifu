@@ -74,12 +74,29 @@ static void draw_stone(const Theme *t, Vector2 c, f32 r, Stone color, f32 alpha)
             DrawRing(c, r - w, r, 0, 360, 48, edge);
             break;
         }
+        case STONE_STYLE_NEON: {
+            // Dark or icy glass with a glowing rim in the edge colour: a soft outer
+            // halo, the bright rim, and a faint inner light.
+            DrawCircleGradient(c, r * 1.32f, color_with_alpha(edge, 0.30f * alpha), color_with_alpha(edge, 0.0f));
+            DrawCircleGradient(c, r, color == STONE_BLACK ? color_lerp(fill, edge, 0.10f) : fill, fill);
+            f32 w = fmaxf(1.5f, r * 0.11f);
+            DrawRing(c, r - w * 2.2f, r - w, 0, 360, 48, color_with_alpha(edge, 0.22f * alpha));
+            DrawRing(c, r - w, r, 0, 360, 48, edge);
+            break;
+        }
         case STONE_STYLE_FLAT:
         default:
             DrawCircleV(c, r, fill);
             DrawRing(c, r - fmaxf(1.0f, r * 0.05f), r, 0, 360, 48, edge);
             break;
     }
+}
+
+// A line with a neon glow: a wide faint halo, a softer middle and the bright core.
+static void neon_line(Vector2 a, Vector2 b, f32 w, Color c) {
+    DrawLineEx(a, b, w * 6.0f, color_with_alpha(c, 0.07f));
+    DrawLineEx(a, b, w * 3.0f, color_with_alpha(c, 0.16f));
+    DrawLineEx(a, b, w, c);
 }
 
 // ---- Board surface -----------------------------------------------------------------------------
@@ -118,6 +135,16 @@ static void draw_surface(Ui *ui, const BoardGeometry *g) {
             }
             DrawRectangleLinesEx(g->board, 1.0f, color_with_alpha(t->colors.board_line, 0.35f));
             break;
+        case BOARD_STYLE_NEON: {
+            DrawRectangleRounded(g->board, roundness, 8, t->colors.board);
+            Color glow = t->colors.board_line;   // the board's edge lights up too
+            for (i32 k = 3; k >= 1; --k) {
+                Rectangle e = { g->board.x - (f32)k * 2, g->board.y - (f32)k * 2, g->board.width + (f32)k * 4, g->board.height + (f32)k * 4 };
+                DrawRectangleRoundedLinesEx(e, roundness, 8, 2.0f, color_with_alpha(glow, 0.06f * (f32)(4 - k)));
+            }
+            DrawRectangleRoundedLinesEx(g->board, roundness, 8, 1.5f, color_with_alpha(glow, 0.55f));
+            break;
+        }
         case BOARD_STYLE_FLAT:
         default:
             DrawRectangleRounded(g->board, roundness, 8, t->colors.board);
@@ -129,20 +156,29 @@ static void draw_grid(Ui *ui, const BoardGeometry *g, bool coords) {
     const Theme *t = ui->theme;
     f32 lw = fmaxf(1.0f, t->board.line_width * ui->scale * fminf(1.4f, g->cell / 32.0f));
     Color line = t->colors.board_line;
+    bool neon = t->board.style == BOARD_STYLE_NEON;
     for (i32 x = 0; x < g->width; ++x) {
         f32 w = (x == 0 || x == g->width - 1) ? lw * 1.8f : lw;
         Vector2 a = point_center(g, (Point){ (i8)x, 0 }), b = point_center(g, (Point){ (i8)x, (i8)(g->height - 1) });
-        DrawLineEx((Vector2){ a.x, a.y - w * 0.5f }, (Vector2){ b.x, b.y + w * 0.5f }, w, line);
+        Vector2 a2 = { a.x, a.y - w * 0.5f }, b2 = { b.x, b.y + w * 0.5f };
+        if (neon) neon_line(a2, b2, w, line);
+        else DrawLineEx(a2, b2, w, line);
     }
     for (i32 y = 0; y < g->height; ++y) {
         f32 w = (y == 0 || y == g->height - 1) ? lw * 1.8f : lw;
         Vector2 a = point_center(g, (Point){ 0, (i8)y }), b = point_center(g, (Point){ (i8)(g->width - 1), (i8)y });
-        DrawLineEx((Vector2){ a.x - w * 0.5f, a.y }, (Vector2){ b.x + w * 0.5f, b.y }, w, line);
+        Vector2 a2 = { a.x - w * 0.5f, a.y }, b2 = { b.x + w * 0.5f, b.y };
+        if (neon) neon_line(a2, b2, w, line);
+        else DrawLineEx(a2, b2, w, line);
     }
     if (g->width == g->height) {
         for (i32 y = 0; y < g->height; ++y) {
             for (i32 x = 0; x < g->width; ++x) {
-                if (board_is_star_point(g->width, x, y)) DrawCircleV(point_center(g, (Point){ (i8)x, (i8)y }), fmaxf(2.0f, g->cell * 0.1f), line);
+                if (!board_is_star_point(g->width, x, y)) continue;
+                Vector2 p = point_center(g, (Point){ (i8)x, (i8)y });
+                f32 r = fmaxf(2.0f, g->cell * 0.1f);
+                if (neon) DrawCircleGradient(p, r * 3.0f, color_with_alpha(line, 0.35f), color_with_alpha(line, 0.0f));
+                DrawCircleV(p, r, line);
             }
         }
     }

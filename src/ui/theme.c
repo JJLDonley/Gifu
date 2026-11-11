@@ -69,8 +69,9 @@ typedef struct EnumName {
 
 static const EnumName BACKGROUND_KINDS[] = { { "solid", BACKGROUND_SOLID }, { "image", BACKGROUND_IMAGE }, { "paper", BACKGROUND_PAPER } };
 static const EnumName BACKGROUND_FITS[] = { { "cover", BACKGROUND_FIT_COVER }, { "stretch", BACKGROUND_FIT_STRETCH }, { "tile", BACKGROUND_FIT_TILE } };
-static const EnumName BOARD_STYLES[] = { { "flat", BOARD_STYLE_FLAT }, { "wood", BOARD_STYLE_WOOD }, { "paper", BOARD_STYLE_PAPER }, { "image", BOARD_STYLE_IMAGE } };
-static const EnumName STONE_STYLES[] = { { "flat", STONE_STYLE_FLAT }, { "glossy", STONE_STYLE_GLOSSY }, { "ink", STONE_STYLE_INK } };
+static const EnumName BOARD_STYLES[] = { { "flat", BOARD_STYLE_FLAT }, { "wood", BOARD_STYLE_WOOD }, { "paper", BOARD_STYLE_PAPER }, { "image", BOARD_STYLE_IMAGE },
+                                          { "neon", BOARD_STYLE_NEON } };
+static const EnumName STONE_STYLES[] = { { "flat", STONE_STYLE_FLAT }, { "glossy", STONE_STYLE_GLOSSY }, { "ink", STONE_STYLE_INK }, { "neon", STONE_STYLE_NEON } };
 
 static bool enum_from_text(StringView s, const EnumName *names, isize count, i32 *out) {
     for (isize i = 0; i < count; ++i) {

@@ -20,8 +20,8 @@ typedef struct ThemeColors {
 
 typedef enum BackgroundKind { BACKGROUND_SOLID, BACKGROUND_IMAGE, BACKGROUND_PAPER } BackgroundKind;
 typedef enum BackgroundFit { BACKGROUND_FIT_COVER, BACKGROUND_FIT_STRETCH, BACKGROUND_FIT_TILE } BackgroundFit;
-typedef enum BoardStyle { BOARD_STYLE_FLAT, BOARD_STYLE_WOOD, BOARD_STYLE_PAPER, BOARD_STYLE_IMAGE } BoardStyle;
-typedef enum StoneStyle { STONE_STYLE_FLAT, STONE_STYLE_GLOSSY, STONE_STYLE_INK } StoneStyle;
+typedef enum BoardStyle { BOARD_STYLE_FLAT, BOARD_STYLE_WOOD, BOARD_STYLE_PAPER, BOARD_STYLE_IMAGE, BOARD_STYLE_NEON } BoardStyle;
+typedef enum StoneStyle { STONE_STYLE_FLAT, STONE_STYLE_GLOSSY, STONE_STYLE_INK, STONE_STYLE_NEON } StoneStyle;
 
 typedef struct PaperParams {
     f32 grain;      // per-pixel noise amplitude

@@ -1,0 +1,44 @@
+# Neon — a Tron-style grid: glowing cyan lines on a dark navy board, black stones
+# as dark glass with a cyan rim, white stones as icy glass with an orange rim.
+
+extends = dark
+name = Neon
+dark = true
+
+board.style      = neon
+board.line_width = 1.2
+board.shadow     = false
+
+stones.style  = neon
+stones.shadow = 0.0
+
+shape.radius       = 4
+shape.border_width = 1
+
+colors.background       = #05070D
+colors.surface          = #0A0F1A
+colors.surface_alt      = #0F1828
+colors.border           = #12405A
+colors.text             = #D9F7FF
+colors.text_muted       = #6F93A8
+colors.accent           = #00E5FF
+colors.accent_text      = #001018
+colors.hover            = #00E5FF1F
+colors.danger           = #FF3D6E
+colors.board            = #060A14
+colors.board_line       = #00D9FF
+colors.board_label      = #3FA9C9
+colors.black_stone      = #070B16
+colors.white_stone      = #EAF8FF
+colors.black_stone_edge = #00E5FF
+colors.white_stone_edge = #FF9A2E
+colors.last_move        = #FF2E88
+colors.winrate_black    = #0E5670
+colors.winrate_white    = #EAF8FF
+colors.graph_line       = #00E5FF
+colors.score_line       = #FF9A2E
+colors.candidate_best   = #39FF88
+colors.candidate_good   = #00E5FF
+colors.candidate_bad    = #FF3D6E
+colors.candidate_text   = #000000
+colors.human_policy     = #C77DFF
