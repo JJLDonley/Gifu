@@ -138,9 +138,22 @@ int main(int argc, char **argv) {
     if (!app_init(app, &options)) return 1;
 
     SetTraceLogLevel(LOG_WARNING);
+    i32 width = options.window_width ? options.window_width : app->config.window_width;
+    i32 height = options.window_height ? options.window_height : app->config.window_height;
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_MSAA_4X_HINT | FLAG_VSYNC_HINT);
-    InitWindow(options.window_width ? options.window_width : app->config.window_width,
-               options.window_height ? options.window_height : app->config.window_height, "Gifu");
+    InitWindow(width, height, "Gifu");
+    if (!IsWindowReady()) {   // e.g. no 4x multisampling (virtual machines, software OpenGL, remote desktops)
+        log_warn("cannot open a window with multisampling; trying without");
+        SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
+        InitWindow(width, height, "Gifu");
+    }
+    if (!IsWindowReady()) {
+        fprintf(stderr, "Gifu cannot open its window: OpenGL 3.3 is not available here (see the log above).\n");
+        app_shutdown(app);
+        free(ui);
+        free(app);
+        return 1;
+    }
     // Start at a size that fits high-DPI monitors (config sizes are at 100%).
     Vector2 dpi = GetWindowScaleDPI();
     if (dpi.x > 1.01f && !options.window_width) {
