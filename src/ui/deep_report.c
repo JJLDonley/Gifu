@@ -310,24 +310,32 @@ static void distribution(DeepReport *d, bool winrate, f32 row_px) {
     const char *const *LABELS = winrate ? WR_LABELS : SCORE_LABELS;
     f32 font = font_for_row(ui, row_px, 12.0f, 18.0f);
     f32 bar_px = row_px * 0.62f;
+    // Butterfly chart: the buckets down the middle, Black's bars growing to the left,
+    // White's to the right.
+    f32 gap = ui_px(ui, 8);
     CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM } }) {
         for (i32 b = 0; b < LOSS_BUCKETS; ++b) {
-            CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(row_px) }, .childGap = ui_u16(ui, 12),
-                               .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
-                CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, font * 6.0f)), CLAY_SIZING_FIT(0) } } }) {
-                    ui_label(ui, sv(LABELS[b]), FONT_MONO, font, c->text);
-                }
+            CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(row_px) }, .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
                 for (Stone color = STONE_BLACK; color <= STONE_WHITE; ++color) {
                     const PlayerReport *p = &d->report.player[color];
                     const i32 *hist = winrate ? p->winrate_hist : p->score_hist;
                     f32 share = p->moves ? (f32)hist[b] / (f32)p->moves : 0.0f;
                     Color col = b >= 3 ? c->candidate_bad : b == 2 ? mid_loss_color(c) : (color == STONE_BLACK ? c->winrate_black : c->score_line);
-                    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(bar_px) }, .childGap = ui_u16(ui, 8),
-                                       .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
-                        CLAY({ .layout = { .sizing = { CLAY_SIZING_PERCENT(fmaxf(share * 0.8f, 0.004f)), CLAY_SIZING_GROW(0) } },
+                    bool left = color == STONE_BLACK;
+                    if (!left) {   // the bucket label, centred between the two halves
+                        CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, font * 6.0f)), CLAY_SIZING_FIT(0) },
+                                           .childAlignment = { .x = CLAY_ALIGN_X_CENTER } } }) {
+                            ui_label(ui, sv(LABELS[b]), FONT_MONO, font, c->text);
+                        }
+                    }
+                    Clay_String count = ui_fmt(ui, "%d · %.0f%%", hist[b], share * 100.0f);
+                    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(bar_px) }, .childGap = (u16)gap,
+                                       .childAlignment = { .x = left ? CLAY_ALIGN_X_RIGHT : CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_CENTER } } }) {
+                        if (left) CLAY_TEXT(count, ui_text_style(ui, FONT_MONO, font * 0.85f, c->text_muted));
+                        CLAY({ .layout = { .sizing = { CLAY_SIZING_PERCENT(fmaxf(share * 0.75f, 0.004f)), CLAY_SIZING_GROW(0) } },
                                .backgroundColor = color_to_clay(color_with_alpha(col, 0.8f)),
                                .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 3)) }) {}
-                        CLAY_TEXT(ui_fmt(ui, "%d · %.0f%%", hist[b], share * 100.0f), ui_text_style(ui, FONT_MONO, font * 0.85f, c->text_muted));
+                        if (!left) CLAY_TEXT(count, ui_text_style(ui, FONT_MONO, font * 0.85f, c->text_muted));
                     }
                 }
             }

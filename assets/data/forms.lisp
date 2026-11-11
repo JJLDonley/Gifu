@@ -88,7 +88,7 @@
       (option defender "Defender")
       (option both "Both")))
   ;; Game -> Sync board from screen: follows a board shown by another program.
-  (section settings.sync :fallback "Board sync"
+  (section settings.sync :fallback BSync
     (choice sync.capture :columns 3 :label settings.sync_capture :fallback "Screen capture"
       (option auto "Automatic")
       (option gdi "Windows")
