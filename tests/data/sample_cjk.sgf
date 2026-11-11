@@ -1,0 +1,8 @@
+(;GM[1]FF[4]CA[UTF-8]SZ[19]KM[7.5]RU[Chinese]PB[李明]BR[9段]PW[김하늘]WR[9단]EV[测试对局 · テスト対局]DT[2026-11-08]
+C[Sample game for Gifu rendering tests.
+中文评论：这是一个测试。日本語のコメント。한국어 코멘트입니다.]
+;B[pd];W[dp];B[pp];W[dd];B[fq];W[hq];B[cn];W[fp];B[dr];W[ep];B[cq];W[jp]
+;B[qf];W[nc];B[pb];W[jd];B[cf];W[ch];B[de];W[ce];B[cd];W[be];B[bd];W[df]
+(;B[ee]C[Main line: black extends.];W[ef];B[fe];W[gc];B[qn];W[nq];B[pr]
+;W[kq];B[nn];W[lo];B[mm];W[lm];B[ml])
+(;B[ef]C[Variation: black cuts.];W[ee];B[ed]))

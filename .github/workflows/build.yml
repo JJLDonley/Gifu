@@ -38,6 +38,11 @@ jobs:
             third_party/clay
             third_party/yyjson
           key: third-party-${{ hashFiles('cmake/Dependencies.cmake') }}
+      - name: Build and run the tests (ASan / UBSan)
+        run: |
+          cmake --preset linux-debug
+          cmake --build build/linux-debug --target gifu_tests
+          ./build/linux-debug/gifu_tests
       - name: Build and package (tar.xz, AppImage)
         env:
           APPIMAGE_EXTRACT_AND_RUN: "1"   # appimagetool without FUSE on the runner
@@ -75,6 +80,11 @@ jobs:
             third_party/clay
             third_party/yyjson
           key: third-party-${{ hashFiles('cmake/Dependencies.cmake') }}
+      - name: Build and run the tests
+        run: |
+          cmake --preset msys2-debug
+          cmake --build build/msys2-debug --target gifu_tests
+          ./build/msys2-debug/gifu_tests.exe
       - name: Build and package (zip)
         run: python tools/package.py msys2
       - uses: actions/upload-artifact@v7
