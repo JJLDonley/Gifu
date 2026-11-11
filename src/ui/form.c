@@ -255,11 +255,15 @@ void form_render(Ui *ui, const Sexpr *form) {
             if (ui_button(ui, CLAY_IDI("FormTab", (u32)i), title_of(ui, sections[i]), BUTTON_GHOST, i == tab, true)) ui->form_tab = i;
         }
     }
-    f32 page_h = fminf(ui_px(ui, 470), (f32)GetScreenHeight() * 0.6f);
-    CLAY({ .id = CLAY_ID("FormPage"),
-           .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(page_h) }, .layoutDirection = CLAY_TOP_TO_BOTTOM },
+    // As tall as the window comfortably allows; longer pages scroll (with a scrollbar).
+    f32 page_h = fminf(ui_px(ui, 600), (f32)GetScreenHeight() * 0.62f);
+    Clay_ElementId page = CLAY_ID("FormPage");
+    CLAY({ .id = page,
+           .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(page_h) }, .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                       .padding = { 0, ui_u16(ui, 12), 0, 0 } },
            .clip = { .vertical = true, .childOffset = Clay_GetScrollOffset() } }) {
         form_section(ui, sections[tab], base[tab], false);
+        ui_scrollbar(ui, page, 200);   // the modal layer
     }
 }
 

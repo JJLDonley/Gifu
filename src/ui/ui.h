@@ -135,6 +135,8 @@ typedef struct Ui {
     u32 focus_id;         // Clay id of the focused text input (0 = none)
     bool focus_claimed;   // a focused input was laid out this frame
     bool text_dragging;
+    u32 scrollbar_drag;   // scrollbar thumb being dragged (Clay id), 0 = none
+    f32 scrollbar_grab;   // mouse y minus the thumb's offset when it was grabbed
     bool theme_menu_open;
     i32 open_menu;        // index into layout.menus, -1 = closed
     bool pointer_over_menu;
@@ -263,6 +265,10 @@ Clay_ElementDeclaration ui_card(Ui *ui, Clay_ElementId id);
 // height <= 0). Must be evaluated inside CLAY(...) so the scroll offset is
 // read for the element being opened.
 Clay_ElementDeclaration ui_scroll_area(Ui *ui, Clay_ElementId id, f32 height);
+// A thin scrollbar on the right of scroll container `id` (call inside it), shown
+// when its content is taller than it; the thumb can be dragged. `z_index`: the
+// container's layer (floating z-order is absolute: a dialog's content needs > 200).
+void ui_scrollbar(Ui *ui, Clay_ElementId id, i16 z_index);
 void ui_card_title(Ui *ui, StringView title);
 // Card title with a "?" button at the right that explains the panel
 // (l10n keys help.<topic>.title / help.<topic>.text); shown in tabs too.

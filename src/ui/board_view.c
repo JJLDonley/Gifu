@@ -386,8 +386,12 @@ static void board_draw_markup(Ui *ui, const BoardGeometry *g, const Markup *m, c
     // their area), with slowly moving diagonal stripes. Runs of one colour along a row
     // are drawn as one area, and the stripes follow the screen's diagonal, so they run
     // on across neighbouring points and rows without seams and wrap around forever.
+    // The stripes slide along their normal and slowly turn (a full turn in ~52 s).
     f32 spacing = g->cell * 0.46f, stripe = spacing * 0.36f;
-    f32 phase = fmodf((f32)(GetTime() * 0.3) * g->cell, spacing);
+    f64 now = GetTime();
+    f32 angle = 0.785f + (f32)fmod(now * 0.12, 2.0 * PI);
+    f32 nx = cosf(angle), ny = sinf(angle), tx = -ny, ty = nx;   // normal, and the stripe direction
+    f32 phase = fmodf((f32)(now * 0.3) * g->cell, spacing);
     for (i32 y = 0; y < m->height; ++y) {
         for (i32 x = 0; x < m->width;) {
             i32 i = y * m->width + x;
@@ -406,9 +410,18 @@ static void board_draw_markup(Ui *ui, const BoardGeometry *g, const Markup *m, c
             Color band = color_lerp(fill, luma > 150.0f ? (Color){ 0, 0, 0, 255 } : (Color){ 255, 255, 255, 255 }, 0.35f);
             band.a = 120;
             render_push_scissor(r);   // within whatever clip the board is drawn in
-            f32 first = floorf((r.x + r.y) / spacing) * spacing - spacing + phase;
-            for (f32 c = first; c < r.x + r.width + r.y + r.height + spacing; c += spacing) {   // lines x + y = c
-                DrawLineEx((Vector2){ c - r.y, r.y }, (Vector2){ c - (r.y + r.height), r.y + r.height }, stripe, band);
+            // Lines n.p = c, clipped to the area: the range of c and of the position along
+            // each line come from projecting the area's corners.
+            f32 cmin = INFINITY, cmax = -INFINITY, smin = INFINITY, smax = -INFINITY;
+            for (i32 k = 0; k < 4; ++k) {
+                f32 px = r.x + (k & 1 ? r.width : 0), py = r.y + (k & 2 ? r.height : 0);
+                cmin = fminf(cmin, px * nx + py * ny), cmax = fmaxf(cmax, px * nx + py * ny);
+                smin = fminf(smin, px * tx + py * ty), smax = fmaxf(smax, px * tx + py * ty);
+            }
+            for (f32 c = floorf(cmin / spacing) * spacing - spacing + phase; c < cmax + spacing; c += spacing) {
+                Vector2 a0 = { nx * c + tx * (smin - stripe), ny * c + ty * (smin - stripe) };
+                Vector2 a1 = { nx * c + tx * (smax + stripe), ny * c + ty * (smax + stripe) };
+                DrawLineEx(a0, a1, stripe, band);
             }
             render_pop_scissor();
             x = end + 1;

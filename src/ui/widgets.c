@@ -1,6 +1,7 @@
 #include "ui/ui.h"
 
 #include <stdarg.h>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -284,4 +285,38 @@ bool ui_toggle(Ui *ui, Clay_ElementId id, bool on) {
                .cornerRadius = CLAY_CORNER_RADIUS(knob * 0.5f) }) {}
     }
     return over && ui->mouse_pressed;
+}
+
+void ui_scrollbar(Ui *ui, Clay_ElementId id, i16 z_index) {
+    Clay_ScrollContainerData data = Clay_GetScrollContainerData(id);
+    if (!data.found || !data.scrollPosition) return;
+    f32 view = data.scrollContainerDimensions.height, content = data.contentDimensions.height;
+    if (content <= view + 1.0f) return;
+    const ThemeColors *c = &ui->theme->colors;
+    f32 track = view - ui_px(ui, 8), thumb = fmaxf(ui_px(ui, 28), track * view / content);
+    f32 range = content - view, t = range > 0 ? CLAMP(-data.scrollPosition->y / range, 0.0f, 1.0f) : 0;
+    Clay_ElementId bar = CLAY_IDI("Scrollbar", id.id);
+    bool dragging = ui->scrollbar_drag == bar.id;
+    bool over = Clay_PointerOver(bar);
+    f32 w = ui_px(ui, over || dragging ? 8 : 5);
+    CLAY({ .id = bar,
+           .layout = { .sizing = { CLAY_SIZING_FIXED(w), CLAY_SIZING_FIXED(thumb) } },
+           .backgroundColor = color_to_clay(color_with_alpha(c->text_muted, over || dragging ? 0.6f : 0.35f)),
+           .cornerRadius = CLAY_CORNER_RADIUS(w * 0.5f),
+           .floating = { .attachTo = CLAY_ATTACH_TO_PARENT,
+                         .attachPoints = { .element = CLAY_ATTACH_POINT_RIGHT_TOP, .parent = CLAY_ATTACH_POINT_RIGHT_TOP },
+                         .offset = { -ui_px(ui, 2), ui_px(ui, 4) + (track - thumb) * t },
+                         .zIndex = (i16)(z_index + 1) } }) {}
+    if (over && ui->mouse_pressed) {
+        ui->scrollbar_drag = bar.id;
+        ui->scrollbar_grab = ui->mouse.y - (track - thumb) * t;
+    }
+    if (dragging) {
+        if (!ui->mouse_down) {
+            ui->scrollbar_drag = 0;
+        } else if (track > thumb) {
+            f32 nt = CLAMP((ui->mouse.y - ui->scrollbar_grab) / (track - thumb), 0.0f, 1.0f);
+            data.scrollPosition->y = -nt * range;
+        }
+    }
 }

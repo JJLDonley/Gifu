@@ -27,6 +27,7 @@
   (section settings.board :fallback Board
     (bool board.show_coordinates :label command.view.coordinates :fallback Coordinates)
     (bool board.show_move_numbers :label command.view.move_numbers :fallback "Move numbers")
+    (bool board.show_branches :label command.view.branches :fallback "Branch moves")
     (choice rules :columns 3 :label label.rules :fallback Rules
       (option chinese Chinese)
       (option japanese Japanese)
