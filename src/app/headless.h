@@ -14,3 +14,5 @@ int headless_rank(App *app);
 int headless_capture(App *app);
 // --read-board FILE.png | screen [--capture-area ...]: prints the grid and stones it finds.
 int headless_read_board(App *app);
+// --update [--channel stable|alpha]: check, download, verify and install the newest release.
+int headless_update(App *app);

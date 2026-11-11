@@ -39,6 +39,9 @@ typedef struct AppOptions {
     i32 window_x, window_y;
     StringView capture_area;         // --capture-area X,Y,W,H (desktop coordinates)
     StringView read_board;           // --read-board FILE.png | screen: print the board read from a picture
+    bool update;                     // --update: install the newest release from the command line
+    StringView update_channel;       // --channel stable|alpha (with --update)
+    i64 updated_from;                // --updated-from PID: the version this one replaced (clean up after it)
     StringView install;              // --install engine,network,human (headless)
     StringView install_backend;      // --backend opencl|eigenavx2|eigen|cuda12.8-cudnn9.8.0
     StringView install_dir;          // --install-dir (default <root>/katago)

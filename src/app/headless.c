@@ -14,6 +14,8 @@
 #include "app/screen_capture.h"
 #include "base/image.h"
 #include "core/board_reader.h"
+#include "app/updater.h"
+#include "base/version_info.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -490,4 +492,56 @@ int headless_read_board(App *app) {
     }
     rgba_image_free(&image);
     return 0;
+}
+
+int headless_update(App *app) {
+    const AppOptions *o = &app->options;
+    StringView channel_name = o->update_channel.len ? o->update_channel : string_sv(&app->config.updates_channel);
+    UpdateChannel channel = sv_eq(channel_name, SV("alpha")) ? UPDATE_CHANNEL_ALPHA : UPDATE_CHANNEL_STABLE;
+    const char *appimage = getenv("APPIMAGE");
+    Updater *u = updater_create(string_sv(&app->exe_dir), sv(appimage ? appimage : ""), string_sv(&app->config.updates_url));
+    printf("Gifu %s, %s channel: checking %s\n", GIFU_VERSION, channel == UPDATE_CHANNEL_ALPHA ? "alpha" : "stable",
+           string_cstr(&app->config.updates_url));
+    updater_check(u, channel);
+    UpdaterStatus st = { 0 };
+    UpdaterPhase last = UPDATER_IDLE;
+    i32 code = 0;
+    for (;;) {
+        updater_status_free(&st);
+        updater_status(u, &st);
+        if (st.phase == UPDATER_AVAILABLE && last != UPDATER_AVAILABLE) {
+            printf("Gifu %s is available%s\n", string_cstr(&st.version), st.can_install ? "" : " (this is not a packaged install: nothing is replaced)");
+            if (!st.can_install) break;
+            updater_download(u);
+        } else if (st.phase == UPDATER_UP_TO_DATE) {
+            printf("Gifu %s is the newest version\n", GIFU_VERSION);
+            break;
+        } else if (st.phase == UPDATER_FAILED) {
+            fprintf(stderr, "update failed: %s\n", string_cstr(&st.error));
+            code = 1;
+            break;
+        } else if (st.phase == UPDATER_READY) {
+            String err = { 0 };
+            // From the command line the new version is installed, not started.
+            StringView args[] = { SV("--version") };
+            if (updater_apply(u, args, countof(args), &err)) {
+                printf("installed Gifu %s in %s\n", string_cstr(&st.version), string_cstr(&app->exe_dir));
+            } else {
+                fprintf(stderr, "update failed: %s\n", string_cstr(&err));
+                code = 1;
+            }
+            string_free(&err);
+            break;
+        }
+        if (st.phase == UPDATER_DOWNLOADING && st.total > 0) {
+            printf("\r  %.1f / %.1f MB", (f64)st.done / 1048576.0, (f64)st.total / 1048576.0);
+            fflush(stdout);
+        }
+        last = st.phase;
+        os_sleep_ms(200);
+    }
+    printf("\n");
+    updater_status_free(&st);
+    updater_destroy(u);
+    return code;
 }

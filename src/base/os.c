@@ -422,3 +422,82 @@ void os_log_backtrace(void) {
 #else
 void os_log_backtrace(void) {}
 #endif
+
+// ---- Trees and detached processes ---------------------------------------------------------------
+
+bool os_remove_tree(StringView path) {
+    if (!os_dir_exists(path)) return os_remove(path) || !os_file_exists(path);
+    StringVec names = { 0 };
+    bool ok = true;
+    if (os_list_dir(path, &names)) {
+        vec_foreach(String, n, &names) {
+            String child = path_join(path, string_sv(n));
+            ok &= os_remove_tree(string_sv(&child));
+            string_free(&child);
+        }
+    }
+    string_vec_free(&names);
+    return os_remove_dir(path) && ok;
+}
+
+#ifdef _WIN32
+i64 os_process_id(void) { return (i64)GetCurrentProcessId(); }
+
+bool os_wait_process_exit(i64 pid, i32 timeout_ms) {
+    HANDLE h = OpenProcess(SYNCHRONIZE, FALSE, (DWORD)pid);
+    if (!h) return true;   // already gone
+    DWORD rc = WaitForSingleObject(h, timeout_ms < 0 ? INFINITE : (DWORD)timeout_ms);
+    CloseHandle(h);
+    return rc == WAIT_OBJECT_0;
+}
+
+bool os_spawn_detached(StringView program, const StringView *args, isize count) {
+    String cmd = string_format("\"" SV_FMT "\"", SV_ARG(program));
+    for (isize i = 0; i < count; ++i) string_pushf(&cmd, " \"" SV_FMT "\"", SV_ARG(args[i]));
+    wchar_t *w = os_utf8_to_wide(string_sv(&cmd));
+    STARTUPINFOW si = { .cb = sizeof(si) };
+    PROCESS_INFORMATION pi;
+    BOOL ok = CreateProcessW(NULL, w, NULL, NULL, FALSE, CREATE_NEW_PROCESS_GROUP | CREATE_BREAKAWAY_FROM_JOB, NULL, NULL, &si, &pi);
+    if (!ok) ok = CreateProcessW(NULL, w, NULL, NULL, FALSE, CREATE_NEW_PROCESS_GROUP, NULL, NULL, &si, &pi);   // breakaway not allowed
+    if (ok) CloseHandle(pi.hThread), CloseHandle(pi.hProcess);
+    free(w);
+    string_free(&cmd);
+    return ok;
+}
+#else
+#include <signal.h>
+#include <spawn.h>
+extern char **environ;
+
+i64 os_process_id(void) { return (i64)getpid(); }
+
+bool os_wait_process_exit(i64 pid, i32 timeout_ms) {
+    for (i32 waited = 0; timeout_ms < 0 || waited <= timeout_ms; waited += 50) {
+        if (kill((pid_t)pid, 0) != 0) return true;   // no such process any more
+        os_sleep_ms(50);
+    }
+    return false;
+}
+bool os_spawn_detached(StringView program, const StringView *args, isize count) {
+    char **argv = calloc((usize)count + 2, sizeof(char *));
+    if (!argv) abort();
+    String prog = string_from(program);
+    argv[0] = (char *)string_cstr(&prog);
+    String *copies = calloc((usize)count + 1, sizeof(String));
+    if (!copies) abort();
+    for (isize i = 0; i < count; ++i) copies[i] = string_from(args[i]), argv[i + 1] = (char *)string_cstr(&copies[i]);
+    posix_spawnattr_t attr;
+    posix_spawnattr_init(&attr);
+#ifdef POSIX_SPAWN_SETSID
+    posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETSID);
+#endif
+    pid_t pid;
+    int rc = posix_spawn(&pid, argv[0], NULL, &attr, argv, environ);
+    posix_spawnattr_destroy(&attr);
+    for (isize i = 0; i < count; ++i) string_free(&copies[i]);
+    free(copies);
+    string_free(&prog);
+    free(argv);
+    return rc == 0;
+}
+#endif

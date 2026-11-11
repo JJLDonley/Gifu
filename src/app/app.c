@@ -1,4 +1,5 @@
 #include "app/app.h"
+#include "app/updater.h"
 
 #include "app/file_dialog.h"
 #include "core/sgf_analysis.h"
@@ -1444,6 +1445,7 @@ bool app_init(App *app, const AppOptions *options) {
     }
     app->config_dir = options->portable ? string_from(string_sv(&app->exe_dir)) : os_config_dir();
     if (!options->portable && !options->screenshot.len) migrate_old_dir(string_sv(&app->config_dir));   // test screenshots leave user folders alone
+    updater_cleanup(string_sv(&app->exe_dir), options->updated_from);   // what a previous update left behind
     log_info("root %s, assets %s, config %s", string_cstr(&app->root_dir), string_cstr(&app->assets_dir),
              string_cstr(&app->config_dir));
 

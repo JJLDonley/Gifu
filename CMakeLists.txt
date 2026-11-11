@@ -136,7 +136,8 @@ add_library(gifu_core STATIC
     src/app/screen_capture.c
     src/app/board_sync.c
     src/app/app_sync.c
-    src/app/update.c)
+    src/app/update.c
+    src/app/updater.c)
 target_include_directories(gifu_core PUBLIC src ${CMAKE_BINARY_DIR}/generated)
 target_link_libraries(gifu_core PUBLIC third_party_misc)
 if(WIN32)
