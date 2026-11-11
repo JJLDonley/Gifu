@@ -50,6 +50,15 @@ jobs:
           echo "missing:${PKGS:- nothing}"
           if [ -z "$PKGS" ]; then exit 0; fi
           APT="-o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30"
+          # The runners' apt goes through /etc/apt/apt-mirrors.txt, Azure's mirror first. When
+          # that name stops resolving apt does not fall back (actions/runner-images#7048,
+          # #14823): drop it and keep the global archive.
+          if ! getent hosts azure.archive.ubuntu.com > /dev/null && [ -f /etc/apt/apt-mirrors.txt ]; then
+            sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
+            grep -q "archive.ubuntu.com" /etc/apt/apt-mirrors.txt || echo "http://archive.ubuntu.com/ubuntu/	priority:1" | sudo tee -a /etc/apt/apt-mirrors.txt > /dev/null
+            echo "azure.archive.ubuntu.com does not resolve; apt mirrors now:"
+            cat /etc/apt/apt-mirrors.txt
+          fi
           # From the cache; if those packages no longer fit the image, download them instead.
           if ls ~/apt-debs/*.deb > /dev/null 2>&1 && sudo dpkg -i ~/apt-debs/*.deb; then
             echo "installed from the cache"
