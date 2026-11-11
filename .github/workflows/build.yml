@@ -59,6 +59,12 @@ jobs:
             echo "azure.archive.ubuntu.com does not resolve; apt mirrors now:"
             cat /etc/apt/apt-mirrors.txt
           fi
+          # When the runners cannot resolve ubuntu.com names at all, use an official mirror on
+          # another domain (apt still checks the archive's Ubuntu signature).
+          if ! getent hosts archive.ubuntu.com > /dev/null && [ -f /etc/apt/apt-mirrors.txt ]; then
+            echo "http://mirrors.edge.kernel.org/ubuntu/	priority:1" | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
+            echo "archive.ubuntu.com does not resolve either; using mirrors.edge.kernel.org"
+          fi
           # From the cache; if those packages no longer fit the image, download them instead.
           if ls ~/apt-debs/*.deb > /dev/null 2>&1 && sudo dpkg -i ~/apt-debs/*.deb; then
             echo "installed from the cache"
