@@ -41,7 +41,7 @@
     (menu menu.markup
       toolbar.markup markup.tool.play markup.tool.black markup.tool.white - markup.tool.triangle markup.tool.square markup.tool.circle markup.tool.cross markup.tool.letter markup.tool.number - markup.tool.arrow markup.tool.line markup.tool.pen - markup.tool.shade markup.count_empty - markup.tool.eraser markup.clear :fallback "Markup")
     (menu menu.view
-      view.coordinates view.move_numbers view.next_tab - toolbar.analysis toolbar.markup - view.zoom_in view.zoom_out - view.theme_editor view.layout_editor view.settings :fallback "View"))
+      view.coordinates view.move_numbers view.branches view.next_tab - toolbar.analysis toolbar.markup - view.zoom_in view.zoom_out - view.theme_editor view.layout_editor view.settings :fallback "View"))
 
   (toolbar
     (mode-switch)

@@ -339,7 +339,7 @@ static void color_popover(Ui *ui, i32 index) {
     CLAY({ .id = CLAY_ID("MarkupColorPopover"),
            .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 220)), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM,
                        .padding = CLAY_PADDING_ALL(ui_u16(ui, 10)), .childGap = ui_u16(ui, 8) },
-           .backgroundColor = color_to_clay(c->surface),
+           .backgroundColor = color_to_clay(color_with_alpha(c->surface, 1.0f)),
            .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, ui->theme->shape.radius)),
            .border = { .color = color_to_clay(c->border), .width = CLAY_BORDER_OUTSIDE(1) },
            .floating = { .attachTo = CLAY_ATTACH_TO_PARENT,

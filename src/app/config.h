@@ -29,6 +29,7 @@ typedef struct Config {
     bool show_coordinates;
     bool show_candidates;
     bool show_move_numbers;
+    bool show_branches;       // dots where the following moves (and variations) were played
     f32 ai_seconds_per_move;
     bool ai_human_style;      // engine moves come from the human network at ai.human_profile
     bool ai_show_eval;          // win rate, score, graph, candidates... while playing the engine (hidden by default)

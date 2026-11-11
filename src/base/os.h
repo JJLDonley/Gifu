@@ -24,6 +24,9 @@ bool os_list_dir(StringView dir, StringVec *out_names);
 
 f64 os_time_seconds(void);   // monotonic
 void os_sleep_ms(i32 ms);
+// Logs the caller's stack as offsets into the executable ("#3 catagui+0x38020"),
+// for symbolizing a user's log with llvm-symbolizer (debug builds have the symbols).
+void os_log_backtrace(void);
 
 String os_executable_dir(void);
 String os_config_dir(void);  // %APPDATA%\CataGui, $XDG_CONFIG_HOME/catagui, ~/.config/catagui

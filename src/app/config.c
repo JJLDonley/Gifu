@@ -40,6 +40,7 @@ static const ConfigField FIELDS[] = {
     BOOL("analysis.show_candidates", show_candidates, 1),
     BOOL("board.show_coordinates", show_coordinates, 1),
     BOOL("board.show_move_numbers", show_move_numbers, 0),
+    BOOL("board.show_branches", show_branches, 0),
     FLOAT("ai.seconds_per_move", ai_seconds_per_move, 2.0, 0.1, 120.0),
     BOOL("ai.human_style", ai_human_style, 0),
     BOOL("ai.show_eval", ai_show_eval, 0),

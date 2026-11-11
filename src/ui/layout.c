@@ -666,7 +666,7 @@ bool layout_component_exists(StringView name) {
     for (i32 i = 0; i < (i32)countof(COMPONENTS); ++i) {
         if (sv_eq(name, sv(COMPONENTS[i].name))) return true;
     }
-    return sv_eq(name, SV("menu"));   // only valid inside menubar
+    return sv_eq(name, SV("menu")) || sv_eq(name, SV("mode"));   // only valid inside menubar / modes
 }
 
 static void render_node(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {

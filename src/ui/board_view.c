@@ -540,6 +540,20 @@ static void draw_board(void *user, Rectangle bounds) {
     }
     board_draw_markup(ui, &g, markup, board);
     markup_free(markup);
+    // Branch moves: a small dot where each following move was played, in its colour;
+    // when there are several, the alternatives to the main continuation get a ring.
+    if (app->config.show_branches) {
+        i32 index = 0;
+        for (const GameNode *child = node->first_child; child; child = child->next_sibling, ++index) {
+            if (!child->has_move || point_is_pass(child->move.point) || board_at(board, child->move.point) != STONE_EMPTY) continue;
+            Vector2 p = point_center(&g, child->move.point);
+            bool black = child->move.color == STONE_BLACK;
+            f32 rad = g.cell * 0.17f;
+            DrawCircleV(p, rad, black ? ui->theme->colors.black_stone : ui->theme->colors.white_stone);
+            DrawRing(p, rad - 1.0f, rad, 0, 360, 24, black ? ui->theme->colors.black_stone_edge : color_with_alpha(ui->theme->colors.black_stone, 0.6f));
+            if (index > 0) DrawRing(p, rad + 1.5f, rad + 3.0f, 0, 360, 28, ui->theme->colors.accent);
+        }
+    }
     if (ui->markup_mode) markup_tools_preview(ui, &g);
 
     // Candidate preview: hovered on the board or in the candidates panel.

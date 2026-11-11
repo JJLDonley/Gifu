@@ -381,3 +381,30 @@ const char *os_platform_name(void) {
 }
 
 #endif
+
+// ---- Backtraces (diagnostics) -------------------------------------------------------------------------
+
+#include "base/log.h"
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+void os_log_backtrace(void) {
+    void *frames[32];
+    u16 n = CaptureStackBackTrace(1, 32, frames, NULL);
+    uintptr_t base = (uintptr_t)GetModuleHandleW(NULL);
+    for (u16 i = 0; i < n; ++i) log_warn("  #%u catagui.exe+0x%llx", (unsigned)i, (unsigned long long)((uintptr_t)frames[i] - base));
+}
+#elif defined(__linux__)
+#include <execinfo.h>
+void os_log_backtrace(void) {
+    void *frames[32];
+    int n = backtrace(frames, 32);
+    char **names = backtrace_symbols(frames, n);
+    for (int i = 1; i < n; ++i) log_warn("  #%d %s", i - 1, names ? names[i] : "?");
+    free(names);
+}
+#else
+void os_log_backtrace(void) {}
+#endif

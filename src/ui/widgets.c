@@ -176,7 +176,7 @@ void ui_help_button(Ui *ui, StringView topic) {
                                  .attachPoints = attach },
                    .layout = { .sizing = { CLAY_SIZING_FIXED(width), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM,
                                .padding = CLAY_PADDING_ALL(ui_u16(ui, 12)), .childGap = ui_u16(ui, 6) },
-                   .backgroundColor = color_to_clay(c->surface),
+                   .backgroundColor = color_to_clay(color_with_alpha(c->surface, 1.0f)),   // opaque: themes may have translucent surfaces
                    .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 6)),
                    .border = { .color = color_to_clay(c->accent), .width = CLAY_BORDER_OUTSIDE(1) } }) {
                 if (title.len) ui_label(ui, title, FONT_UI_BOLD, 13, c->text);
@@ -188,7 +188,7 @@ void ui_help_button(Ui *ui, StringView topic) {
                     rest = gap >= 0 ? sv_drop(rest, gap + 2) : SV("");
                     StringView wrapped = ui_wrap_text(ui, para, FONT_UI, 12, width - ui_px(ui, 24));
                     CLAY_TEXT(ui_str(ui, wrapped), CLAY_TEXT_CONFIG({ .fontId = FONT_UI, .fontSize = ui_u16(ui, 12),
-                                                                      .textColor = color_to_clay(c->text_muted), .lineHeight = ui_u16(ui, 17) }));
+                                                                      .textColor = color_to_clay(c->text), .lineHeight = ui_u16(ui, 17) }));
                 }
             }
         }

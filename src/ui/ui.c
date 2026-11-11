@@ -135,6 +135,8 @@ static void cmd_setup(void *c) {
     UI(c)->setup_init = false;   // re-check what is installed
     open_dialog(UI(c), UI_DIALOG_SETUP);
 }
+static void cmd_branches(void *c) { UI(c)->app->config.show_branches = !UI(c)->app->config.show_branches; }
+static bool shows_branches(const void *c) { return ((const Ui *)c)->app->config.show_branches; }
 static void cmd_move_numbers(void *c) { UI(c)->app->config.show_move_numbers = !UI(c)->app->config.show_move_numbers; }
 static bool shows_move_numbers(const void *c) { return ((const Ui *)c)->app->config.show_move_numbers; }
 // R: start selecting a region, or clear the current one.
@@ -177,6 +179,7 @@ static void register_ui_commands(Ui *ui) {
         { "view.menu", "Menu", "Menu", cmd_menu, NULL, NULL, ui },
         { "analysis.region", "Analyze region", "Region", cmd_region, NULL, region_on, ui },
         { "view.move_numbers", "Move numbers", "123", cmd_move_numbers, NULL, shows_move_numbers, ui },
+        { "view.branches", "Branch moves", "Branches", cmd_branches, NULL, shows_branches, ui },
     };
     command_register_all(&ui->app->commands, defs, countof(defs));
 }
@@ -205,6 +208,8 @@ static void clay_error(Clay_ErrorData error) {
              IsWindowMinimized() ? " minimized" : "", (int)ui->dialog, ui->open_menu, (int)ui->layout_drag.kind,
              app->board_sync ? "on" : app->area_picker ? "picking" : "off", app->tree->current->move_number);
     suppressed = 0;
+    static i32 traces;
+    if (traces++ < 3) os_log_backtrace();   // where it came from (the first few times)
 }
 
 // Warns about layout nodes / command ids that nothing registered.
