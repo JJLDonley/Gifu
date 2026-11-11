@@ -113,14 +113,8 @@ jobs:
           cmake --preset macos-debug
           cmake --build build/macos-debug -- -k 0   # report every compile error at once
           ./build/macos-debug/gifu_tests
-      - name: Start Gifu once (screenshot)
-        continue-on-error: true   # a runner without a usable display should not fail the build
-        run: ./build/macos-debug/gifu --engine none --screenshot macos-screenshot.png --delay 2
-      - uses: actions/upload-artifact@v7
-        with:
-          name: macos-screenshot
-          path: macos-screenshot.png
-          if-no-files-found: warn
+      # (No start-up screenshot: GitHub's macOS runners are virtual machines without
+      # OpenGL 3.3, so the window cannot open there; real Macs have it.)
       - name: Package (Gifu.app)
         run: python3 tools/package.py macos
       - uses: actions/upload-artifact@v7
