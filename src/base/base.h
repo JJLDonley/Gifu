@@ -33,9 +33,14 @@ typedef size_t    usize;
 
 #if defined(__GNUC__) || defined(__clang__)
     #define NODISCARD __attribute__((warn_unused_result))
-    // gnu_printf: on mingw, plain "printf" means Microsoft's old rules (no %td / %zd),
-    // but the UCRT runtime Gifu links against implements C99 formats.
-    #define PRINTF_LIKE(fmt_index, args_index) __attribute__((format(gnu_printf, fmt_index, args_index)))
+    // gnu_printf on mingw: there plain "printf" means Microsoft's old rules (no %td / %zd),
+    // but the UCRT runtime Gifu links against implements C99 formats. Apple's clang
+    // does not know gnu_printf.
+    #if defined(__MINGW32__)
+        #define PRINTF_LIKE(fmt_index, args_index) __attribute__((format(gnu_printf, fmt_index, args_index)))
+    #else
+        #define PRINTF_LIKE(fmt_index, args_index) __attribute__((format(printf, fmt_index, args_index)))
+    #endif
     #define FALLTHROUGH __attribute__((fallthrough))
 #else
     #define NODISCARD _Check_return_

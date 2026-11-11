@@ -49,7 +49,7 @@ elseif(APPLE)
     # GLFW's Cocoa backend is Objective-C: rglfw.c pulls in the .m files.
     target_compile_definitions(raylib PRIVATE _GLFW_COCOA GL_SILENCE_DEPRECATION)
     set_source_files_properties(${RAYLIB_SRC}/rglfw.c PROPERTIES COMPILE_OPTIONS "-x;objective-c")
-    target_link_libraries(raylib PUBLIC "-framework Cocoa" "-framework IOKit" "-framework CoreVideo" "-framework OpenGL" "-framework CoreFoundation")
+    target_link_libraries(raylib PUBLIC "-framework Cocoa" "-framework IOKit" "-framework CoreVideo" "-framework OpenGL" "-framework CoreFoundation" "-framework QuartzCore")
 else()
     target_compile_definitions(raylib PRIVATE _GLFW_X11 _GNU_SOURCE)
     target_link_libraries(raylib PUBLIC X11 m dl pthread)
@@ -159,7 +159,9 @@ target_link_libraries(gifu_core PUBLIC third_party_misc)
 if(WIN32)
     target_link_libraries(gifu_core PUBLIC shell32 ole32 uuid gdi32 user32)   # gdi32: screen capture
 elseif(APPLE)
-    target_link_libraries(gifu_core PUBLIC m pthread)   # screen capture and dialogs use system tools
+    target_link_libraries(gifu_core PUBLIC m pthread iconv)   # screen capture and dialogs use system tools; iconv is its own library
+    # posix_spawn_file_actions_addchdir_np: deprecated in macOS 26, but the replacement is missing before it.
+    set_source_files_properties(src/platform/platform_posix.c PROPERTIES COMPILE_OPTIONS "-Wno-deprecated-declarations")
 else()
     target_link_libraries(gifu_core PUBLIC m pthread X11)   # X11: screen capture
 endif()
