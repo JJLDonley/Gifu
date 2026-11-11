@@ -86,6 +86,9 @@ jobs:
     needs: [linux, windows]
     runs-on: ubuntu-24.04
     steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # history and tags, for the notes
       - uses: actions/download-artifact@v8
         with:
           path: artifacts
@@ -99,5 +102,7 @@ jobs:
         run: |
           pre=""
           case "${GITHUB_REF_NAME}" in *-*) pre="--prerelease" ;; esac
+          tools/release_notes.sh "${GITHUB_REF_NAME}" > notes.md
+          cat notes.md
           gh release create "${GITHUB_REF_NAME}" artifacts/* --repo "${GITHUB_REPOSITORY}" \
-            --title "Gifu ${GITHUB_REF_NAME#v}" --generate-notes $pre
+            --title "Gifu ${GITHUB_REF_NAME#v}" --notes-file notes.md $pre
