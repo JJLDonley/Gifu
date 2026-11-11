@@ -40,7 +40,15 @@ jobs:
       - name: Build tools and X11 headers (GLFW's X11 backend)
         timeout-minutes: 10
         run: |
-          PKGS="ninja-build file libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev"
+          # Only what the image lacks (the runner images ship Ninja; check the rest).
+          PKGS=""
+          command -v ninja > /dev/null || PKGS="$PKGS ninja-build"
+          command -v file > /dev/null || PKGS="$PKGS file"
+          for p in x11:libx11-dev xrandr:libxrandr-dev xinerama:libxinerama-dev xcursor:libxcursor-dev xi:libxi-dev xext:libxext-dev; do
+            pkg-config --exists "${p%%:*}" || PKGS="$PKGS ${p##*:}"
+          done
+          echo "missing:${PKGS:- nothing}"
+          if [ -z "$PKGS" ]; then exit 0; fi
           APT="-o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30"
           # From the cache; if those packages no longer fit the image, download them instead.
           if ls ~/apt-debs/*.deb > /dev/null 2>&1 && sudo dpkg -i ~/apt-debs/*.deb; then
