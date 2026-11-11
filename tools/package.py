@@ -2,9 +2,10 @@
 """Build release binaries and assemble distributable archives in dist/.
 
 Usage (from the repository root, on Linux/WSL):
-    python3 tools/package.py [linux] [windows] [appimage] [appdir]
+    python3 tools/package.py [linux] [windows] [msys2] [appimage] [appdir]
 
-Builds the `linux-release` and/or `windows-release` (llvm-mingw cross) presets,
+Builds the `linux-release` and/or `windows-release` (llvm-mingw cross) presets
+(`msys2`: the Windows package from the native `msys2-release` preset, as CI does),
 installs each into dist/Gifu-<version>-<platform>/ and archives it
 (.tar.xz for Linux, .zip for Windows). KataGo is not bundled.
 
@@ -20,15 +21,15 @@ DIST = os.path.join(ROOT, "dist")
 CMAKE = shutil.which("cmake") or os.path.expanduser("~/.local/bin/cmake")
 
 def version():
-    text = open(os.path.join(ROOT, "CMakeLists.txt")).read()
+    text = open(os.path.join(ROOT, "CMakeLists.txt"), encoding="utf-8").read()
     return re.search(r"project\(Gifu VERSION ([0-9.]+)", text).group(1)
 
 def run(*args):
     print("+", " ".join(args), flush=True)
     subprocess.run(args, cwd=ROOT, check=True)
 
-def package(platform):
-    preset = f"{platform}-release"
+def package(platform, preset=None):
+    preset = preset or f"{platform}-release"
     run(CMAKE, "--preset", preset)
     run(CMAKE, "--build", os.path.join(ROOT, "build", preset), "--target", "gifu")
     name = f"Gifu-{version()}-{platform}-x64"
@@ -100,5 +101,7 @@ if __name__ == "__main__":
             package_appimage()
         elif t == "appdir":   # the AppImage's contents only (no appimagetool needed)
             package_appimage(pack=False)
+        elif t == "msys2":    # Windows package built natively in an MSYS2 UCRT64 shell (CI)
+            package("windows", preset="msys2-release")
         else:
             package(t)

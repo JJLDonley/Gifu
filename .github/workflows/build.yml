@@ -1,0 +1,82 @@
+# Builds Gifu on Linux (gcc) and Windows (MSYS2 UCRT64 gcc; no MSVC) for every
+# push and pull request, and uploads the release packages as artifacts.
+# A tag v* (e.g. v0.1.0) also publishes them as a GitHub release.
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write   # creating releases for tags
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build tools and X11 headers (GLFW's X11 backend)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev
+      - name: Cache third-party downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            third_party/raylib
+            third_party/clay
+            third_party/yyjson
+          key: third-party-${{ hashFiles('cmake/Dependencies.cmake') }}
+      - name: Build and package
+        run: python3 tools/package.py linux
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Gifu-linux-x64
+          path: dist/*.tar.xz
+
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-python
+      - name: Cache third-party downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            third_party/raylib
+            third_party/clay
+            third_party/yyjson
+          key: third-party-${{ hashFiles('cmake/Dependencies.cmake') }}
+      - name: Build and package
+        run: python tools/package.py msys2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Gifu-windows-x64
+          path: dist/*.zip
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, windows]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Publish the packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" artifacts/*/* --repo "${GITHUB_REPOSITORY}" --title "Gifu ${GITHUB_REF_NAME}" --generate-notes

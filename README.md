@@ -1,5 +1,7 @@
 # Gifu
 
+[![Build](https://github.com/JJLDonley/Gifu/actions/workflows/build.yml/badge.svg)](https://github.com/JJLDonley/Gifu/actions/workflows/build.yml)
+
 A fast, cross-platform KataGo GUI written in C (Clay + raylib) — a modern rebuild of
 LizzieYzy. Live analysis with candidates, ownership and win-rate graph; whole-game
 analysis with a per-player report; engine-vs-engine and two-engine comparison; four
@@ -48,7 +50,9 @@ The first configure downloads the libraries Gifu builds with into `third_party/`
 To build offline, download the archives listed in `third_party/README.md` and
 extract them there yourself. Cross-compiling for Windows from Linux/WSL with
 llvm-mingw: `windows-release` preset (see `CLAUDE.md`). Release packages:
-`python3 tools/package.py`. Architecture and roadmap: `PLAN.md`.
+`python3 tools/package.py`. Every push is built on Linux and on Windows (MSYS2) by
+GitHub Actions, and `v*` tags publish the packages as a release. Architecture and
+roadmap: `PLAN.md`.
 
 ## Credits
 
