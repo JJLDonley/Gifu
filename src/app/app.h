@@ -14,6 +14,7 @@
 #include "engine/game_job.h"
 #include "engine/rank_estimator.h"
 #include "app/board_sync.h"
+#include "app/profile_builder.h"
 #include "app/updater.h"
 
 typedef struct AppOptions {
@@ -41,6 +42,7 @@ typedef struct AppOptions {
     StringView capture_area;         // --capture-area X,Y,W,H (desktop coordinates)
     StringView read_board;           // --read-board FILE.png | screen: print the board read from a picture
     bool update;                     // --update: install the newest release from the command line
+    bool profile;                    // --profile: build the profile and print it
     StringView update_channel;       // --channel stable|alpha (with --update)
     i64 updated_from;                // --updated-from PID: the version this one replaced (clean up after it)
     StringView install;              // --install engine,network,human (headless)
@@ -141,7 +143,12 @@ typedef struct App {
     f64 update_polled;
     String update_selected;            // the release picked in the dialog's list ("" = the default)
     bool update_manual;
-    bool ownership_wanted;             // a widget needs KataGo's ownership map (territory, confidence)                // the user asked: show the result even if up to date
+    bool ownership_wanted;
+    // Profile (app.c, profile_builder.c): the user's games added up.
+    struct ProfileBuilder *profile_builder;
+    ProfileData profile;
+    bool profile_ready;
+    bool profile_paused_engine;        // the live engine was stopped to free the GPU             // a widget needs KataGo's ownership map (territory, confidence)                // the user asked: show the result even if up to date
     bool update_dialog_request;        // the UI opens the update dialog
 
     // Board sync from the screen (app_sync.c).
@@ -226,6 +233,12 @@ void app_reload_language(App *app);
 // applies side effects such as restarting the engine or reloading strings.
 void app_config_changed(App *app, StringView key);
 void app_batch_start(App *app);   // analyse the active line from the start
+
+// Profile: (re)builds it in the background from config profile.folder / profile.names.
+void app_profile_build(App *app);
+void app_profile_cancel(App *app);
+ProfileStatus app_profile_status(const App *app);   // PROFILE_IDLE when no build has run
+void app_update_profile_now(App *app);              // takes a finished build (app_update does it each frame)
 
 // Updates (app_updates.c).
 void app_updates_init(App *app);         // once a day: a background check

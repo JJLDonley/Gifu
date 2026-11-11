@@ -105,6 +105,11 @@
       (option command "Command"))
     (text sync.capture_command :placeholder "grim -  /  spectacle -b -n -o %f" :label settings.sync_command :fallback "Capture command (PNG to stdout, or to %f)")
     (number sync.interval_ms :min 100 :max 5000 :step 100 :format "%.0f ms" :label settings.sync_interval :fallback "Time between captures"))
+  ;; Analysis -> My profile: every game of yours in the folder, added up.
+  (section settings.profile :fallback Profile
+    (text profile.names :placeholder "J, my-ogs-name, my-fox-name" :label settings.profile_names :fallback "Your player names (comma-separated)")
+    (text profile.folder :placeholder "C:\\Users\\me\\Documents\\Go games" :label settings.profile_folder :fallback "Folder with your games")
+    (command analysis.profile))
   ;; Help -> Check for updates; GitHub releases.
   (section settings.updates :fallback Updates
     (bool updates.check :label settings.updates_check :fallback "Check for updates once a day")

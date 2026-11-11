@@ -126,6 +126,14 @@ static void cmd_layout_editor(void *c) { layout_editor_open(UI(c)); }
 static bool layout_editor_shown(const void *c) { return ((const Ui *)c)->dialog == UI_DIALOG_LAYOUT_EDITOR; }
 static bool theme_editor_shown(const void *c) { return ((const Ui *)c)->dialog == UI_DIALOG_THEME_EDITOR; }
 static void cmd_deep_report(void *c) { open_dialog(UI(c), UI_DIALOG_REPORT); }
+static void cmd_profile(void *c) {
+    open_dialog(UI(c), UI_DIALOG_PROFILE);
+    App *app = UI(c)->app;   // first look: build it (cached games load at once)
+    if (UI(c)->dialog == UI_DIALOG_PROFILE && !app->profile_ready && app->config.profile_names.len && app->config.profile_folder.len) {
+        app_profile_build(app);
+    }
+}
+static bool profile_shown(const void *c) { return ((const Ui *)c)->dialog == UI_DIALOG_PROFILE; }
 static bool deep_report_shown(const void *c) { return ((const Ui *)c)->dialog == UI_DIALOG_REPORT; }
 static bool deep_report_allowed(const void *c) { return !app_eval_hidden(((const Ui *)c)->app); }
 static void cmd_game_info(void *c) {
@@ -181,6 +189,7 @@ static void register_ui_commands(Ui *ui) {
         { "view.theme_editor", "Edit theme…", "Theme", cmd_theme_editor, NULL, theme_editor_shown, ui },
         { "view.layout_editor", "Customize layout…", "Layout", cmd_layout_editor, NULL, layout_editor_shown, ui },
         { "analysis.report", "Deep report", "Deep report", cmd_deep_report, deep_report_allowed, deep_report_shown, ui },
+        { "analysis.profile", "My profile…", "Profile", cmd_profile, NULL, profile_shown, ui },
         { "engine.setup", "Download engines…", "Setup", cmd_setup, NULL, NULL, ui },
         { "help.check_updates", "Check for updates…", "Updates", cmd_check_updates, NULL, NULL, ui },
         { "help.website", "Gifu on GitHub", "GitHub", cmd_website, NULL, NULL, ui },

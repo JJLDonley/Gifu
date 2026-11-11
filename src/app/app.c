@@ -778,6 +778,58 @@ static void opponent_update(App *app) {
     }
 }
 
+// ---- Profile ---------------------------------------------------------------------------------
+
+void app_profile_build(App *app) {
+    if (app->profile_builder) return;   // already building
+    if (!app->config.profile_names.len || !app->config.profile_folder.len) {
+        app_set_status(app, "Profile: set your player names and games folder in Settings -> Profile");
+        return;
+    }
+    // The analysis runs its own KataGo: free the GPU when it cannot hold two.
+    if (app->main.engine && app->config.engine_max_processes < 2) {
+        stop_engine(app);
+        app->profile_paused_engine = true;
+    }
+    String program = path_join(string_sv(&app->exe_dir), updater_program_name());
+    String cache = path_join(string_sv(&app->config_dir), SV("profile"));
+    ProfileBuildSpec spec = { string_sv(&app->config.profile_folder), string_sv(&app->config.profile_names), string_sv(&program),
+                              string_sv(&cache), app->config.analysis_game_visits };
+    app->profile_builder = profile_builder_start(&spec);
+    string_free(&program);
+    string_free(&cache);
+}
+
+void app_profile_cancel(App *app) {
+    if (app->profile_builder) profile_builder_cancel(app->profile_builder);
+}
+
+ProfileStatus app_profile_status(const App *app) {
+    if (!app->profile_builder) return (ProfileStatus){ .phase = app->profile_ready ? PROFILE_DONE : PROFILE_IDLE };
+    return profile_builder_status(app->profile_builder);
+}
+
+void app_update_profile_now(App *app) {
+    if (!app->profile_builder) return;
+    ProfileStatus st = profile_builder_status(app->profile_builder);
+    if (st.phase != PROFILE_DONE && st.phase != PROFILE_FAILED) return;
+    ProfileData data;
+    if (profile_builder_take(app->profile_builder, &data)) {
+        profile_data_free(&app->profile);
+        app->profile = data;
+        app->profile_ready = true;
+        app_set_status(app, "Profile: %td games added up", data.games.len);
+    } else if (st.phase == PROFILE_FAILED) {
+        app_set_status(app, "Profile: %s", st.error);
+    }
+    profile_builder_destroy(app->profile_builder);
+    app->profile_builder = NULL;
+    if (app->profile_paused_engine) {
+        app->profile_paused_engine = false;
+        start_engine(app);
+    }
+}
+
 static void autosave_update(App *app);
 
 void app_update(App *app) {
@@ -792,6 +844,7 @@ void app_update(App *app) {
     rank_update(app);
     second_update(app);
     opponent_update(app);
+    app_update_profile_now(app);
     if (!app->main.engine || app->rank_slot == &app->main) return;   // lent to the rank job
     EngineEvent ev;
     while (engine_poll(app->main.engine, &ev)) {
@@ -1611,6 +1664,9 @@ bool app_init(App *app, const AppOptions *options) {
 void app_shutdown(App *app) {
     app_sync_stop(app);
     app_updates_shutdown(app);
+    profile_builder_destroy(app->profile_builder);
+    app->profile_builder = NULL;
+    profile_data_free(&app->profile);
     bool headless_run = app->options.screenshot.len > 0 || app->options.headless;
     if (app->config.sgf_autosave && !headless_run && app->tree->revision != app->autosaved_revision &&
         (app->tree->root->first_child || app->dirty)) {

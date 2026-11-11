@@ -38,7 +38,7 @@
     (menu menu.navigate
       nav.first nav.back10 nav.back nav.forward nav.forward10 nav.last - nav.prev_variation nav.next_variation :fallback "Navigate")
     (menu menu.analysis
-      analysis.toggle analysis.play_best analysis.game analysis.report analysis.rank analysis.region analysis.tsumego_frame - analysis.candidates analysis.ownership analysis.human_policy - engine.second engine.restart engine.setup :fallback "Analysis")
+      analysis.toggle analysis.play_best analysis.game analysis.report analysis.profile analysis.rank analysis.region analysis.tsumego_frame - analysis.candidates analysis.ownership analysis.human_policy - engine.second engine.restart engine.setup :fallback "Analysis")
     (menu menu.markup
       toolbar.markup markup.tool.play markup.tool.black markup.tool.white - markup.tool.triangle markup.tool.square markup.tool.circle markup.tool.cross markup.tool.letter markup.tool.number - markup.tool.arrow markup.tool.line markup.tool.pen - markup.tool.shade markup.count_empty - markup.tool.eraser markup.clear :fallback "Markup")
     (menu menu.view

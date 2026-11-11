@@ -115,6 +115,7 @@ add_library(gifu_core STATIC
     src/core/tsumego_frame.c
     src/core/estimate.c
     src/core/human_winrate.c
+    src/core/profile.c
     src/core/board_reader.c
     src/core/markup.c
     src/core/sgf_analysis.c
@@ -141,7 +142,8 @@ add_library(gifu_core STATIC
     src/app/app_sync.c
     src/app/update.c
     src/app/updater.c
-    src/app/app_updates.c)
+    src/app/app_updates.c
+    src/app/profile_builder.c)
 target_include_directories(gifu_core PUBLIC src ${CMAKE_BINARY_DIR}/generated)
 target_link_libraries(gifu_core PUBLIC third_party_misc)
 if(WIN32)
@@ -260,6 +262,7 @@ if(GIFU_BUILD_TESTS AND EXISTS ${CMAKE_SOURCE_DIR}/tests/test_main.c)
     tests/test_markup.c
     tests/test_update.c
     tests/test_estimate.c
+    tests/test_profile.c
         src/ui/theme.c
         src/ui/layout_model.c
         src/ui/stone_anim.c

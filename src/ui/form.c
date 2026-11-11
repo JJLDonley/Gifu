@@ -430,5 +430,6 @@ void ui_dialogs(Ui *ui) {
         case UI_DIALOG_THEME_EDITOR: theme_editor_dialog(ui); break;
         case UI_DIALOG_LAYOUT_EDITOR: layout_editor_dialog(ui); break;
         case UI_DIALOG_UPDATE: update_dialog(ui); break;
+        case UI_DIALOG_PROFILE: ui_modal_shell(ui, app_tr(ui->app, "profile.title", "My profile"), 940, profile_dialog_body, NULL, NULL); break;
     }
 }

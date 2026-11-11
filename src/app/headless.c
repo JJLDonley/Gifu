@@ -551,3 +551,40 @@ int headless_update(App *app) {
     updater_destroy(u);
     return code;
 }
+
+static void print_profile_side(const char *label, const PlayerReport *p, i32 games, i32 wins, i32 losses) {
+    printf("  %-9s %3d games (%d won, %d lost)  accuracy %.1f  best move %.0f%%  top 3 %.0f%%  avg loss %.2f pts  mistakes/blunders %d/%d\n", label,
+           games, wins, losses, p->accuracy, player_accuracy(p) * 100.0f, p->moves ? 100.0f * (f32)p->top3 / (f32)p->moves : 0.0f,
+           p->avg_score_loss, p->mistakes, p->blunders);
+}
+
+int headless_profile(App *app) {
+    app_profile_build(app);
+    if (!app->profile_builder) return 2;
+    i32 last_done = -1;
+    for (;;) {
+        ProfileStatus st = profile_builder_status(app->profile_builder);
+        if (st.phase == PROFILE_ANALYSING && st.done != last_done) {   // one line per analysis run
+            printf("  analysing %d / %d: %s...\n", st.done, st.total, st.current);
+            last_done = st.done;
+        }
+        if (st.phase == PROFILE_DONE || st.phase == PROFILE_FAILED) break;
+        os_sleep_ms(200);
+    }
+    printf("\n");
+    ProfileStatus st = profile_builder_status(app->profile_builder);
+    app_update_profile_now(app);
+    if (st.phase == PROFILE_FAILED) {
+        fprintf(stderr, "profile: %s\n", st.error);
+        return 1;
+    }
+    const ProfileTotals *t = &app->profile.totals;
+    printf("Profile of %s (%td games, %d skipped)\n", string_cstr(&app->config.profile_names), app->profile.games.len, app->profile.skipped);
+    print_profile_side("as Black", &t->report.player[STONE_BLACK], t->games[STONE_BLACK], t->wins[STONE_BLACK], t->losses[STONE_BLACK]);
+    print_profile_side("as White", &t->report.player[STONE_WHITE], t->games[STONE_WHITE], t->wins[STONE_WHITE], t->losses[STONE_WHITE]);
+    vec_foreach(ProfileGame, g, &app->profile.games) {
+        printf("    %-12s %s vs %-16s %s  accuracy %.1f\n", string_cstr(&g->date), g->color == STONE_BLACK ? "B" : "W", string_cstr(&g->opponent),
+               g->result == PROFILE_RESULT_WIN ? "won " : g->result == PROFILE_RESULT_LOSS ? "lost" : "  ? ", g->accuracy);
+    }
+    return 0;
+}

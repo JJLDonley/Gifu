@@ -16,3 +16,5 @@ int headless_capture(App *app);
 int headless_read_board(App *app);
 // --update [--channel stable|alpha]: check, download, verify and install the newest release.
 int headless_update(App *app);
+// --profile: builds the user's profile (profile.names, profile.folder) and prints it.
+int headless_profile(App *app);

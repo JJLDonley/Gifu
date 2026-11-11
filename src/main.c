@@ -23,6 +23,7 @@ static void usage(void) {
             "       gifu --rank FILE.sgf...   (estimate player ranks with the human SL network)\n"
             "       gifu --update [--channel stable|prerelease]   (install the newest release)\n"
             "       gifu --version\n"
+            "       gifu --profile [--set profile.names=A,B --set profile.folder=DIR]   (build and print the profile)\n"
             "       gifu --read-board FILE.png|screen [--capture-area X,Y,W,H] [--size 19]   (board recognition)\n"
             "       gifu --capture OUT.png [--capture-area X,Y,W,H] [--set sync.capture=auto|gdi|x11|portal|grim|command]\n"
             "       gifu --install engine,network,human|all [--backend opencl|eigenavx2|eigen|cuda12.8-cudnn9.8.0] [--install-dir DIR]\n");
@@ -44,6 +45,7 @@ static bool parse_args(int argc, char **argv, AppOptions *opts) {
         else if (sv_eq(a, SV("--capture-area")) && has_value) opts->capture_area = sv(argv[++i]);
         else if (sv_eq(a, SV("--read-board")) && has_value) opts->read_board = sv(argv[++i]), opts->headless = true;
         else if (sv_eq(a, SV("--update"))) opts->update = true, opts->headless = true;
+        else if (sv_eq(a, SV("--profile"))) opts->profile = true, opts->headless = true;
         else if (sv_eq(a, SV("--channel")) && has_value) opts->update_channel = sv(argv[++i]);
         else if (sv_eq(a, SV("--updated-from")) && has_value) opts->updated_from = atoll(argv[++i]);
         else if (sv_eq(a, SV("--version"))) {
@@ -124,6 +126,7 @@ int main(int argc, char **argv) {
                    : options.capture.len ? headless_capture(app)
                    : options.read_board.len ? headless_read_board(app)
                    : options.update      ? headless_update(app)
+                   : options.profile     ? headless_profile(app)
                    : options.rank        ? headless_rank(app)
                                          : headless_analyze(app);
         app_shutdown(app);

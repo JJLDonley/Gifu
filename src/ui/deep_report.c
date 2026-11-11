@@ -41,7 +41,13 @@ static StringView tr_rank(Ui *ui, const char *key, const char *fallback, StringV
     return arena_format(&ui->frame, SV_FMT SV_FMT SV_FMT, SV_ARG(sv_take(text, at)), SV_ARG(rank), SV_ARG(sv_drop(text, at + 6)));
 }
 
+// The Profile dialog shows a profile with the same views: "you as Black / White".
+static bool g_profile_mode;
+
 static StringView player_name(Ui *ui, Stone color) {
+    if (g_profile_mode) {
+        return color == STONE_BLACK ? tr(ui, "profile.as_black", "You as Black") : tr(ui, "profile.as_white", "You as White");
+    }
     StringView name = game_tree_info(ui->app->tree, color == STONE_BLACK ? SV("PB") : SV("PW"));
     if (name.len) return name;
     return color == STONE_BLACK ? tr(ui, "label.black", "Black") : tr(ui, "label.white", "White");
@@ -74,7 +80,7 @@ static void summary_column(DeepReport *d, Stone color) {
             ui_stone_dot(ui, color);
             ui_label(ui, player_name(ui, color), FONT_UI_BOLD, 15, c->text);
             CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) } } }) {}
-            i32 rank = ui->app->rank_valid ? rank_tally_best(&ui->app->rank.total[color]) : -1;
+            i32 rank = ui->app->rank_valid && !g_profile_mode ? rank_tally_best(&ui->app->rank.total[color]) : -1;
             if (rank >= 0) {
                 CLAY({ .layout = { .padding = { ui_u16(ui, 6), ui_u16(ui, 6), ui_u16(ui, 2), ui_u16(ui, 2) } },
                        .backgroundColor = color_to_clay(color_with_alpha(c->human_policy, 0.15f)),
@@ -790,4 +796,197 @@ void deep_report_dialog(Ui *ui) {
         d->prob_moves += d->has_probs[i];
     }
     ui_modal_shell(ui, tr(ui, "report.deep_title", "Deep report"), 940, body, NULL, d);
+}
+
+// ---- Profile ----------------------------------------------------------------------------------------
+
+static void profile_header(Ui *ui) {
+    App *app = ui->app;
+    const ThemeColors *c = &ui->theme->colors;
+    ProfileStatus st = app_profile_status(app);
+    bool building = st.phase == PROFILE_SCANNING || st.phase == PROFILE_ANALYSING || st.phase == PROFILE_ADDING;
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 8),
+                       .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
+        CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM, .childGap = ui_u16(ui, 2) } }) {
+            StringView names = string_sv(&app->config.profile_names);
+            ui_label(ui, names.len ? arena_format(&ui->frame, SV_FMT ":  " SV_FMT, SV_ARG(tr(ui, "profile.names", "Your names")), SV_ARG(names))
+                                   : tr(ui, "profile.no_names", "Set your player names and games folder in Settings → Profile."),
+                     FONT_UI, 13, names.len ? c->text : c->text_muted);
+            if (app->profile_ready) {
+                const ProfileTotals *t = &app->profile.totals;
+                ui_label(ui, arena_format(&ui->frame, "%td %s  ·  %s %d–%d  ·  %s %d–%d%s", app->profile.games.len,
+                                          tr(ui, "profile.games", "games").data, tr(ui, "profile.black_record", "Black").data,
+                                          t->wins[STONE_BLACK], t->losses[STONE_BLACK], tr(ui, "profile.white_record", "White").data,
+                                          t->wins[STONE_WHITE], t->losses[STONE_WHITE],
+                                          app->profile.skipped ? arena_format(&ui->frame, "  ·  %d skipped", app->profile.skipped).data : ""),
+                         FONT_UI, 12, c->text_muted);
+            }
+        }
+        if (building) {
+            if (ui_button(ui, CLAY_ID("ProfileCancel"), tr(ui, "label.cancel", "Cancel"), BUTTON_NORMAL, false, true)) app_profile_cancel(app);
+        } else if (ui_button(ui, CLAY_ID("ProfileBuild"), app->profile_ready ? tr(ui, "profile.update", "Update profile") : tr(ui, "profile.build", "Build profile"),
+                             BUTTON_PRIMARY, false, app->config.profile_names.len && app->config.profile_folder.len)) {
+            app_profile_build(app);
+        }
+        ui_command_button_ex(ui, SV("view.settings"), SV("@gear"), false, BUTTON_NORMAL, 12);
+        ui_help_button(ui, SV("profile"));
+    }
+    if (building) {
+        const char *what = st.phase == PROFILE_SCANNING ? "Looking for your games" : st.phase == PROFILE_ANALYSING ? "Analysing" : "Adding up";
+        ui_label(ui, arena_format(&ui->frame, "%s  %d / %d  %s", what, st.done, st.total, st.current), FONT_UI, 12, c->text);
+        f32 fraction = st.total > 0 ? (f32)st.done / (f32)st.total : 0.0f;
+        CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(ui_px(ui, 6)) } }, .backgroundColor = color_to_clay(c->surface_alt),
+               .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 3)) }) {
+            if (st.total > 0) {
+                CLAY({ .layout = { .sizing = { CLAY_SIZING_PERCENT(CLAMP(fraction, 0.001f, 1.0f)), CLAY_SIZING_GROW(0) } },
+                       .backgroundColor = color_to_clay(c->accent), .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 3)) }) {}
+            }
+        }
+    } else if (st.phase == PROFILE_FAILED) {
+        ui_label(ui, sv(st.error), FONT_UI, 12, c->danger);
+    }
+}
+
+// Accuracy per game, oldest on the left: one dot per game in the user's colour,
+// joined per colour; gridlines every 10 points from the lowest to 100.
+static void draw_profile_trend(void *user, Rectangle box) {
+    Ui *ui = user;
+    const ThemeColors *c = &ui->theme->colors;
+    const ProfileGameVec *games = &ui->app->profile.games;
+    DrawRectangleRec(box, color_with_alpha(c->surface_alt, 0.6f));
+    isize n = games->len;
+    if (n == 0) return;
+    f32 lo = 100.0f;
+    vec_foreach(ProfileGame, g, games) lo = fminf(lo, g->accuracy);
+    lo = fmaxf(0.0f, floorf(lo / 10.0f) * 10.0f - 10.0f);
+    f32 pad = ui_px(ui, 14);
+    Rectangle r = { box.x + pad * 2.2f, box.y + pad, box.width - pad * 3.2f, box.height - pad * 2 };
+    for (f32 v = lo; v <= 100.0f; v += 10.0f) {
+        f32 y = r.y + r.height * (1.0f - (v - lo) / (100.0f - lo));
+        DrawLineEx((Vector2){ r.x, y }, (Vector2){ r.x + r.width, y }, 1.0f, color_with_alpha(c->border, 0.7f));
+        font_draw(ui->fonts, FONT_MONO, ui_px(ui, 10), arena_format(&ui->frame, "%.0f", v), (Vector2){ box.x + pad * 0.4f, y - ui_px(ui, 6) },
+                  c->text_muted);
+    }
+    // Games are stored newest first: the x position runs the other way.
+    Vector2 last[3] = { 0 };
+    bool has_last[3] = { 0 };
+    for (isize k = n - 1; k >= 0; --k) {
+        const ProfileGame *g = &games->items[k];
+        f32 t = n > 1 ? (f32)(n - 1 - k) / (f32)(n - 1) : 0.5f;
+        Vector2 p = { r.x + r.width * t, r.y + r.height * (1.0f - (g->accuracy - lo) / (100.0f - lo)) };
+        Color col = g->color == STONE_BLACK ? c->winrate_black : c->score_line;
+        if (has_last[g->color]) DrawLineEx(last[g->color], p, ui_px(ui, 1.5f), color_with_alpha(col, 0.7f));
+        last[g->color] = p, has_last[g->color] = true;
+    }
+    for (isize k = 0; k < n; ++k) {
+        const ProfileGame *g = &games->items[k];
+        f32 t = n > 1 ? (f32)(n - 1 - k) / (f32)(n - 1) : 0.5f;
+        Vector2 p = { r.x + r.width * t, r.y + r.height * (1.0f - (g->accuracy - lo) / (100.0f - lo)) };
+        Color col = g->color == STONE_BLACK ? c->winrate_black : c->score_line;
+        DrawCircleV(p, ui_px(ui, 4.5f), col);
+        if (g->result == PROFILE_RESULT_LOSS) DrawCircleLinesV(p, ui_px(ui, 6.5f), c->candidate_bad);
+    }
+}
+
+static void profile_trend(Ui *ui, f32 height) {
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(height) } }, .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 6)),
+           .custom = { .customData = ui_custom(ui, draw_profile_trend, ui) } }) {}
+}
+
+void profile_dialog_body(Ui *ui, void *user);
+void profile_dialog_body(Ui *ui, void *user) {
+    UNUSED(user);
+    App *app = ui->app;
+    const ThemeColors *c = &ui->theme->colors;
+    profile_header(ui);
+    if (!app->profile_ready) {
+        ui_label(ui, tr(ui, "profile.intro", "Your profile adds up the Deep reports of all your games: tell Gifu your player names and where your games are (Settings → Profile), then build it. Games are analysed once and kept."),
+                 FONT_UI, 13, c->text_muted);
+        return;
+    }
+    DeepReport *d = arena_new(&ui->frame, DeepReport);
+    d->ui = ui;
+    d->report = app->profile.totals.report;
+    enum { PT_OVERVIEW, PT_DISTRIBUTION, PT_TREND, PT_GAMES, PT_COUNT };
+    static const char *const KEYS[PT_COUNT] = { "report.tab_overview", "report.tab_distribution", "profile.tab_trend", "profile.tab_games" };
+    static const char *const FALLBACK[PT_COUNT] = { "Overview", "Distribution", "Trend", "Games" };
+    i32 tab = CLAMP(ui->profile_tab, 0, PT_COUNT - 1);
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 4), .padding = { 0, 0, 0, ui_u16(ui, 6) } },
+           .border = { .color = color_to_clay(c->border), .width = { .bottom = 1 } } }) {
+        for (i32 t = 0; t < PT_COUNT; ++t) {
+            if (ui_button(ui, CLAY_IDI("ProfileTab", (u32)t), tr(ui, KEYS[t], FALLBACK[t]), BUTTON_GHOST, t == tab, true)) ui->profile_tab = t;
+        }
+    }
+    f32 page_h = fminf(ui_px(ui, 520), (f32)GetScreenHeight() * 0.58f);
+    d->page_h = page_h;
+    g_profile_mode = true;
+    Clay_ElementId page = CLAY_ID("ProfilePage");
+    CLAY({ .id = page, .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(page_h) }, .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                                   .childGap = ui_u16(ui, 12), .padding = { 0, ui_u16(ui, 12), 0, 0 } },
+           .clip = { .vertical = true, .childOffset = Clay_GetScrollOffset() } }) {
+        switch (tab) {
+            case PT_OVERVIEW:
+                CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 12) } }) {
+                    summary_column(d, STONE_BLACK);
+                    summary_column(d, STONE_WHITE);
+                }
+                block(ui, tr(ui, "report.by_phase", "BY PHASE"), SV(""));
+                phase_table(d);
+                break;
+            case PT_DISTRIBUTION: {
+                CLAY({ .layout = { .childGap = ui_u16(ui, 12) } }) {
+                    legend_dot(ui, c->winrate_black, player_name(ui, STONE_BLACK));
+                    legend_dot(ui, c->score_line, player_name(ui, STONE_WHITE));
+                }
+                f32 row_px = (page_h - ui_px(ui, 120)) / (f32)(2 * LOSS_BUCKETS);
+                block(ui, tr(ui, "report.distribution", "POINTS LOST PER MOVE"), SV(""));
+                distribution(d, false, row_px);
+                block(ui, tr(ui, "report.distribution_wr", "WIN RATE LOST PER MOVE"), SV(""));
+                distribution(d, true, row_px);
+            } break;
+            case PT_TREND:
+                block(ui, tr(ui, "profile.trend", "ACCURACY PER GAME (OLDEST → NEWEST)"), SV(""));
+                CLAY({ .layout = { .childGap = ui_u16(ui, 12) } }) {
+                    legend_dot(ui, c->winrate_black, player_name(ui, STONE_BLACK));
+                    legend_dot(ui, c->score_line, player_name(ui, STONE_WHITE));
+                }
+                profile_trend(ui, page_h - ui_px(ui, 90));
+                break;
+            default:
+                for (isize i = 0; i < app->profile.games.len; ++i) {
+                    const ProfileGame *g = &app->profile.games.items[i];
+                    Clay_ElementId row = CLAY_IDI("ProfileGame", (u32)i);
+                    bool over = Clay_PointerOver(row);
+                    CLAY({ .id = row, .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 10),
+                                                  .padding = { ui_u16(ui, 8), ui_u16(ui, 8), ui_u16(ui, 5), ui_u16(ui, 5) },
+                                                  .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } },
+                           .backgroundColor = color_to_clay(over ? c->hover : color_with_alpha(c->hover, 0.0f)), .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 4)) }) {
+                        CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 90)), CLAY_SIZING_FIT(0) } } }) {
+                            ui_label(ui, g->date.len ? string_sv(&g->date) : SV("—"), FONT_MONO, 12, c->text_muted);
+                        }
+                        ui_stone_dot(ui, g->color);
+                        CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) } } }) {
+                            ui_label(ui, arena_format(&ui->frame, "vs " SV_FMT, SV_ARG(string_sv(&g->opponent))), FONT_UI, 13, c->text);
+                        }
+                        ui_label(ui, g->result == PROFILE_RESULT_WIN    ? tr(ui, "profile.won", "Won")
+                                     : g->result == PROFILE_RESULT_LOSS ? tr(ui, "profile.lost", "Lost")
+                                                                        : SV("—"),
+                                 FONT_UI_BOLD, 12, g->result == PROFILE_RESULT_WIN ? c->candidate_good : g->result == PROFILE_RESULT_LOSS ? c->candidate_bad : c->text_muted);
+                        CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 70)), CLAY_SIZING_FIT(0) }, .childAlignment = { .x = CLAY_ALIGN_X_RIGHT } } }) {
+                            ui_label(ui, arena_format(&ui->frame, "%.1f", g->accuracy), FONT_UI_BOLD, 14, c->text);
+                        }
+                    }
+                    if (ui_clicked(ui, row, true)) {
+                        String path = string_from(string_sv(&g->path));
+                        ui_close_dialog(ui);
+                        app_open_sgf(app, string_sv(&path));
+                        string_free(&path);
+                        break;   // the list may be gone (not inside a CLAY body here)
+                    }
+                }
+                break;
+        }
+        ui_scrollbar(ui, page, 200);
+    }
+    g_profile_mode = false;
 }

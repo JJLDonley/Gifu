@@ -45,6 +45,7 @@ typedef enum UiDialog {
     UI_DIALOG_THEME_EDITOR,
     UI_DIALOG_LAYOUT_EDITOR,
     UI_DIALOG_UPDATE,
+    UI_DIALOG_PROFILE,
 } UiDialog;
 
 // Theme editor state (theme_editor.c): `edit` is the live copy ui->theme points to while open.
@@ -123,6 +124,7 @@ typedef struct Ui {
     bool debug;
     char help_topic[32];   // open "?" popover (empty = none)
     i32 deep_report_tab;
+    i32 profile_tab;
     i32 deep_report_filter;   // All moves tab: bit 0 Black, bit 1 White, bit 2 losses >= 2 points
     ThemeEditor theme_editor;
     LayoutEditor layout_editor;
@@ -247,6 +249,7 @@ Clay_TextElementConfig *ui_text_style(Ui *ui, FontRole role, f32 size, Color col
 void ui_label(Ui *ui, StringView text, FontRole role, f32 size, Color color);
 void ui_stone_dot(Ui *ui, Stone color);   // small stone marker (panels.c)
 void deep_report_dialog(Ui *ui);          // deep_report.c
+void profile_dialog_body(Ui *ui, void *user);   // deep_report.c: the user's profile
 // Inserts line breaks so text fits max_width: breaks at spaces for Latin
 // words and between any two characters of CJK text. Result lives in the frame arena.
 StringView ui_wrap_text(Ui *ui, StringView text, FontRole role, f32 size, f32 max_width);
