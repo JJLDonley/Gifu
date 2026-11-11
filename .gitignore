@@ -18,3 +18,12 @@ Thumbs.db
 # Local helper downloads (JDK + CFR decompiler for studying readboard)
 /tools/jdk/
 /tools/cfr/
+
+# KataGo writes its logs into the directory it was started from
+/gtp_logs/
+/analysis_logs/
+*.log
+
+# Python caches (tools/*.py)
+__pycache__/
+*.pyc
