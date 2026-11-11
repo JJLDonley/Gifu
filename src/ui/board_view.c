@@ -386,12 +386,13 @@ static void board_draw_markup(Ui *ui, const BoardGeometry *g, const Markup *m, c
     // their area), with slowly moving diagonal stripes. Runs of one colour along a row
     // are drawn as one area, and the stripes follow the screen's diagonal, so they run
     // on across neighbouring points and rows without seams and wrap around forever.
-    // The stripes slide along their normal and slowly turn (a full turn in ~52 s).
+    // The stripes are dashed, fixed at 45 degrees, and the dashes travel along the
+    // direction they face (neighbouring lines staggered by half a period).
     f32 spacing = g->cell * 0.46f, stripe = spacing * 0.36f;
+    f32 dash = g->cell * 0.55f, period = dash + g->cell * 0.30f;
     f64 now = GetTime();
-    f32 angle = 0.785f + (f32)fmod(now * 0.12, 2.0 * PI);
-    f32 nx = cosf(angle), ny = sinf(angle), tx = -ny, ty = nx;   // normal, and the stripe direction
-    f32 phase = fmodf((f32)(now * 0.3) * g->cell, spacing);
+    const f32 nx = 0.70710678f, ny = 0.70710678f, tx = -ny, ty = nx;   // normal, and the stripe direction
+    f32 travel = fmodf((f32)(now * 0.35) * g->cell, period);
     for (i32 y = 0; y < m->height; ++y) {
         for (i32 x = 0; x < m->width;) {
             i32 i = y * m->width + x;
@@ -418,10 +419,15 @@ static void board_draw_markup(Ui *ui, const BoardGeometry *g, const Markup *m, c
                 cmin = fminf(cmin, px * nx + py * ny), cmax = fmaxf(cmax, px * nx + py * ny);
                 smin = fminf(smin, px * tx + py * ty), smax = fmaxf(smax, px * tx + py * ty);
             }
-            for (f32 c = floorf(cmin / spacing) * spacing - spacing + phase; c < cmax + spacing; c += spacing) {
-                Vector2 a0 = { nx * c + tx * (smin - stripe), ny * c + ty * (smin - stripe) };
-                Vector2 a1 = { nx * c + tx * (smax + stripe), ny * c + ty * (smax + stripe) };
-                DrawLineEx(a0, a1, stripe, band);
+            for (f32 line = floorf(cmin / spacing) - 1; line * spacing < cmax + spacing; line += 1) {
+                f32 c = line * spacing;
+                // Dash starts are on a grid fixed to the board (so areas line up), shifted by `travel`.
+                f32 offset = travel + (fmodf(line, 2.0f) != 0 ? period * 0.5f : 0);
+                for (f32 s0 = floorf((smin - offset) / period) * period + offset - period; s0 < smax + stripe; s0 += period) {
+                    Vector2 a0 = { nx * c + tx * s0, ny * c + ty * s0 };
+                    Vector2 a1 = { nx * c + tx * (s0 + dash), ny * c + ty * (s0 + dash) };
+                    DrawLineEx(a0, a1, stripe, band);
+                }
             }
             render_pop_scissor();
             x = end + 1;
