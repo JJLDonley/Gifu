@@ -454,7 +454,7 @@ static void panel_candidates(Ui *ui) {
 // Writes the editor text back into the node's C[] property.
 static void commit_comment(Ui *ui) {
     GameNode *node = ui->comment_node;
-    if (!node) return;
+    if (!node || ui->comment_generation != ui->app->tree_generation) return;   // its game was replaced
     StringView old = game_node_prop(node, SV("C"));
     StringView text = string_sv(&ui->comment.text);
     if (sv_eq(old, text)) return;
@@ -469,6 +469,7 @@ static void panel_comment(Ui *ui) {
     if (ui->comment_node != current) {
         if (focused) commit_comment(ui);   // navigated away while editing
         ui->comment_node = current;
+        ui->comment_generation = ui->app->tree_generation;
         ui->comment.multiline = true;
         text_edit_set(&ui->comment, game_node_prop(current, SV("C")));
     }

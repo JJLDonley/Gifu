@@ -16,7 +16,7 @@
 ;;     icons: first prev next last prev2 next2 up down close plus stone_black
 ;;            stone_white gear folder save play pause chart menu check help rank clipboard
 ;;            screen triangle square circle cross letter number arrow line pen shade
-;;            eraser trash
+;;            eraser trash play_stones
 ;;   (panel NAME)  game_info winrate_summary winrate_graph variation_tree
 ;;                 candidates move_list report compare comment engine_log
 ;;   (tabs NAME... :grow)  one panel at a time in a fixed box
@@ -39,7 +39,7 @@
     (menu menu.analysis
       analysis.toggle analysis.play_best analysis.game analysis.report analysis.rank analysis.region analysis.tsumego_frame - analysis.candidates analysis.ownership analysis.human_policy - engine.second engine.restart engine.setup :fallback "Analysis")
     (menu menu.markup
-      toolbar.markup markup.tool.black markup.tool.white - markup.tool.triangle markup.tool.square markup.tool.circle markup.tool.cross markup.tool.letter markup.tool.number - markup.tool.arrow markup.tool.line markup.tool.pen - markup.tool.shade markup.count_empty - markup.tool.eraser markup.clear :fallback "Markup")
+      toolbar.markup markup.tool.play markup.tool.black markup.tool.white - markup.tool.triangle markup.tool.square markup.tool.circle markup.tool.cross markup.tool.letter markup.tool.number - markup.tool.arrow markup.tool.line markup.tool.pen - markup.tool.shade markup.count_empty - markup.tool.eraser markup.clear :fallback "Markup")
     (menu menu.view
       view.coordinates view.move_numbers view.next_tab - toolbar.analysis toolbar.markup - view.zoom_in view.zoom_out - view.theme_editor view.layout_editor view.settings :fallback "View"))
 
@@ -62,6 +62,7 @@
         (button game.ai_black :icon "@stone_black AI")
         (button game.ai_white :icon "@stone_white AI"))
       (mode markup :label toolbar.markup :fallback "Markup"
+        (button markup.tool.play :icon @play_stones)
         (button markup.tool.black :icon @stone_black)
         (button markup.tool.white :icon @stone_white)
         (separator)

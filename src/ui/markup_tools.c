@@ -8,6 +8,7 @@
 //   arrows / lines            drag from one point to another (again to remove)
 //   pen                       freehand, in the palette colour
 //   black / white stones      setup stones (a new node after a move)
+//   play                      real moves, alternating colours (as in Analysis mode)
 #include "ui/ui.h"
 
 #include "core/markup.h"
@@ -20,11 +21,11 @@
 static const char *const TOOL_IDS[MARK_TOOLS] = {
     "markup.tool.black", "markup.tool.white", "markup.tool.triangle", "markup.tool.square", "markup.tool.circle",
     "markup.tool.cross", "markup.tool.letter", "markup.tool.number", "markup.tool.arrow", "markup.tool.line",
-    "markup.tool.pen",   "markup.tool.shade", "markup.tool.eraser",
+    "markup.tool.pen",   "markup.tool.shade", "markup.tool.eraser", "markup.tool.play",
 };
 static const char *const TOOL_LABELS[MARK_TOOLS] = {
     "Black stone", "White stone", "Triangle", "Square", "Circle", "Cross", "Letter", "Number",
-    "Arrow",       "Line",        "Pen",      "Shade area", "Eraser",
+    "Arrow",       "Line",        "Pen",      "Shade area", "Eraser", "Play stones",
 };
 
 // ---- Palette ----------------------------------------------------------------------------------------
@@ -136,6 +137,12 @@ static void press(Ui *ui, const BoardGeometry *g, Point p) {
     *d = (MarkupDrag){ .active = true, .start = p, .last = p, .last_click = d->last_click, .last_click_point = d->last_click_point };
     Edit e;
     switch (ui->markup_tool) {
+        case MARK_TOOL_PLAY: {
+            MoveError err = app_play(app, p);
+            if (err != MOVE_OK && err != MOVE_ERR_OCCUPIED) app_set_status(app, "Illegal move: %s", move_error_name(err));
+            d->active = false;
+            return;
+        }
         case MARK_TOOL_BLACK:
         case MARK_TOOL_WHITE: {
             // Setup stones go on a setup node: after a move, start one.

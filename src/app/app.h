@@ -75,6 +75,8 @@ typedef struct App {
     EngineProfileVec engine_profiles;
 
     GameTree *tree;
+    u32 tree_generation;      // +1 whenever the game is replaced (pointers into the old one are stale)
+    GameTree *retired_tree;   // the game replaced this frame: freed at the next app_update (the UI may still draw it)
     String sgf_path;
     // Automatic saving (sgf.autosave): to the game's file, or for a game that has
     // none to <config_dir>/autosave/game-<date>.sgf.

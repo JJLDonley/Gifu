@@ -695,6 +695,10 @@ static void second_update(App *app) {
 static void autosave_update(App *app);
 
 void app_update(App *app) {
+    if (app->retired_tree) {   // replaced last frame: nothing draws it any more
+        game_tree_free(app->retired_tree);
+        app->retired_tree = NULL;
+    }
     autosave_update(app);
     app_sync_update(app);
     analyzer_update(app);
@@ -871,8 +875,13 @@ void app_config_changed(App *app, StringView key) {
 static void replace_tree(App *app, GameTree *tree) {
     app_batch_stop(app);
     app->region = (BoardRegion){ 0 };   // board size may change
-    game_tree_free(app->tree);
+    // The UI may still draw the old game this frame (the graph and the variation tree
+    // collect node pointers while laying out and draw them afterwards, and a click on
+    // New game / Open lands in between): free it at the next update instead.
+    game_tree_free(app->retired_tree);
+    app->retired_tree = app->tree;
     app->tree = tree;
+    app->tree_generation++;
     app->human_policy_node = NULL;   // points into the freed tree (its memory may be reused)
     string_free(&app->autosave_path);   // a new game gets its own auto-save file
     app->autosaved_revision = tree->revision;
@@ -1476,6 +1485,8 @@ void app_shutdown(App *app) {
     batch_analyzer_destroy(app->analyzer);
     app->analyzer = NULL;
     line_channel_wait_reapers(5000);   // engines are stopped in the background: let them finish
+    game_tree_free(app->retired_tree);
+    app->retired_tree = NULL;
     bool read_only = app->options.screenshot.len > 0 || app->options.headless;   // automated runs never touch user config
     if (!read_only && !config_save(&app->config)) log_warn("config not saved");
     game_tree_free(app->tree);

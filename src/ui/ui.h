@@ -85,6 +85,7 @@ typedef struct LayoutDrag {
 typedef enum MarkTool {
     MARK_TOOL_BLACK, MARK_TOOL_WHITE, MARK_TOOL_TRIANGLE, MARK_TOOL_SQUARE, MARK_TOOL_CIRCLE, MARK_TOOL_CROSS,
     MARK_TOOL_LETTER, MARK_TOOL_NUMBER, MARK_TOOL_ARROW, MARK_TOOL_LINE, MARK_TOOL_PEN, MARK_TOOL_SHADE, MARK_TOOL_ERASER,
+    MARK_TOOL_PLAY,   // plays moves (alternating colours, captures) like the board in Analysis mode
     MARK_TOOLS
 } MarkTool;
 typedef struct MarkupDrag {
@@ -158,6 +159,7 @@ typedef struct Ui {
     // Comment editor state.
     TextEdit comment;
     GameNode *comment_node;
+    u32 comment_generation;   // app->tree_generation when comment_node was taken
 
     // Variation tree.
     GameNode *tree_scrolled_to;

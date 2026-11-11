@@ -128,6 +128,12 @@ static void icon_menu(Rectangle r, Color c, f32 w) {
     line(r, 0.24f, 0.7f, 0.76f, 0.7f, w, c);
 }
 // ---- Markup tools ----
+static void icon_play_stones(Rectangle r, Color c, f32 w) {   // a stone, half filled: alternating colours
+    Vector2 p = at(r, 0.5f, 0.5f);
+    f32 rad = r.width * 0.27f;
+    DrawCircleSector(p, rad, 90, 270, 24, c);
+    DrawRing(p, rad - w * 0.5f, rad + w * 0.5f, 0, 360, 36, c);
+}
 static void icon_triangle(Rectangle r, Color c, f32 w) {
     line(r, 0.5f, 0.24f, 0.78f, 0.74f, w, c);
     line(r, 0.78f, 0.74f, 0.22f, 0.74f, w, c);
@@ -234,7 +240,7 @@ static const struct {
     { "circle", icon_circle },     { "cross", icon_cross },       { "letter", icon_letter },
     { "number", icon_number },     { "arrow", icon_arrow },       { "line", icon_line },
     { "pen", icon_pen },           { "shade", icon_shade },       { "eraser", icon_eraser },
-    { "trash", icon_trash },
+    { "trash", icon_trash },       { "play_stones", icon_play_stones },
 };
 
 i32 icon_find(StringView name) {
