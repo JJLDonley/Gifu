@@ -108,6 +108,11 @@ def package_macos(preset="macos-release"):
             run("sips", "-z", str(px), str(px), png, "--out", out)
     run("iconutil", "-c", "icns", iconset, "-o", os.path.join(resources, "gifu.icns"))
     shutil.rmtree(iconset)
+    # Ad-hoc signature for the whole bundle (no Apple Developer account needed): Apple
+    # Silicon refuses unsigned code, and an unsigned download can be reported as
+    # "damaged". It is not notarized: users approve it once in System Settings.
+    run("codesign", "--force", "--deep", "--sign", "-", app)
+    run("codesign", "--verify", "--deep", "--strict", "--verbose=2", app)
     archive = os.path.join(DIST, f"Gifu-{version()}-macos.zip")
     if os.path.exists(archive):
         os.remove(archive)

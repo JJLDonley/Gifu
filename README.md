@@ -20,6 +20,12 @@ keymap, themes and engines.
 3. For human-like play and evaluation, pick the "KataGo · Human style" engine in Settings
    and choose its strength (20k–9d, Pro).
 
+On macOS, unzip `Gifu-…-macos.zip` and move `Gifu.app` to Applications. Gifu is not
+notarized by Apple, so the first launch is blocked: open it once, then in System Settings
+→ Privacy & Security click **Open Anyway** next to Gifu and confirm (macOS 15 and later
+no longer offer this through right-click → Open). Board sync asks for Screen Recording
+permission the first time. KataGo and downloads live in `~/Library/Application Support/Gifu`.
+
 On Linux, to add Gifu to your application menu, copy `share/applications/gifu.desktop`
 to `~/.local/share/applications/` (set `Exec=` to the full path of `gifu`) and
 `share/icons/hicolor/256x256/apps/gifu.png` to `~/.local/share/icons/hicolor/256x256/apps/`.
