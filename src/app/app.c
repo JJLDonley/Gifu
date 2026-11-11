@@ -1,4 +1,5 @@
 #include "app/app.h"
+#include "app/ai_style.h"
 #include "app/updater.h"
 
 #include "app/file_dialog.h"
@@ -947,10 +948,40 @@ void app_update(App *app) {
                                                                     : &app->main;
     bool engine_turn = (app->ai_plays[to_play] || app->ai_move_once || app->match_mode) && !two_passes;
     bool anyone_waiting = app->main.waiting_move || app->second.waiting_move || app->opponent.waiting_move;
+    // A playing style that picks among KataGo's candidates: analyse for the move time, then choose.
+    AiStyle style = ai_style_from(string_sv(&app->config.ai_style));
+    bool style_turn = engine_turn && slot == &app->main && app->ai_plays[to_play] && ai_style_picks(style) && slot->engine &&
+                      slot->status == ENGINE_STATUS_READY && !anyone_waiting && app->style_gave_up != app->tree->current;
+    if (app->style_node && app->style_node != app->tree->current) app->style_node = NULL;   // the position moved on
+    if (style_turn) {
+        if (!app->style_node) {
+            app->style_node = app->tree->current;
+            app->style_deadline = os_time_seconds() + MAX(app->config.ai_seconds_per_move, 0.2f);
+            if (!app->analysis_enabled) app_set_analysis(app, true);
+            return;   // analysing until the deadline
+        } else if (os_time_seconds() >= app->style_deadline) {
+            bool fresh = app->analysis_valid && slot->synced_node == app->tree->current && app->analysis->to_play == to_play;
+            i32 pick = fresh ? ai_style_pick(style, app->analysis, &app->tree->current->board) : -1;
+            if (pick >= 0) {
+                app->style_node = NULL;
+                char coord[8];
+                point_to_gtp(app->analysis->candidates[pick].move, app->analysis->width, app->analysis->height, coord);
+                log_info("style %s: %s (candidate %d of %d, %.1f points below the best)", string_cstr(&app->config.ai_style), coord, pick + 1,
+                         app->analysis->candidate_count, app->analysis->candidates[0].score_lead - app->analysis->candidates[pick].score_lead);
+                if (app_play(app, app->analysis->candidates[pick].move) != MOVE_OK) app_set_status(app, "Style move rejected");
+                return;
+            }
+            if (os_time_seconds() < app->style_deadline + 3.0 * MAX(app->config.ai_seconds_per_move, 1.0f)) return;   // no analysis yet
+            app->style_node = NULL;   // none came: KataGo's own move below
+            app->style_gave_up = app->tree->current;
+        } else {
+            return;
+        }
+    }
     if (engine_turn && slot->engine && !anyone_waiting && slot->status == ENGINE_STATUS_READY &&
         slot->synced_node == app->tree->current) {
         MoveRequest req = { slot->synced_position_id, to_play, app->config.ai_seconds_per_move,
-                            app->config.ai_human_style && slot == &app->main };
+                            style == AI_STYLE_HUMAN && slot == &app->main };
         engine_request_move(slot->engine, &req);
         slot->waiting_move = true;
         app->ai_move_once = false;
@@ -1271,7 +1302,9 @@ static void cmd_new(void *c) {
     char engine_name[64] = "";
     if (engine_color != STONE_EMPTY) {
         StringView profile = sv_starts_with(app_human_profile(app), SV("rank_")) ? sv_drop(app_human_profile(app), 5) : app_human_profile(app);
-        if (app->config.ai_human_style) snprintf(engine_name, sizeof(engine_name), "KataGo (human " SV_FMT ")", SV_ARG(profile));
+        AiStyle style = ai_style_from(string_sv(&app->config.ai_style));
+        if (style == AI_STYLE_HUMAN) snprintf(engine_name, sizeof(engine_name), "KataGo (human " SV_FMT ")", SV_ARG(profile));
+        else if (style != AI_STYLE_STRONGEST) snprintf(engine_name, sizeof(engine_name), "KataGo (%s)", string_cstr(&app->config.ai_style));
         else snprintf(engine_name, sizeof(engine_name), "KataGo");
     }
     StringView black = string_sv(&app->config.new_game_black), white = string_sv(&app->config.new_game_white);
@@ -1288,7 +1321,7 @@ static void cmd_new(void *c) {
     app_start_game(app, &spec);
     app->ai_plays[STONE_BLACK] = engine_color == STONE_BLACK;
     app->ai_plays[STONE_WHITE] = engine_color == STONE_WHITE;
-    if (engine_color != STONE_EMPTY && app->config.ai_human_style && !app->human_available) {
+    if (engine_color != STONE_EMPTY && ai_style_from(string_sv(&app->config.ai_style)) == AI_STYLE_HUMAN && !app->human_available) {
         app_set_status(app, "Human-style play needs the human SL network (Engine -> Download engines...); the engine plays normally");
     }
 }
@@ -1607,6 +1640,12 @@ bool app_init(App *app, const AppOptions *options) {
         log_error("config: %s", string_cstr(&err));
         string_free(&err);
     }
+    // "AI plays like a human" became Settings -> AI play -> Style -> Human.
+    if (app->config.ai_human_style && sv_eq(string_sv(&app->config.ai_style), SV("strongest"))) {
+        string_free(&app->config.ai_style);
+        app->config.ai_style = string_from(SV("human"));
+    }
+    app->config.ai_human_style = false;
     if (options->theme.len) {
         string_free(&app->config.theme);
         app->config.theme = string_from(options->theme);

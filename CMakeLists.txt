@@ -144,7 +144,8 @@ add_library(gifu_core STATIC
     src/app/update.c
     src/app/updater.c
     src/app/app_updates.c
-    src/app/profile_builder.c)
+    src/app/profile_builder.c
+    src/app/ai_style.c)
 target_include_directories(gifu_core PUBLIC src ${CMAKE_BINARY_DIR}/generated)
 target_link_libraries(gifu_core PUBLIC third_party_misc)
 if(WIN32)

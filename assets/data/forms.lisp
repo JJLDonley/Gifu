@@ -55,7 +55,15 @@
   (section settings.ai :fallback "AI play"
     (choice ai.engine :source opponents :columns 1 :label settings.opponent :fallback "Opponent (Engine plays Black / White)")
     (number ai.seconds_per_move :max 60 :step 0.5 :format "%.1f s" :label settings.ai_time :fallback "Engine time per move")
-    (bool ai.human_style :label settings.human_style :fallback "AI plays like a human (needs the human network)")
+    ;; Human: KataGo's human network at the strength below. The others choose, among KataGo's
+    ;; moves that lose at most a point, the one that fits the style (app/ai_style.h).
+    (choice ai.style :columns 3 :label settings.ai_style :fallback "Style (main engine)"
+      (option strongest "Strongest")
+      (option human "Human (strength below)")
+      (option territorial "Territorial")
+      (option influence "Influence")
+      (option fighting "Fighting")
+      (option calm "Calm"))
     (choice ai.human_profile :columns 5 :label settings.human_profile :fallback "Human strength (moves overlay, AI play)"
       (option rank_20k 20k) (option rank_15k 15k) (option rank_10k 10k) (option rank_5k 5k) (option rank_1k 1k)
       (option rank_1d 1d) (option rank_3d 3d) (option rank_5d 5d) (option rank_9d 9d) (option proyear_2023 "Pro 2023")
@@ -144,7 +152,15 @@
       (option none "Nobody")
       (option white "White")
       (option black "Black"))
-    (bool ai.human_style :label settings.human_style :fallback "AI plays like a human (needs the human network)")
+    ;; Human: KataGo's human network at the strength below. The others choose, among KataGo's
+    ;; moves that lose at most a point, the one that fits the style (app/ai_style.h).
+    (choice ai.style :columns 3 :label settings.ai_style :fallback "Style (main engine)"
+      (option strongest "Strongest")
+      (option human "Human (strength below)")
+      (option territorial "Territorial")
+      (option influence "Influence")
+      (option fighting "Fighting")
+      (option calm "Calm"))
     (choice ai.human_profile :columns 5 :label new_game.opponent_rank :fallback "Opponent strength (human style)"
       (option rank_20k 20k) (option rank_15k 15k) (option rank_10k 10k) (option rank_7k 7k) (option rank_5k 5k)
       (option rank_3k 3k) (option rank_1k 1k) (option rank_1d 1d) (option rank_3d 3d) (option rank_5d 5d)

@@ -144,6 +144,10 @@ typedef struct App {
     String update_selected;            // the release picked in the dialog's list ("" = the default)
     bool update_manual;
     bool ownership_wanted;
+    // A style move (ai.style territorial...): analysing `style_node` until `style_deadline`.
+    GameNode *style_node;
+    GameNode *style_gave_up;           // no analysis came for this position: KataGo's own move instead
+    f64 style_deadline;
     // Profile (app.c, profile_builder.c): the user's games added up.
     struct ProfileBuilder *profile_builder;
     ProfileData profile;
