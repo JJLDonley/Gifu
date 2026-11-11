@@ -137,7 +137,8 @@ add_library(gifu_core STATIC
     src/app/board_sync.c
     src/app/app_sync.c
     src/app/update.c
-    src/app/updater.c)
+    src/app/updater.c
+    src/app/app_updates.c)
 target_include_directories(gifu_core PUBLIC src ${CMAKE_BINARY_DIR}/generated)
 target_link_libraries(gifu_core PUBLIC third_party_misc)
 if(WIN32)
@@ -166,6 +167,7 @@ add_executable(gifu
     src/ui/text_input.c
     src/ui/form.c
     src/ui/setup.c
+    src/ui/update_dialog.c
     src/ui/variation_tree.c
     src/ui/board_view.c
     src/ui/winrate_graph.c

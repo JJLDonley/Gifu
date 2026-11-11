@@ -702,6 +702,7 @@ void app_update(App *app) {
     }
     autosave_update(app);
     app_sync_update(app);
+    app_updates_update(app);
     analyzer_update(app);
     rank_update(app);
     second_update(app);
@@ -1508,11 +1509,13 @@ bool app_init(App *app, const AppOptions *options) {
 
     app->analysis_enabled = app->config.analyze_on_start;
     if (!options->headless) start_engine(app);
+    app_updates_init(app);
     return true;
 }
 
 void app_shutdown(App *app) {
     app_sync_stop(app);
+    app_updates_shutdown(app);
     bool headless_run = app->options.screenshot.len > 0 || app->options.headless;
     if (app->config.sgf_autosave && !headless_run && app->tree->revision != app->autosaved_revision &&
         (app->tree->root->first_child || app->dirty)) {

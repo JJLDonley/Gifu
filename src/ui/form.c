@@ -382,5 +382,6 @@ void ui_dialogs(Ui *ui) {
         case UI_DIALOG_REPORT: deep_report_dialog(ui); break;
         case UI_DIALOG_THEME_EDITOR: theme_editor_dialog(ui); break;
         case UI_DIALOG_LAYOUT_EDITOR: layout_editor_dialog(ui); break;
+        case UI_DIALOG_UPDATE: update_dialog(ui); break;
     }
 }

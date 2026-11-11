@@ -22,6 +22,7 @@ bool os_remove_tree(StringView path);  // a file, or a directory and everything 
 // its own session on POSIX): restarting after an update.
 bool os_spawn_detached(StringView program, const StringView *args, isize arg_count);
 i64 os_process_id(void);
+void os_open_url(StringView url);   // in the default browser
 // Waits until process `pid` has exited (or `timeout_ms` passes). True if it is gone.
 bool os_wait_process_exit(i64 pid, i32 timeout_ms);
 bool os_set_executable(StringView path);          // chmod +x (no-op on Windows)

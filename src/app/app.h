@@ -14,6 +14,7 @@
 #include "engine/game_job.h"
 #include "engine/rank_estimator.h"
 #include "app/board_sync.h"
+#include "app/updater.h"
 
 typedef struct AppOptions {
     StringView sgf_path;
@@ -133,6 +134,13 @@ typedef struct App {
 
     BoardRegion region;         // tsumego: analysis restricted to this rectangle
 
+    // Updates from GitHub releases (app_updates.c).
+    struct Updater *updater;
+    UpdaterStatus update;              // snapshot, refreshed a few times a second
+    f64 update_polled;
+    bool update_manual;                // the user asked: show the result even if up to date
+    bool update_dialog_request;        // the UI opens the update dialog
+
     // Board sync from the screen (app_sync.c).
     BoardSync *board_sync;
     BoardSyncState board_sync_state;
@@ -215,6 +223,15 @@ void app_reload_language(App *app);
 // applies side effects such as restarting the engine or reloading strings.
 void app_config_changed(App *app, StringView key);
 void app_batch_start(App *app);   // analyse the active line from the start
+
+// Updates (app_updates.c).
+void app_updates_init(App *app);         // once a day: a background check
+void app_updates_check(App *app);        // Help -> Check for updates
+void app_updates_download(App *app);
+void app_updates_restart(App *app);      // installs the downloaded version and quits
+void app_updates_skip(App *app);         // never offer this version again
+void app_updates_update(App *app);       // every frame
+void app_updates_shutdown(App *app);
 
 // Board sync (app_sync.c): pick the board area on screen, then follow it.
 void app_sync_select(App *app);    // runs the on-screen picker, then starts syncing

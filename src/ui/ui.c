@@ -1,4 +1,5 @@
 #include "ui/ui.h"
+#include "base/os.h"
 
 #include "base/log.h"
 
@@ -161,6 +162,12 @@ static void cmd_debug(void *c) {
     Clay_SetDebugModeEnabled(UI(c)->debug);
 }
 
+static void cmd_check_updates(void *c) { app_updates_check(UI(c)->app); }
+static void cmd_website(void *c) {
+    UNUSED(c);
+    os_open_url(SV("https://github.com/JJLDonley/Gifu"));
+}
+
 static void register_ui_commands(Ui *ui) {
     CommandDef defs[] = {
         { "view.coordinates", "Coordinates", "Coords", cmd_coordinates, NULL, shows_coordinates, ui },
@@ -175,6 +182,8 @@ static void register_ui_commands(Ui *ui) {
         { "view.layout_editor", "Customize layout…", "Layout", cmd_layout_editor, NULL, layout_editor_shown, ui },
         { "analysis.report", "Deep report", "Deep report", cmd_deep_report, deep_report_allowed, deep_report_shown, ui },
         { "engine.setup", "Download engines…", "Setup", cmd_setup, NULL, NULL, ui },
+        { "help.check_updates", "Check for updates…", "Updates", cmd_check_updates, NULL, NULL, ui },
+        { "help.website", "Gifu on GitHub", "GitHub", cmd_website, NULL, NULL, ui },
         { "view.next_tab", "Next tab", "Tab", cmd_next_tab, NULL, NULL, ui },
         { "view.menu", "Menu", "Menu", cmd_menu, NULL, NULL, ui },
         { "analysis.region", "Analyze region", "Region", cmd_region, NULL, region_on, ui },
@@ -490,6 +499,7 @@ void ui_frame(Ui *ui) {
     if (ui->mouse_released) ui->active_id = 0;
     board_view_prepare(ui);   // render-texture work must happen outside BeginDrawing
     engine_setup_poll(ui);
+    update_dialog_poll(ui);
 
     BeginDrawing();
     background_draw(&ui->background, ui->theme, (Rectangle){ 0, 0, (f32)GetScreenWidth(), (f32)GetScreenHeight() });

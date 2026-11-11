@@ -43,6 +43,7 @@ typedef enum UiDialog {
     UI_DIALOG_REPORT,
     UI_DIALOG_THEME_EDITOR,
     UI_DIALOG_LAYOUT_EDITOR,
+    UI_DIALOG_UPDATE,
 } UiDialog;
 
 // Theme editor state (theme_editor.c): `edit` is the live copy ui->theme points to while open.
@@ -295,6 +296,8 @@ void ui_modal(Ui *ui, const Sexpr *form, f32 width, ModalSection footer, void *u
 void ui_modal_shell(Ui *ui, StringView title, f32 width, ModalSection body, ModalSection footer, void *user);
 void engine_setup_dialog(Ui *ui);   // setup.c
 void engine_setup_poll(Ui *ui);     // reload engines once an install finishes
+void update_dialog(Ui *ui);         // update_dialog.c
+void update_dialog_poll(Ui *ui);    // opens it when the app asks
 void ui_dialogs(Ui *ui);                           // renders the open dialog, if any
 void ui_close_dialog(Ui *ui);
 void panels_render(Ui *ui, StringView name);

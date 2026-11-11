@@ -24,6 +24,12 @@ On Linux, to add Gifu to your application menu, copy `share/applications/gifu.de
 to `~/.local/share/applications/` (set `Exec=` to the full path of `gifu`) and
 `share/icons/hicolor/256x256/apps/gifu.png` to `~/.local/share/icons/hicolor/256x256/apps/`.
 
+Updates: Help → Check for updates (Gifu also looks once a day; Settings → Updates turns
+that off or switches to the Alpha channel for test versions). Nothing is downloaded or
+installed until you choose Update and then Restart; the download is checked against the
+release's SHA-256 sums, and `katago/` and your settings are kept. Without a window:
+`gifu --update [--channel stable|alpha]`.
+
 Batch analysis without a window:
 
     gifu --analyze games/*.sgf --out analyzed --set analysis.game_visits=200
@@ -51,7 +57,9 @@ To build offline, download the archives listed in `third_party/README.md` and
 extract them there yourself. Cross-compiling for Windows from Linux/WSL with
 llvm-mingw (`$LLVM_MINGW` or `~/.local/share/toolchains/llvm-mingw`): `windows-release`
 preset. Release packages: `python3 tools/package.py`. Every push is built on Linux and
-on Windows (MSYS2) by GitHub Actions, and `v*` tags publish the packages as a release.
+on Windows (MSYS2) by GitHub Actions. Releases: `python3 tools/release.py alpha|beta|stable --push`
+makes the next tag; `v0.2.0` publishes a release, `v0.2.0-alpha.1` a pre-release that only
+the Alpha update channel offers.
 
 ## Credits
 

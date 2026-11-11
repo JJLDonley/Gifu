@@ -441,6 +441,13 @@ bool os_remove_tree(StringView path) {
 }
 
 #ifdef _WIN32
+#include <shellapi.h>
+void os_open_url(StringView url) {
+    wchar_t *w = os_utf8_to_wide(url);
+    ShellExecuteW(NULL, L"open", w, NULL, NULL, SW_SHOWNORMAL);
+    free(w);
+}
+
 i64 os_process_id(void) { return (i64)GetCurrentProcessId(); }
 
 bool os_wait_process_exit(i64 pid, i32 timeout_ms) {
@@ -470,6 +477,11 @@ bool os_spawn_detached(StringView program, const StringView *args, isize count) 
 extern char **environ;
 
 i64 os_process_id(void) { return (i64)getpid(); }
+
+void os_open_url(StringView url) {
+    StringView args[] = { url };
+    os_spawn_detached(SV("/usr/bin/xdg-open"), args, 1);
+}
 
 bool os_wait_process_exit(i64 pid, i32 timeout_ms) {
     for (i32 waited = 0; timeout_ms < 0 || waited <= timeout_ms; waited += 50) {

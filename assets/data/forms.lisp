@@ -97,7 +97,14 @@
       (option grim "grim (wlroots)")
       (option command "Command"))
     (text sync.capture_command :placeholder "grim -  /  spectacle -b -n -o %f" :label settings.sync_command :fallback "Capture command (PNG to stdout, or to %f)")
-    (number sync.interval_ms :min 100 :max 5000 :step 100 :format "%.0f ms" :label settings.sync_interval :fallback "Time between captures")))
+    (number sync.interval_ms :min 100 :max 5000 :step 100 :format "%.0f ms" :label settings.sync_interval :fallback "Time between captures"))
+  ;; Help -> Check for updates; GitHub releases.
+  (section settings.updates :fallback Updates
+    (bool updates.check :label settings.updates_check :fallback "Check for updates once a day")
+    (choice updates.channel :columns 2 :label settings.updates_channel :fallback "Update channel"
+      (option stable "Stable")
+      (option alpha "Alpha (test versions)"))
+    (command help.check_updates)))
 
 (form new_game :title command.file.new :fallback "New game"
   (section settings.board :fallback Board
