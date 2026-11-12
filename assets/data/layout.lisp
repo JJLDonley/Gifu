@@ -33,8 +33,10 @@
   (menubar
     (menu menu.file
       file.new file.open file.save file.save_as :fallback "File")
+    (menu menu.edit
+      edit.undo edit.redo - move.delete :fallback "Edit")
     (menu menu.game
-      game.info - move.pass move.delete - game.ai_black game.ai_white game.ai_move game.match game.show_eval - game.score game.write_result - sync.select sync.toggle :fallback "Game")
+      game.info game.komi - move.pass move.delete - game.ai_black game.ai_white game.ai_move game.match game.show_eval - game.score game.write_result - sync.select sync.toggle :fallback "Game")
     (menu menu.navigate
       nav.first nav.back10 nav.back nav.forward nav.forward10 nav.last - nav.prev_variation nav.next_variation :fallback "Navigate")
     (menu menu.analysis
@@ -45,6 +47,13 @@
       view.coordinates view.move_numbers view.branches view.next_tab - toolbar.analysis toolbar.markup - view.zoom_in view.zoom_out - view.theme_editor view.layout_editor view.settings :fallback "View")
     (menu menu.help
       help.check_updates help.website :fallback "Help"))
+
+  ;; Right-click on the board: an empty point, or a stone played as a move. Edits
+  ;; replay the game from that move (later moves that become illegal are left out).
+  (board-menu empty
+    edit.insert_black edit.insert_white - edit.undo edit.redo)
+  (board-menu stone
+    edit.jump_to_move edit.move_stone edit.swap_color edit.delete_move - edit.undo edit.redo)
 
   (toolbar
     (mode-switch)

@@ -28,6 +28,7 @@
     (bool board.show_coordinates :label command.view.coordinates :fallback Coordinates)
     (bool board.show_move_numbers :label command.view.move_numbers :fallback "Move numbers")
     (bool board.show_branches :label command.view.branches :fallback "Branch moves")
+    (bool board.drag_stones :label settings.drag_stones :fallback "Drag stones to move them (edits the game)")
     (choice rules :columns 3 :label label.rules :fallback Rules
       (option chinese Chinese)
       (option japanese Japanese)
@@ -179,3 +180,8 @@
     (text game_info.result :placeholder "e.g. B+R, W+3.5" :label game_info.result :fallback Result)
     (text game_info.event :placeholder "" :label game_info.event :fallback Event)
     (text game_info.date :placeholder "YYYY-MM-DD" :label game_info.date :fallback Date)))
+
+;; Komi only (Game > Komi…, or click the komi in the Game panel); same field as Game info.
+(form komi :title komi.title :fallback "Komi"
+  (section game_info.game :fallback Game
+    (number game_info.komi :step 0.5 :format "%.1f" :label label.komi :fallback Komi)))

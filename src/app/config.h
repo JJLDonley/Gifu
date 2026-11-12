@@ -32,6 +32,7 @@ typedef struct Config {
     bool show_coordinates;
     bool show_candidates;
     bool show_move_numbers;
+    bool drag_stones;         // drag a stone to move it (the game is replayed from that move)
     bool show_branches;       // dots where the following moves (and variations) were played
     f32 ai_seconds_per_move;
     f32 human_winrate_level;   // Human win rate widget: player strength (core/human_winrate.h)

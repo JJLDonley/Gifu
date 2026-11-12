@@ -41,6 +41,7 @@ typedef enum UiDialog {
     UI_DIALOG_NEW_GAME,
     UI_DIALOG_SETUP,
     UI_DIALOG_GAME_INFO,
+    UI_DIALOG_KOMI,
     UI_DIALOG_REPORT,
     UI_DIALOG_THEME_EDITOR,
     UI_DIALOG_LAYOUT_EDITOR,
@@ -143,6 +144,15 @@ typedef struct Ui {
     f32 scrollbar_grab;   // mouse y minus the thumb's offset when it was grabbed
     bool theme_menu_open;
     i32 open_menu;        // index into layout.menus, -1 = closed
+    // The board's right-click menu: (board-menu empty|stone ...) from the layout.
+    const Sexpr *board_menus[2];   // [0] empty point, [1] a stone played as a move
+    i32 board_menu;                // which one is open, -1 = closed
+    Vector2 board_menu_at;
+    bool board_menu_fresh;         // opened this frame: the click that opened it does not close it
+    // A stone dragged to another point (a move edited in the game's history).
+    GameNode *drag_node;
+    Point drag_from;
+    bool drag_moved;
     bool pointer_over_menu;
     // Modal dialogs, built from assets/data/forms.lisp.
     UiDialog dialog;

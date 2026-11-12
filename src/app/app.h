@@ -15,6 +15,7 @@
 #include "engine/rank_estimator.h"
 #include "app/board_sync.h"
 #include "app/profile_builder.h"
+#include "core/move_edit.h"
 #include "app/updater.h"
 
 typedef struct AppOptions {
@@ -144,6 +145,11 @@ typedef struct App {
     String update_selected;            // the release picked in the dialog's list ("" = the default)
     bool update_manual;
     bool ownership_wanted;
+    // Editing moves in the middle of the game (app_edit.c): undo / redo history,
+    // the point a board menu was opened on, and a stone being moved.
+    Vec(MoveEditRecord) undo, redo;
+    Point edit_point;
+    GameNode *moving_node;
     // A style move (ai.style territorial...): analysing `style_node` until `style_deadline`.
     GameNode *style_node;
     GameNode *style_gave_up;           // no analysis came for this position: KataGo's own move instead
@@ -237,6 +243,18 @@ void app_reload_language(App *app);
 // applies side effects such as restarting the engine or reloading strings.
 void app_config_changed(App *app, StringView key);
 void app_batch_start(App *app);   // analyse the active line from the start
+
+void app_set_komi(App *app, f64 komi);   // KM[] of the game; the engines re-analyse
+
+// Editing moves (app_edit.c): insert / delete / swap / relocate with undo.
+bool app_move_edit(App *app, const MoveEdit *edit);   // false (with a status) when not possible
+bool app_delete_branch(App *app, GameNode *node);     // "Delete node", undoable
+void app_undo(App *app);
+void app_redo(App *app);
+void app_edit_history_clear(App *app);                // a different game
+void app_edit_begin_move(App *app, Point from);       // the next click on an empty point moves that stone
+bool app_edit_finish_move(App *app, Point to);        // true if a move was pending (handled)
+void app_edit_register_commands(App *app);
 
 // Profile: (re)builds it in the background from config profile.folder / profile.names.
 void app_profile_build(App *app);

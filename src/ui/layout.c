@@ -542,15 +542,23 @@ static void navbar(Ui *ui, const Sexpr *node, LayoutCtx *ctx) { bar(ui, node, ct
 
 // ---- Menu bar --------------------------------------------------------------------------------------------
 
-// (menu TITLE-KEY :fallback "File" command command - command ...)
-static void menu_dropdown(Ui *ui, const Sexpr *menu, i32 menu_index) {
+// (menu TITLE-KEY :fallback "File" command command - command ...); also the board's
+// (board-menu empty|stone command ...), floating at the mouse (`at`, root-relative).
+static void menu_panel(Ui *ui, const Sexpr *menu, i32 menu_index, const Vector2 *at) {
     App *app = ui->app;
     const ThemeColors *c = &ui->theme->colors;
     Clay_ElementId panel_id = CLAY_IDI("MenuPanel", (u32)menu_index);
+    Clay_FloatingElementConfig floating = { .attachTo = CLAY_ATTACH_TO_PARENT, .zIndex = 150,
+                                            .attachPoints = { .element = CLAY_ATTACH_POINT_LEFT_TOP, .parent = CLAY_ATTACH_POINT_LEFT_BOTTOM },
+                                            .offset = { 0, ui_px(ui, 2) } };
+    if (at) {   // keep it on screen: open up / left of the mouse near the edges (last frame's size)
+        Clay_ElementData last = Clay_GetElementData(panel_id);
+        f32 w = last.found ? last.boundingBox.width : ui_px(ui, 240), h = last.found ? last.boundingBox.height : ui_px(ui, 200);
+        f32 x = at->x + w > (f32)GetScreenWidth() ? at->x - w : at->x, y = at->y + h > (f32)GetScreenHeight() ? at->y - h : at->y;
+        floating = (Clay_FloatingElementConfig){ .attachTo = CLAY_ATTACH_TO_ROOT, .zIndex = 150, .offset = { fmaxf(x, 0), fmaxf(y, 0) } };
+    }
     CLAY({ .id = panel_id,
-           .floating = { .attachTo = CLAY_ATTACH_TO_PARENT, .zIndex = 150,
-                         .attachPoints = { .element = CLAY_ATTACH_POINT_LEFT_TOP, .parent = CLAY_ATTACH_POINT_LEFT_BOTTOM },
-                         .offset = { 0, ui_px(ui, 2) } },
+           .floating = floating,
            .layout = { .sizing = { CLAY_SIZING_FIT(ui_px(ui, 240)), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM,
                        .padding = CLAY_PADDING_ALL(ui_u16(ui, 5)) },
            .backgroundColor = color_to_clay(color_with_alpha(c->surface, 1.0f)),
@@ -593,12 +601,37 @@ static void menu_dropdown(Ui *ui, const Sexpr *menu, i32 menu_index) {
                 if (shortcut[0]) ui_label(ui, sv(shortcut), FONT_UI, 12, enabled ? color_with_alpha(fg, 0.7f) : fg);
             }
             if (over && ui->mouse_released) {
-                ui->open_menu = -1;
+                ui->open_menu = ui->board_menu = -1;
                 command_execute(&app->commands, id_text);
             }
         }
     }
 }
+
+static void menu_dropdown(Ui *ui, const Sexpr *menu, i32 menu_index) { menu_panel(ui, menu, menu_index, NULL); }
+
+// The board's right-click menu (opened by board_view_handle_input).
+static void board_context_menu(Ui *ui) {
+    if (ui->board_menu < 0) return;
+    const Sexpr *menu = ui->board_menus[ui->board_menu];
+    if (!menu || ui->dialog != UI_DIALOG_NONE || IsKeyPressed(KEY_ESCAPE)) {
+        ui->board_menu = -1;
+        return;
+    }
+    Clay_ElementId panel_id = CLAY_IDI("MenuPanel", 200u + (u32)ui->board_menu);
+    // A click outside closes it (last frame's layout); a right-click elsewhere reopens it there.
+    bool outside = !Clay_PointerOver(panel_id);
+    if (outside && (ui->mouse_pressed || IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) && !ui->board_menu_fresh) {
+        ui->board_menu = -1;
+        ui->pointer_over_menu = ui->mouse_pressed;   // the click only closes the menu (no stone)
+        return;
+    }
+    ui->board_menu_fresh = false;
+    menu_panel(ui, menu, 200 + ui->board_menu, &ui->board_menu_at);
+}
+
+// (board-menu ...) is data for the board, not a component: nothing to draw.
+static void board_menu_component(Ui *ui, const Sexpr *node, LayoutCtx *ctx) { UNUSED(ui), UNUSED(node), UNUSED(ctx); }
 
 static void menubar(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
     UNUSED(ctx);
@@ -660,6 +693,7 @@ static const struct {
     { "panel", panel },           { "tabs", tabs },
     { "modes", modes },           { "mode-switch", mode_switch },
     { "markup-colors", markup_colors_component }, { "markup-counts", markup_counts_component },
+    { "board-menu", board_menu_component },
 };
 
 bool layout_component_exists(StringView name) {
@@ -738,6 +772,17 @@ static void upgrade_saved_layout(Ui *ui, Arena *arena, Sexpr *app_node) {
     Sexpr *builtin_modes = bar ? find_child_list(bar, "modes", &unused) : NULL;
     Sexpr *saved_menus = find_child_list(app_node, "menubar", &prev);
     if (saved_menus && menus && !sexpr_flag(saved_menus, "custom")) replace_child(app_node, prev, saved_menus, menus);
+    if (!find_child_list(app_node, "board-menu", &unused)) {   // older saved layouts: the built-in board menus
+        Sexpr *tail = last_element(app_node);
+        for (Sexpr *c = builtin->first; c && tail; c = c->next) {
+            if (!sexpr_is_list(c, "board-menu")) continue;
+            Sexpr *copy = arena_new(arena, Sexpr);
+            *copy = *c;
+            copy->next = NULL;
+            tail->next = copy;
+            tail = copy;
+        }
+    }
 
     Sexpr *saved_bar = find_child_list(app_node, "toolbar", &prev);
     if (!saved_bar || find_child_list(saved_bar, "modes", &unused) || !builtin_modes) return;
@@ -797,6 +842,13 @@ bool layout_load(Ui *ui) {
         arena_free(&ui->layout_arena);
         ui->layout_arena = arena;
         ui->layout_root = root->first;
+        ui->board_menus[0] = ui->board_menus[1] = NULL;
+        ui->board_menu = -1;
+        for (const Sexpr *c = sexpr_next_child(ui->layout_root, NULL); c; c = sexpr_next_child(ui->layout_root, c)) {
+            const Sexpr *which = sexpr_is_list(c, "board-menu") ? sexpr_next_arg(c, NULL) : NULL;
+            if (which && sv_eq(which->text, SV("empty"))) ui->board_menus[0] = c;
+            if (which && sv_eq(which->text, SV("stone"))) ui->board_menus[1] = c;
+        }
         log_info("layout: %s", string_cstr(&path));
     } else {
         arena_free(&arena);
@@ -835,6 +887,7 @@ void layout_build(Ui *ui) {
     ui->panel_stack_index = -1;
     LayoutCtx ctx = { 0 };
     if (ui->layout_root) render_node(ui, ui->layout_root, &ctx);
+    board_context_menu(ui);
     layout_drag_overlay(ui);
     ui_dialogs(ui);
 }

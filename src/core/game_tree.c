@@ -257,6 +257,13 @@ GameNode *game_tree_play_at(GameTree *tree, GameNode *at, Move move, MoveError *
     for (GameNode *c = at->first_child; c; c = c->next_sibling) {
         if (c->has_move && c->move.color == move.color && point_eq(c->move.point, move.point)) return c;
     }
+    return game_tree_play_new(tree, at, move, error);
+}
+
+GameNode *game_tree_play_new(GameTree *tree, GameNode *at, Move move, MoveError *error) {
+    MoveError err = board_check(&at->board, move, tree->rules);
+    if (error) *error = err;
+    if (err != MOVE_OK) return NULL;
     GameNode *node = game_tree_append_child(tree, at);
     char coord[3];
     point_to_sgf(move.point, coord);
@@ -310,16 +317,18 @@ void game_tree_goto(GameTree *tree, GameNode *node) {
     if (node) tree->current = node;
 }
 
-bool game_tree_delete_node(GameTree *tree, GameNode *node) {
+i32 game_tree_unlink(GameTree *tree, GameNode *node) {
     GameNode *parent = node->parent;
-    if (!parent) return false;
+    if (!parent) return -1;
     tree->revision++;
     GameNode *prev = NULL;
-    for (GameNode *c = parent->first_child; c; prev = c, c = c->next_sibling) {
+    i32 index = 0;
+    for (GameNode *c = parent->first_child; c; prev = c, c = c->next_sibling, ++index) {
         if (c != node) continue;
         if (prev) prev->next_sibling = c->next_sibling;
         else parent->first_child = c->next_sibling;
         if (parent->last_child == c) parent->last_child = prev;
+        c->next_sibling = NULL;
         break;
     }
     for (GameNode *n = tree->current; n; n = n->parent) {
@@ -328,8 +337,30 @@ bool game_tree_delete_node(GameTree *tree, GameNode *node) {
             break;
         }
     }
-    return true;
+    return index;
 }
+
+void game_tree_link(GameTree *tree, GameNode *parent, GameNode *child, i32 index) {
+    tree->revision++;
+    child->parent = parent;
+    child->next_sibling = NULL;
+    if (!parent->first_child) {
+        parent->first_child = parent->last_child = child;
+        return;
+    }
+    if (index <= 0) {
+        child->next_sibling = parent->first_child;
+        parent->first_child = child;
+        return;
+    }
+    GameNode *prev = parent->first_child;
+    for (i32 i = 1; i < index && prev->next_sibling; ++i) prev = prev->next_sibling;
+    child->next_sibling = prev->next_sibling;
+    prev->next_sibling = child;
+    if (parent->last_child == prev) parent->last_child = child;
+}
+
+bool game_tree_delete_node(GameTree *tree, GameNode *node) { return game_tree_unlink(tree, node) >= 0; }
 
 bool node_eval_parse(StringView text, i32 width, i32 height, NodeEval *out) {
     NodeEval e = { 0 };

@@ -628,8 +628,16 @@ static void draw_board(void *user, Rectangle bounds) {
         // Ghost stone under the cursor: appears and disappears at once (a fade leaves
         // a trail of half-visible stones behind the moving cursor).
         Point hp = ui->hover_point;
-        if (hp.x >= 0 && hp.y >= 0 && hp.x < board->width && hp.y < board->height && board_at(board, hp) == STONE_EMPTY &&
-            board_check(board, (Move){ node->to_play, hp }, app->tree->rules) == MOVE_OK) {
+        bool inside = hp.x >= 0 && hp.y >= 0 && hp.x < board->width && hp.y < board->height;
+        GameNode *moving = ui->drag_node && ui->drag_moved ? ui->drag_node : app->moving_node;
+        if (moving) {   // a stone being moved: where it was is marked, the stone follows the mouse
+            Point from = ui->drag_node ? ui->drag_from : moving->move.point;
+            if (board_contains(board, from)) {
+                Vector2 c = point_center(&g, from);
+                DrawRing(c, r * 0.92f, r * 1.05f, 0, 360, 36, ui->theme->colors.accent);
+            }
+            if (inside && board_at(board, hp) == STONE_EMPTY) draw_stone(ui->theme, point_center(&g, hp), r, moving->move.color, 0.7f);
+        } else if (inside && board_at(board, hp) == STONE_EMPTY && board_check(board, (Move){ node->to_play, hp }, app->tree->rules) == MOVE_OK) {
             draw_stone(ui->theme, point_center(&g, hp), r, node->to_play, 0.45f);
         }
     }
@@ -662,11 +670,55 @@ void board_view_element(Ui *ui) {
 
 // ---- Input --------------------------------------------------------------------------------------------
 
+// Editing the game's moves on the board: right-click menus, dragging a stone, and
+// the click that finishes "Move this stone". True when the input was used.
+static bool stone_edit_input(Ui *ui, const Board *board, Point p) {
+    App *app = ui->app;
+    if (point_is_pass(p)) return false;
+    if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
+        ui->drag_node = app->moving_node = NULL;
+        app->edit_point = p;
+        ui->board_menu = move_edit_stone_node(app->tree, p) ? 1 : board_at(board, p) == STONE_EMPTY ? 0 : -1;
+        ui->board_menu_at = ui->mouse;
+        ui->board_menu_fresh = true;
+        return true;
+    }
+    if (app->moving_node) {   // Move this stone: the next click says where
+        SetMouseCursor(MOUSE_CURSOR_POINTING_HAND);
+        if (!ui->mouse_pressed) return false;
+        if (board_at(board, p) == STONE_EMPTY) app_edit_finish_move(app, p);
+        else app->moving_node = NULL, app_set_status(app, "Move cancelled");
+        return true;
+    }
+    if (ui->drag_node) {
+        if (!point_eq(p, ui->drag_from)) ui->drag_moved = true;
+        SetMouseCursor(MOUSE_CURSOR_POINTING_HAND);
+        if (!ui->mouse_released) return true;
+        GameNode *node = ui->drag_node;
+        ui->drag_node = NULL;
+        // Still the stone that was picked up (the game may have moved on meanwhile).
+        bool same = move_edit_stone_node(app->tree, ui->drag_from) == node;
+        if (same && ui->drag_moved && board_at(board, p) == STONE_EMPTY) app_move_edit(app, &(MoveEdit){ MOVE_EDIT_RELOCATE, node, { STONE_EMPTY, p } });
+        return true;
+    }
+    if (ui->mouse_pressed && app->config.drag_stones && board_at(board, p) != STONE_EMPTY) {
+        GameNode *node = move_edit_stone_node(app->tree, p);
+        if (!node) return false;
+        ui->drag_node = node;
+        ui->drag_from = p;
+        ui->drag_moved = false;
+        return true;
+    }
+    return false;
+}
+
 void board_view_handle_input(Ui *ui) {
     App *app = ui->app;
     Clay_ElementData data = Clay_GetElementData(CLAY_ID("Board"));
     ui->hover_point = POINT_PASS;
     ui->hover_candidate = -1;
+    if (ui->drag_node && !ui->mouse_down && !ui->mouse_released) ui->drag_node = NULL;   // let go somewhere else
+    if (IsKeyPressed(KEY_ESCAPE)) ui->drag_node = app->moving_node = NULL;
     if (!data.found || ui->pointer_over_menu || ui->dialog != UI_DIALOG_NONE) return;
     const Board *board = &app->tree->current->board;
     Rectangle bounds = { data.boundingBox.x, data.boundingBox.y, data.boundingBox.width, data.boundingBox.height };
@@ -695,10 +747,14 @@ void board_view_handle_input(Ui *ui) {
         if (ui->wheel < 0) command_execute(&app->commands, SV("nav.forward"));
         return;
     }
-    if (!CheckCollisionPointRec(ui->mouse, g.board)) return;
+    if (!CheckCollisionPointRec(ui->mouse, g.board)) {
+        if (ui->mouse_released) ui->drag_node = NULL;   // dropped off the board: nothing changes
+        return;
+    }
     ui->board_geo = g;
     Point p = point_at(&g, ui->mouse);
     ui->hover_point = p;
+    if (stone_edit_input(ui, board, p)) return;
 
     if (app->analysis_valid && !app_eval_hidden(app) && !point_is_pass(p) && app->config.show_candidates) {
         for (i32 i = 0; i < app->analysis->candidate_count && i < app->config.max_candidates; ++i) {

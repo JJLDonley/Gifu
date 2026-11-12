@@ -110,6 +110,8 @@ MoveError game_tree_play(GameTree *tree, Move move);
 // Plays `move` after `at` (reusing an existing child with that move) without
 // changing the current node. NULL (and *error) if illegal there.
 GameNode *game_tree_play_at(GameTree *tree, GameNode *at, Move move, MoveError *error);
+// Same, but always a new child (even if one with that move exists).
+GameNode *game_tree_play_new(GameTree *tree, GameNode *at, Move move, MoveError *error);
 bool game_tree_forward(GameTree *tree);
 bool game_tree_back(GameTree *tree);
 void game_tree_to_start(GameTree *tree);
@@ -118,6 +120,13 @@ bool game_tree_next_variation(GameTree *tree);   // switch to next sibling
 bool game_tree_prev_variation(GameTree *tree);
 void game_tree_goto(GameTree *tree, GameNode *node);
 bool game_tree_delete_node(GameTree *tree, GameNode *node);   // unlinks the subtree (not root)
+// Unlinks `node`'s subtree from its parent (memory stays in the tree's arena, so it
+// can be linked again: undo). Returns its index among the siblings, -1 for the root.
+// A current node inside it moves to the parent.
+i32 game_tree_unlink(GameTree *tree, GameNode *node);
+// Links a subtree (made in this tree) under `parent` as child number `index`
+// (clamped to the end).
+void game_tree_link(GameTree *tree, GameNode *parent, GameNode *child, i32 index);
 
 // Win-rate the player who made this node's move lost by it (0..1, positive =
 // mistake), from the evals before and after. False when either is unknown.

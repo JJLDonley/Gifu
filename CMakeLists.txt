@@ -119,6 +119,7 @@ add_library(gifu_core STATIC
     src/core/human_winrate.c
     src/core/profile.c
     src/core/style.c
+    src/core/move_edit.c
     src/core/board_reader.c
     src/core/markup.c
     src/core/sgf_analysis.c
@@ -144,7 +145,8 @@ add_library(gifu_core STATIC
     src/app/updater.c
     src/app/app_updates.c
     src/app/profile_builder.c
-    src/app/ai_style.c)
+    src/app/ai_style.c
+    src/app/app_edit.c)
 # The platform layer (src/platform/platform.h): portable parts plus one file per system.
 target_sources(gifu_core PRIVATE src/platform/platform_common.c src/platform/line_channel.c src/platform/screen_capture.c)
 if(WIN32)
@@ -278,6 +280,7 @@ if(GIFU_BUILD_TESTS AND EXISTS ${CMAKE_SOURCE_DIR}/tests/test_main.c)
     tests/test_profile.c
     tests/test_style.c
     tests/test_platform.c
+    tests/test_move_edit.c
         src/ui/theme.c
         src/ui/layout_model.c
         src/ui/stone_anim.c

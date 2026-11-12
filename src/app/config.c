@@ -45,6 +45,7 @@ static const ConfigField FIELDS[] = {
     BOOL("board.show_coordinates", show_coordinates, 1),
     BOOL("board.show_move_numbers", show_move_numbers, 0),
     BOOL("board.show_branches", show_branches, 0),
+    BOOL("board.drag_stones", drag_stones, 1),
     FLOAT("ai.seconds_per_move", ai_seconds_per_move, 2.0, 0.1, 120.0),
     FLOAT("human_winrate.level", human_winrate_level, 1.0, -11.0, 9.0),   // Fox rank: -11 = 12k, 0 = 1k, 1 = 1d, 9 = 9d
     BOOL("ai.human_style", ai_human_style, 0),

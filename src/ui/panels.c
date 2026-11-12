@@ -64,10 +64,20 @@ static void panel_game_info(Ui *ui) {
             CLAY_TEXT(ui_fmt(ui, SV_FMT "%s" SV_FMT, SV_ARG(event), event.len && date.len ? " · " : "", SV_ARG(date)),
                       ui_text_style(ui, FONT_UI, 12, ui->theme->colors.text_muted));
         }
-        CLAY_TEXT(ui_fmt(ui, SV_FMT " %.1f  ·  " SV_FMT " %s%s" SV_FMT, SV_ARG(tr(ui, "label.komi", "Komi")),
-                         game_tree_komi(t), SV_ARG(tr(ui, "label.rules", "Rules")), string_cstr(&app->config.rules),
-                         result.len ? "  ·  " : "", SV_ARG(result)),
-                  ui_text_style(ui, FONT_UI, 12, ui->theme->colors.text_muted));
+        CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
+            // The komi opens its editor (Game > Komi…).
+            Clay_ElementId komi_id = CLAY_ID("GameInfoKomi");
+            bool over = Clay_PointerOver(komi_id);
+            CLAY({ .id = komi_id, .layout = { .padding = { 0, 0, 1, 1 } } }) {
+                CLAY_TEXT(ui_fmt(ui, SV_FMT " %.1f", SV_ARG(tr(ui, "label.komi", "Komi")), game_tree_komi(t)),
+                          ui_text_style(ui, FONT_UI, 12, over ? ui->theme->colors.accent : ui->theme->colors.text_muted));
+            }
+            if (over) SetMouseCursor(MOUSE_CURSOR_POINTING_HAND);
+            if (over && ui->mouse_pressed) command_execute(&app->commands, SV("game.komi"));
+            CLAY_TEXT(ui_fmt(ui, "  ·  " SV_FMT " %s%s" SV_FMT, SV_ARG(tr(ui, "label.rules", "Rules")), string_cstr(&app->config.rules),
+                             result.len ? "  ·  " : "", SV_ARG(result)),
+                      ui_text_style(ui, FONT_UI, 12, ui->theme->colors.text_muted));
+        }
     }
 }
 

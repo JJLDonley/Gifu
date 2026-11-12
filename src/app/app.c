@@ -1070,6 +1070,7 @@ static void replace_tree(App *app, GameTree *tree) {
     app->main.synced_node = NULL;
     app->analysis_valid = false;
     app->dirty = false;
+    app_edit_history_clear(app);   // the history points into the old game
 }
 
 void app_start_game(App *app, const NewGameSpec *spec) {
@@ -1201,6 +1202,26 @@ void app_game_info_load(App *app) {
     app->config.game_info_komi = (f32)game_tree_komi(app->tree);
 }
 
+// KM[] on the root. Evaluations were made with the old komi; the engines resync
+// with the new one.
+static void set_komi(App *app, f64 komi) {
+    char buffer[32];
+    snprintf(buffer, sizeof(buffer), "%g", komi);
+    game_node_set_prop(app->tree, app->tree->root, SV("KM"), sv(buffer));
+    app->main.synced_node = app->second.synced_node = NULL;
+    app->analysis_valid = false;
+}
+
+void app_set_komi(App *app, f64 komi) {
+    komi = CLAMP(komi, -150.0, 150.0);
+    if (fabs(komi - game_tree_komi(app->tree)) < 1e-6) return;
+    set_komi(app, komi);
+    game_tree_rebuild(app->tree, app->tree->root);
+    app->config.game_info_komi = (f32)komi;
+    app_mark_edited(app);
+    app_set_status(app, "Komi %g", komi);
+}
+
 void app_game_info_apply(App *app) {
     GameTree *tree = app->tree;
     bool changed = false;
@@ -1215,12 +1236,7 @@ void app_game_info_apply(App *app) {
     }
     f64 komi = sgf_normalize_komi(app->config.game_info_komi);
     if (fabs(komi - game_tree_komi(tree)) > 1e-6) {
-        char buffer[32];
-        snprintf(buffer, sizeof(buffer), "%g", komi);
-        game_node_set_prop(tree, tree->root, SV("KM"), sv(buffer));
-        // Evaluations were made with the old komi; the engines resync with the new one.
-        app->main.synced_node = app->second.synced_node = NULL;
-        app->analysis_valid = false;
+        set_komi(app, komi);
         changed = true;
     }
     if (!changed) return;
@@ -1390,7 +1406,7 @@ static bool has_stones(const void *c) {
 }
 static void cmd_delete(void *c) {
     App *app = APP(c);
-    if (game_tree_delete_node(app->tree, app->tree->current)) app_mark_edited(app);
+    app_delete_branch(app, app->tree->current);   // undoable (Ctrl+Z)
 }
 
 static void cmd_toggle_analysis(void *c) { app_set_analysis(APP(c), !APP(c)->analysis_enabled); }
@@ -1678,6 +1694,7 @@ bool app_init(App *app, const AppOptions *options) {
 
     command_registry_init(&app->commands, app);
     command_register_all(&app->commands, APP_COMMANDS, countof(APP_COMMANDS));
+    app_edit_register_commands(app);
 
     app->tree = game_tree_new(19, 19, 7.5);
     if (options->sgf_path.len) app_open_sgf(app, options->sgf_path);
@@ -1707,6 +1724,8 @@ void app_shutdown(App *app) {
     profile_builder_destroy(app->profile_builder);
     app->profile_builder = NULL;
     profile_data_free(&app->profile);
+    vec_free(&app->undo);
+    vec_free(&app->redo);
     bool headless_run = app->options.screenshot.len > 0 || app->options.headless;
     if (app->config.sgf_autosave && !headless_run && app->tree->revision != app->autosaved_revision &&
         (app->tree->root->first_child || app->dirty)) {

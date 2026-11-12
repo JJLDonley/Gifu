@@ -140,6 +140,10 @@ static void cmd_game_info(void *c) {
     if (UI(c)->dialog != UI_DIALOG_GAME_INFO) app_game_info_load(UI(c)->app);   // fresh copy of the SGF root
     open_dialog(UI(c), UI_DIALOG_GAME_INFO);
 }
+static void cmd_komi(void *c) {
+    if (UI(c)->dialog != UI_DIALOG_KOMI) app_game_info_load(UI(c)->app);
+    open_dialog(UI(c), UI_DIALOG_KOMI);
+}
 static void cmd_setup(void *c) {
     UI(c)->setup_init = false;   // re-check what is installed
     open_dialog(UI(c), UI_DIALOG_SETUP);
@@ -186,6 +190,7 @@ static void register_ui_commands(Ui *ui) {
         { "view.settings", "Settings", "Settings", cmd_settings, NULL, settings_shown, ui },
         { "file.new", "New game", "New", cmd_new_game, NULL, NULL, ui },
         { "game.info", "Game info…", "Info", cmd_game_info, NULL, NULL, ui },
+        { "game.komi", "Komi…", "Komi", cmd_komi, NULL, NULL, ui },
         { "view.theme_editor", "Edit theme…", "Theme", cmd_theme_editor, NULL, theme_editor_shown, ui },
         { "view.layout_editor", "Customize layout…", "Layout", cmd_layout_editor, NULL, layout_editor_shown, ui },
         { "analysis.report", "Deep report", "Deep report", cmd_deep_report, deep_report_allowed, deep_report_shown, ui },
@@ -243,7 +248,7 @@ static void check_node(const Sexpr *node, void *user) {
         log_warn("layout:%d: unknown component '" SV_FMT "'", node->line, SV_ARG(head));
         rc->missing++;
     }
-    bool is_button = sv_eq(head, SV("button")), is_menu = sv_eq(head, SV("menu"));
+    bool is_button = sv_eq(head, SV("button")), is_menu = sv_eq(head, SV("menu")) || sv_eq(head, SV("board-menu"));
     if (!is_button && !is_menu) return;
     const Sexpr *first = sexpr_next_arg(node, NULL);
     for (const Sexpr *a = is_menu && first ? sexpr_next_arg(node, first) : first; a; a = is_button ? NULL : sexpr_next_arg(node, a)) {
@@ -275,7 +280,7 @@ static void validate_command_refs(Ui *ui) {
 }
 
 bool ui_init(Ui *ui, App *app) {
-    *ui = (Ui){ .app = app, .hover_candidate = -1, .hover_list_candidate = -1, .open_menu = -1 };
+    *ui = (Ui){ .app = app, .hover_candidate = -1, .hover_list_candidate = -1, .open_menu = -1, .board_menu = -1 };
     ui->frame.default_block_size = 512 * 1024;
     ui->fonts = font_cache_create();
 

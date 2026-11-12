@@ -223,7 +223,7 @@ static void test_config_round_trip(void) {
 static void check_layout_node(const Sexpr *node, int *bad) {
     static const char *const KNOWN[] = { "app", "row", "column", "menubar", "menu", "toolbar", "navbar", "button", "separator",
                                          "spacer", "engine-status", "theme-picker", "move-counter", "status", "board", "panel", "tabs",
-                                         "modes", "mode", "mode-switch", "markup-colors", "markup-counts" };
+                                         "modes", "mode", "mode-switch", "markup-colors", "markup-counts", "board-menu" };
     bool ok = false;
     for (int i = 0; i < (int)countof(KNOWN); ++i) ok |= sv_eq(sexpr_head(node), sv(KNOWN[i]));
     if (!ok) fprintf(stderr, "    layout.lisp:%d: unknown component '%.*s'\n", node->line, SV_ARG(sexpr_head(node)));
@@ -247,6 +247,10 @@ static void test_layout_lisp(void) {
         int bad = 0;
         check_layout_node(root->first, &bad);
         CHECK_EQ(bad, 0);
+        // The board's right-click menus.
+        int board_menus = 0;
+        for (const Sexpr *c = sexpr_next_child(root->first, NULL); c; c = sexpr_next_child(root->first, c)) board_menus += sexpr_is_list(c, "board-menu");
+        CHECK_EQ(board_menus, 2);
     }
     arena_free(&arena);
     string_free(&text);
