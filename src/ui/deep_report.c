@@ -93,7 +93,7 @@ static f32 value_stepper(Ui *ui, u32 index, f32 value, f32 step, f32 lo, f32 hi,
     Clay_ElementId id = CLAY_IDI("DeepStepValue", index);
     CLAY({ .layout = { .childGap = ui_u16(ui, 4), .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
         f64 v = value;
-        if (ui_number_input(ui, id, &v, lo, hi, fmt, 64)) value = (f32)v;
+        if (ui_number_input(ui, id, &v, lo, hi, fmt, 64, true)) value = (f32)v;
         if (ui_button(ui, CLAY_IDI("DeepStepMinus", index), SV("−"), BUTTON_NORMAL, false, value > lo + 1e-4f)) value -= step;
         if (ui_button(ui, CLAY_IDI("DeepStepPlus", index), SV("+"), BUTTON_NORMAL, false, value < hi - 1e-4f)) value += step;
     }
@@ -160,7 +160,7 @@ static void butterfly_row(Ui *ui, const ButterflyRow *row, f32 row_px, f32 font,
         for (Stone color = STONE_BLACK; color <= STONE_WHITE; ++color) {
             bool left = color == STONE_BLACK;
             if (!left) {   // the label, centred between the two halves
-                CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, font * 9.0f)), CLAY_SIZING_FIT(0) },
+                CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, font * 8.1f)), CLAY_SIZING_FIT(0) },
                                    .childAlignment = { .x = CLAY_ALIGN_X_CENTER } } }) {
                     ui_label(ui, row->label, FONT_UI, font * 0.9f, c->text_muted);
                 }
@@ -448,14 +448,6 @@ static void legend_dot(Ui *ui, Color color, StringView text) {
 
 // ---- Distribution ------------------------------------------------------------------------------------
 
-// The bucket's range ("5–10%", "< 2", "≥ 20%") from the current limits.
-static StringView bucket_label(Ui *ui, const f32 *lim, i32 b, bool winrate) {
-    f32 s = winrate ? 100.0f : 1.0f;
-    const char *unit = winrate ? "%" : "";
-    if (b == 0) return arena_format(&ui->frame, "< %g%s", (f64)(lim[0] * s), unit);
-    if (b == LOSS_BUCKETS - 1) return arena_format(&ui->frame, "≥ %g%s", (f64)(lim[b - 1] * s), unit);
-    return arena_format(&ui->frame, "%g–%g%s", (f64)(lim[b - 1] * s), (f64)(lim[b] * s), unit);
-}
 
 // Moves the start of bucket b (limit b-1) by `delta` (in % or points), keeping the
 // limits increasing; saved to the settings (report.*_limits) and applied at once.
@@ -494,29 +486,24 @@ static void distribution(DeepReport *d, bool winrate, f32 row_px) {
                     bool left = color == STONE_BLACK;
                     if (!left) {   // the bucket's range, centred between the halves; - / + move where it starts
                         u32 idx = (winrate ? 100u : 0u) + (u32)b;
-                        CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, font * 12.0f)), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 4),
+                        // Fixed columns so every row lines up: the start (typed; the first
+                        // row's 0 is read-only), where the bucket ends, then - / +.
+                        CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, font * 10.8f)), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 4),
                                            .childAlignment = { .x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER } } }) {
                             bool editable = b > 0;
                             f32 step = (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) ? 5.0f : (winrate ? 1.0f : 0.5f);
-                            // The bucket's start, typed (in % or points), then where it ends; the
-                            // first bucket follows the second one's start.
                             f32 unit = winrate ? 100.0f : 1.0f;
-                            Clay_ElementId lid = CLAY_IDI("DistLabel", idx);
-                            CLAY({ .id = lid, .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 2),
-                                                          .childAlignment = { .x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER } } }) {
-                                if (!editable) {
-                                    ui_label(ui, bucket_label(ui, lim, b, winrate), FONT_MONO, font, c->text);
-                                } else {
-                                    f64 start = lim[b - 1] * unit;
-                                    if (ui_number_input(ui, CLAY_IDI("DistStart", idx), &start, 0.0, 100.0, "%g", font * 3.6f)) set_limit(ui, winrate, b, (f32)start);
-                                    StringView end = b < LOSS_BUCKETS - 1 ? arena_format(&ui->frame, "–%g%s", (f64)(lim[b] * unit), winrate ? "%" : "")
-                                                                          : arena_format(&ui->frame, "+%s", winrate ? "%" : "");
-                                    ui_label(ui, end, FONT_MONO, font, c->text);
-                                }
+                            f64 start = b > 0 ? lim[b - 1] * unit : 0.0;
+                            Clay_ElementId fid = CLAY_IDI("DistStart", idx);
+                            if (ui_number_input(ui, fid, &start, 0.0, 100.0, "%g", font * 3.2f, editable)) set_limit(ui, winrate, b, (f32)start);
+                            StringView end = b < LOSS_BUCKETS - 1 ? arena_format(&ui->frame, "–%g%s", (f64)(lim[b] * unit), winrate ? "%" : "")
+                                                                  : arena_format(&ui->frame, "+%s", winrate ? "%" : "");
+                            CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, font * 3.4f)), CLAY_SIZING_FIT(0) } } }) {
+                                ui_label(ui, end, FONT_MONO, font, c->text);
                             }
                             if (ui_button(ui, CLAY_IDI("DistMinus", idx), SV("−"), BUTTON_GHOST, false, editable) && editable) set_limit(ui, winrate, b, lim[b - 1] * unit - step);
                             if (ui_button(ui, CLAY_IDI("DistPlus", idx), SV("+"), BUTTON_GHOST, false, editable) && editable) set_limit(ui, winrate, b, lim[b - 1] * unit + step);
-                            if (editable && ui->wheel != 0 && Clay_PointerOver(lid)) set_limit(ui, winrate, b, lim[b - 1] * unit + (ui->wheel > 0 ? step : -step));
+                            if (editable && ui->wheel != 0 && Clay_PointerOver(fid) && ui->focus_id != fid.id) set_limit(ui, winrate, b, lim[b - 1] * unit + (ui->wheel > 0 ? step : -step));
                         }
                     }
                     Clay_String count = ui_fmt(ui, "%d · %.0f%%", hist[b], share * 100.0f);

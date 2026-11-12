@@ -316,7 +316,7 @@ static void number_filter(TextEdit *edit, bool negative) {
     string_free(&out);
 }
 
-bool ui_number_input(Ui *ui, Clay_ElementId id, f64 *value, f64 lo, f64 hi, const char *fmt, f32 width) {
+bool ui_number_input(Ui *ui, Clay_ElementId id, f64 *value, f64 lo, f64 hi, const char *fmt, f32 width, bool enabled) {
     bool fresh = false;
     TextEdit *edit = number_slot(ui, id.id, &fresh);
     bool focused = ui->focus_id == id.id;
@@ -327,6 +327,11 @@ bool ui_number_input(Ui *ui, Clay_ElementId id, f64 *value, f64 lo, f64 hi, cons
     TextInputResult r = TEXT_INPUT_NONE;
     CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, width)), CLAY_SIZING_FIT(0) } } }) {
         r = ui_text_input(ui, id, edit, 14, 1, SV(""));
+    }
+    if (!enabled) {   // read-only: give the focus back at once
+        if (ui->focus_id == id.id) ui->focus_id = 0;
+        text_edit_set(edit, sv(shown));
+        return false;
     }
     if (ui->focus_id == id.id && !focused) text_edit_select_all(edit);   // just clicked: typing replaces it
     number_filter(edit, lo < 0);

@@ -284,7 +284,8 @@ TextInputResult ui_text_input(Ui *ui, Clay_ElementId id, TextEdit *edit, f32 fon
 // A single-line field for a number: digits, one '.', a leading '-' when lo < 0.
 // Shows `*value` with `fmt` until clicked; Enter or a click elsewhere applies the typed
 // number (clamped to lo..hi), Escape restores it. True when *value changed.
-bool ui_number_input(Ui *ui, Clay_ElementId id, f64 *value, f64 lo, f64 hi, const char *fmt, f32 width);
+// `enabled` false: the same box, read-only (it cannot take the focus).
+bool ui_number_input(Ui *ui, Clay_ElementId id, f64 *value, f64 lo, f64 hi, const char *fmt, f32 width, bool enabled);
 // Small on/off switch; returns true when toggled this frame.
 bool ui_toggle(Ui *ui, Clay_ElementId id, bool on);
 // Button bound to a registered command (label from i18n "command.<id>").
