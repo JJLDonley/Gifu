@@ -34,6 +34,9 @@ public:
     void set_analyzing(bool flag);
     void set_quiet(bool flag);
     void ponder();
+    // Searches until a command arrives, printing an "info move ..." line (Leela
+    // Zero's lz-analyze format) to standard output every interval_cs centiseconds.
+    void analyze(int interval_cs, int max_moves);
     bool is_running();
     bool playout_limit_reached();
     void increment_playouts();
@@ -46,6 +49,8 @@ private:
     std::string get_pv(KoState & state, UCTNode & parent);
     void dump_thinking();
     void dump_analysis();
+    std::string analysis_line(int max_moves);
+    std::string principal_variation(UCTNode * node);
     void dump_order2(void);
     int get_best_move(passflag_t passflag);
     int get_best_move_nosearch(std::vector<std::pair<float, int>> moves,

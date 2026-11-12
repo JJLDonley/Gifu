@@ -56,7 +56,8 @@ typedef struct StageReport {
     i32 agreement_moves;   // moves where the shares are known
     f32 accuracy;          // 0..100, Hawk Eye accuracy: mean of node_accuracy over match_moves
     f32 avg_winrate_loss;  // 0..1
-    f32 avg_score_loss;    // points
+    f32 avg_score_loss;    // points, over score_moves
+    i32 score_moves;       // moves whose point loss is known (0: the engine gave no scores)
 } StageReport;
 
 typedef struct PlayerReport {
@@ -67,7 +68,8 @@ typedef struct PlayerReport {
     i32 mistakes;         // win-rate loss > 5%
     i32 blunders;         // win-rate loss > 10%
     f32 avg_winrate_loss; // 0..1
-    f32 avg_score_loss;   // points
+    f32 avg_score_loss;   // points, over score_moves
+    i32 score_moves;      // moves whose point loss is known (0: the engine gave no scores, e.g. Leela)
     f32 accuracy;         // 0..100, Hawk Eye accuracy: mean of node_accuracy over match_moves
     // Engine agreement (LizzieYzy's "accuracy"): how much of KataGo's search went
     // to the move that was played, 0..100, over moves where the shares are known.

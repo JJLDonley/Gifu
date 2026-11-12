@@ -34,6 +34,16 @@ typedef struct GtpEngine {
     i32 score_id;
     u64 score_position;
     GtpEvent last_event;   // owns text referenced by the last EngineEvent
+
+    // Analysis, for engines that know Leela Zero's lz-analyze (Leela as built with Gifu).
+    // Any command ends a running lz-analyze, so it is sent again after each one.
+    i32 known_id;           // "known_command lz-analyze"
+    bool can_analyze;
+    bool analyzing;         // wanted by the app
+    AnalysisRequest request;
+    i32 analysis_id;        // the lz-analyze whose output is current (-1: none)
+    Stone to_play;
+    AnalysisSnapshot *snapshot;
 } GtpEngine;
 
 static GtpEngine *as_gtp(Engine *e) { return (GtpEngine *)e; }
@@ -62,21 +72,42 @@ static bool same_moves(const Move *a, const Move *b, i32 n) {
     return true;
 }
 
+static void send_analyze(GtpEngine *g) {
+    if (!g->can_analyze || !g->analyzing || !g->synced || g->genmove_id > 0) return;
+    String cmd = string_format("lz-analyze %s interval %d", g->to_play == STONE_WHITE ? "W" : "B",
+                               MAX(g->request.interval_centiseconds, 5));
+    if (g->request.max_candidates > 0) string_pushf(&cmd, " maxmoves %d", g->request.max_candidates);
+    g->analysis_id = gtp_client_send(g->gtp, string_sv(&cmd));
+    string_free(&cmd);
+}
+
 static StringView ge_name(const Engine *e) { return string_sv(&as_gtp_const(e)->name); }
 static EngineStatus ge_status(const Engine *e) { return as_gtp_const(e)->status; }
 static bool ge_is_analyzing(const Engine *e) {
-    UNUSED(e);
-    return false;
+    const GtpEngine *g = as_gtp_const(e);
+    return g->can_analyze && g->analyzing;
 }
 static bool ge_is_thinking(const Engine *e) { return as_gtp_const(e)->genmove_id > 0; }
 static void ge_start_analysis(Engine *e, const AnalysisRequest *request) {
-    UNUSED(e), UNUSED(request);   // a playing engine: KataGo analyses
+    GtpEngine *g = as_gtp(e);
+    if (!g->gtp) return;
+    g->request = *request;
+    g->analyzing = true;
+    g->analysis_id = -1;
+    send_analyze(g);   // (no-op until the engine said it knows lz-analyze and a position is synced)
 }
-static void ge_stop_analysis(Engine *e) { UNUSED(e); }
+static void ge_stop_analysis(Engine *e) {
+    GtpEngine *g = as_gtp(e);
+    if (!g->gtp || !g->analyzing) return;
+    g->analyzing = false;
+    if (g->analysis_id > 0) send(g, "stop");
+    g->analysis_id = -1;
+}
 
 static void ge_set_position(Engine *e, const PositionSpec *pos) {
     GtpEngine *g = as_gtp(e);
     if (!g->gtp || (g->synced && pos->id == g->position_id)) return;
+    g->to_play = pos->to_play;
     if (g->genmove_id > 0) {
         if (!g->pending_pos) g->pending_pos = malloc(sizeof(PositionSpec));
         if (!g->pending_pos) abort();
@@ -122,6 +153,8 @@ static void ge_set_position(Engine *e, const PositionSpec *pos) {
     }
     g->synced = true;
     g->position_id = pos->id;
+    g->analysis_id = -1;   // the board commands ended any running analysis
+    send_analyze(g);
 }
 
 static void ge_request_move(Engine *e, const MoveRequest *request) {
@@ -130,6 +163,7 @@ static void ge_request_move(Engine *e, const MoveRequest *request) {
     // Byo-yomi of one move in `seconds`: engines without time controls ignore it.
     // No clock asked (0): 5 s, since a plain GTP engine may have no limit of its own.
     f32 seconds = request->seconds > 0 ? request->seconds : 5.0f;
+    g->analysis_id = -1;   // genmove ends a running lz-analyze
     send(g, "time_settings 0 %d 1", (i32)MAX(seconds + 0.5f, 1.0f));
     g->genmove = *request;
     g->genmove_id = send(g, "genmove %s", request->color == STONE_WHITE ? "W" : "B");
@@ -139,7 +173,9 @@ static void ge_request_score(Engine *e, u64 position_id) {
     GtpEngine *g = as_gtp(e);
     if (!g->gtp) return;
     g->score_position = position_id;
+    g->analysis_id = -1;
     g->score_id = send(g, "final_score");
+    send_analyze(g);   // keep analysing afterwards
 }
 
 static bool ge_poll(Engine *e, EngineEvent *out) {
@@ -151,6 +187,13 @@ static bool ge_poll(Engine *e, EngineEvent *out) {
         g->last_event = ev;
         switch (ev.kind) {
             case GTP_EVENT_RESPONSE:
+                if (ev.id == g->known_id && g->known_id > 0) {
+                    g->known_id = 0;
+                    g->can_analyze = ev.success && sv_eq(sv_trim(string_sv(&ev.text)), SV("true"));
+                    if (g->can_analyze) log_info("GTP engine " SV_FMT " analyses (lz-analyze)", SV_ARG(string_sv(&g->name)));
+                    send_analyze(g);
+                    break;
+                }
                 if (ev.id == g->name_id && g->status == ENGINE_STATUS_STARTING) {
                     g->status = ev.success ? ENGINE_STATUS_READY : ENGINE_STATUS_FAILED;
                     *out = (EngineEvent){ .kind = ENGINE_EVENT_STATUS, .status = g->status, .text = string_sv(&ev.text) };
@@ -179,6 +222,8 @@ static bool ge_poll(Engine *e, EngineEvent *out) {
                     if (g->sync_pending) {
                         g->sync_pending = false;
                         ge_set_position(&g->base, g->pending_pos);
+                    } else {
+                        send_analyze(g);
                     }
                     *out = move_event;
                     return true;
@@ -196,6 +241,14 @@ static bool ge_poll(Engine *e, EngineEvent *out) {
                 *out = (EngineEvent){ .kind = ENGINE_EVENT_STATUS, .status = g->status, .text = SV("engine exited") };
                 return true;
             case GTP_EVENT_INFO:
+                if (ev.id == g->analysis_id && g->analysis_id > 0 && g->snapshot) {
+                    g->snapshot->position_id = g->position_id;
+                    g->snapshot->to_play = g->to_play;
+                    if (lz_analysis_parse_line(string_sv(&ev.text), g->width, g->height, g->snapshot)) {
+                        *out = (EngineEvent){ .kind = ENGINE_EVENT_ANALYSIS, .status = g->status, .analysis = g->snapshot };
+                        return true;
+                    }
+                }
                 break;
         }
         gtp_event_free(&g->last_event);
@@ -209,6 +262,7 @@ static void ge_destroy(Engine *e) {
     gtp_client_stop(g->gtp);
     string_free(&g->name);
     free(g->pending_pos);
+    free(g->snapshot);
     vec_free(&g->setup);
     vec_free(&g->moves);
     free(g);
@@ -239,6 +293,10 @@ Engine *gtp_engine_create(const GtpEngineSettings *s, String *error) {
     g->gtp = gtp;
     g->status = ENGINE_STATUS_STARTING;
     g->name_id = gtp_client_send(gtp, SV("name"));   // ready once it answers
+    g->known_id = gtp_client_send(gtp, SV("known_command lz-analyze"));
+    g->analysis_id = -1;
+    g->snapshot = calloc(1, sizeof(AnalysisSnapshot));
+    if (!g->snapshot) abort();
     log_info("started GTP engine " SV_FMT, SV_ARG(s->program));
     return &g->base;
 }

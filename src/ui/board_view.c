@@ -262,7 +262,9 @@ static void draw_candidates(Ui *ui, const BoardGeometry *g, const AnalysisSnapsh
         if (g->cell >= 34) {
             font_draw_centered(ui->fonts, FONT_UI_BOLD, g->cell * 0.30f, sv(wr), (Vector2){ p.x, p.y - g->cell * 0.17f }, text);
             font_draw_centered(ui->fonts, FONT_UI, g->cell * 0.22f, sv(visits), (Vector2){ p.x, p.y + g->cell * 0.08f }, text);
-            font_draw_centered(ui->fonts, FONT_UI, g->cell * 0.20f, sv(score), (Vector2){ p.x, p.y + g->cell * 0.27f }, color_with_alpha(text, 0.75f * fade));
+            if (!a->no_score) {   // Leela has no score estimate
+                font_draw_centered(ui->fonts, FONT_UI, g->cell * 0.20f, sv(score), (Vector2){ p.x, p.y + g->cell * 0.27f }, color_with_alpha(text, 0.75f * fade));
+            }
         } else {
             font_draw_centered(ui->fonts, FONT_UI_BOLD, g->cell * 0.34f, sv(wr), p, text);
         }

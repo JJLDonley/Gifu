@@ -151,6 +151,8 @@ const std::string GTP::s_commands[] = {
     "vn_winrate",
     "winrate",
     "heatmap",
+    "lz-analyze",
+    "stop",
     ""
 };
 
@@ -345,6 +347,50 @@ bool GTP::execute(GameState & game, std::string xinput) {
                 gtp_fail_printf(id, "syntax not understood");
             }
         }
+        return true;
+    } else if (command.find("lz-analyze") == 0) {
+        // lz-analyze [b|w] [interval] [N] [maxmoves N]: searches the position until the
+        // next command, printing candidate lines (Leela Zero's format) meanwhile.
+        std::istringstream cmdstream(command);
+        std::string tmp;
+        cmdstream >> tmp;
+        int who = game.get_to_move();
+        int interval = 100, max_moves = 0;
+        bool ok = true;
+        while (cmdstream >> tmp) {
+            if (tmp == "b" || tmp == "black") {
+                who = FastBoard::BLACK;
+            } else if (tmp == "w" || tmp == "white") {
+                who = FastBoard::WHITE;
+            } else if (tmp == "interval") {
+                ok &= static_cast<bool>(cmdstream >> interval);
+            } else if (tmp == "maxmoves") {
+                ok &= static_cast<bool>(cmdstream >> max_moves);
+            } else if (!tmp.empty() && std::all_of(tmp.begin(), tmp.end(), ::isdigit)) {
+                interval = std::stoi(tmp);
+            } else {
+                ok = false;
+            }
+        }
+        if (!ok) {
+            gtp_fail_printf(id, "syntax error");
+            return true;
+        }
+        game.set_to_move(who);
+        if (id != -1) fprintf(stdout, "=%d\n", id);
+        else fprintf(stdout, "=\n");
+        fflush(stdout);
+        {
+            std::unique_ptr<UCTSearch> search(new UCTSearch(game));
+            search->set_quiet(true);
+            search->analyze(std::max(interval, 1), max_moves);
+        }
+        fprintf(stdout, "\n");
+        fflush(stdout);
+        return true;
+    } else if (command == "stop") {
+        // Ends an lz-analyze (any command does); accepted on its own as well.
+        gtp_printf(id, "");
         return true;
     } else if (command.find("genmove") == 0) {
         std::istringstream cmdstream(command);

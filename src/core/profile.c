@@ -13,7 +13,8 @@ static void add_stage(StageReport *to, const StageReport *from) {
     to->accuracy = mix(to->accuracy, ACC_WEIGHT(to), from->accuracy, ACC_WEIGHT(from));
     to->match_moves += from->match_moves, to->matches += from->matches;
     to->avg_winrate_loss = mix(to->avg_winrate_loss, to->moves, from->avg_winrate_loss, from->moves);
-    to->avg_score_loss = mix(to->avg_score_loss, to->moves, from->avg_score_loss, from->moves);
+    to->avg_score_loss = mix(to->avg_score_loss, to->score_moves, from->avg_score_loss, from->score_moves);
+    to->score_moves += from->score_moves;
     to->agreement = mix(to->agreement, to->agreement_moves, from->agreement, from->agreement_moves);
     to->moves += from->moves, to->top1 += from->top1, to->top3 += from->top3;
     to->mistakes += from->mistakes, to->blunders += from->blunders;
@@ -24,7 +25,8 @@ static void add_player(PlayerReport *to, const PlayerReport *from) {
     to->accuracy = mix(to->accuracy, ACC_WEIGHT(to), from->accuracy, ACC_WEIGHT(from));
     to->match_moves += from->match_moves, to->matches += from->matches;
     to->avg_winrate_loss = mix(to->avg_winrate_loss, to->moves, from->avg_winrate_loss, from->moves);
-    to->avg_score_loss = mix(to->avg_score_loss, to->moves, from->avg_score_loss, from->moves);
+    to->avg_score_loss = mix(to->avg_score_loss, to->score_moves, from->avg_score_loss, from->score_moves);
+    to->score_moves += from->score_moves;
     to->agreement = mix(to->agreement, to->agreement_moves, from->agreement, from->agreement_moves);
     to->moves += from->moves, to->top1 += from->top1, to->top3 += from->top3;
     to->mistakes += from->mistakes, to->blunders += from->blunders;

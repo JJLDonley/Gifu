@@ -179,6 +179,7 @@ typedef struct App {
     // Which layout preset: play (after New game or an AI button) or analysis (Space
     // in the play layout, and at startup). ui.c follows it.
     bool play_layout;
+    bool eval_source_pinned;   // the user chose whose evaluations to show (Deep report); else they follow the engine
     bool ai_move_once;          // "engine, play one move now"
     bool match_mode;            // engine vs engine: main plays Black, second plays White
 
@@ -298,3 +299,8 @@ void app_batch_stop(App *app);
 bool app_game_analysis_running(const App *app);
 // Progress of the running whole-game analysis (positions done / total).
 void app_game_analysis_progress(const App *app, isize *done, isize *total);
+
+// Whose evaluations the graph, panels and reports show (each engine's are kept apart):
+// the main engine's, or the other's when the game has only those; or the user's choice.
+void app_follow_eval_source(App *app);
+void app_set_eval_source(App *app, EvalSource source);

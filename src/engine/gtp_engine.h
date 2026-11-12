@@ -1,6 +1,7 @@
-// gtp_engine.h - any GTP engine as an opponent (e.g. the original Leela): it
-// plays moves (genmove, with time_settings for the thinking time) and scores
-// (final_score); it does not analyse, so analysis panels stay with KataGo.
+// gtp_engine.h - any GTP engine (e.g. Leela): it plays moves (genmove, with
+// time_settings for the thinking time) and scores (final_score). Engines that know
+// Leela Zero's lz-analyze (Leela as built with Gifu) also analyse: candidates with
+// visits, win rates and lines, but no score (AnalysisSnapshot.no_score).
 #pragma once
 
 #include "engine/engine.h"

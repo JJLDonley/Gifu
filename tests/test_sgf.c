@@ -206,6 +206,51 @@ static void test_eval_persistence_and_report(void) {
     game_tree_free(t);
 }
 
+// KataGo's and Leela's evaluations of a position are kept apart (CGE[] / CGL[]):
+// neither replaces the other, a deeper one of the same engine wins, and the tree
+// shows one engine's at a time. Leela's have no score.
+static void test_eval_sources(void) {
+    GameTree *t = game_tree_new(19, 19, 7.5);
+    Point q16 = { 15, 3 }, d4 = { 3, 15 };
+    game_tree_play(t, (Move){ STONE_BLACK, q16 });
+    GameNode *root = t->root, *b1 = root->first_child;
+    NodeEval kata = { true, 0.52f, 1.5f, 400, 1, { q16 } };
+    NodeEval leela = { true, 0.60f, 0.0f, 300, 1, { d4 } };
+    leela.no_score = true, leela.source = EVAL_LEELA;
+    game_node_store_eval(t, root, &kata);
+    CHECK(game_node_update_eval(t, root, &leela));   // another engine: stored beside KataGo's
+    CHECK(root->evals[EVAL_KATAGO].valid && root->evals[EVAL_LEELA].valid);
+    CHECK_NEAR(root->eval.black_winrate, 0.52f, 1e-6f);   // KataGo's is shown
+    NodeEval shallow = leela;
+    shallow.visits = 100, shallow.black_winrate = 0.40f;
+    CHECK(!game_node_update_eval(t, root, &shallow));   // fewer visits of the same engine: kept
+    game_node_store_eval(t, b1, &kata);
+    game_node_update_eval(t, b1, &leela);
+    CHECK(game_tree_has_evals(t, EVAL_LEELA));
+    game_tree_set_eval_source(t, EVAL_LEELA);
+    CHECK_NEAR(root->eval.black_winrate, 0.60f, 1e-6f);
+    f32 loss = 0;
+    CHECK(!game_node_score_loss(b1, &loss));   // Leela: no point losses
+    CHECK(game_node_winrate_loss(b1, &loss));
+
+    game_tree_store_evals(t);
+    String sgf = sgf_write(t);
+    CHECK(sv_find(string_sv(&sgf), SV("CGE[")) >= 0 && sv_find(string_sv(&sgf), SV("CGL[0.6000,,300,")) >= 0);
+    SgfError err;
+    GameTree *u = sgf_parse(string_sv(&sgf), &err);
+    CHECK(u != NULL);
+    if (u) {
+        const NodeEval *k = &u->root->evals[EVAL_KATAGO], *l = &u->root->evals[EVAL_LEELA];
+        CHECK(k->valid && !k->no_score && l->valid && l->no_score && l->source == EVAL_LEELA);
+        CHECK_NEAR(k->black_score, 1.5f, 1e-3f);
+        CHECK_NEAR(l->black_winrate, 0.60f, 1e-4f);
+        CHECK(point_eq(l->top[0], d4));
+        game_tree_free(u);
+    }
+    string_free(&sgf);
+    game_tree_free(t);
+}
+
 static void test_fox_komi(void) {
     CHECK_NEAR(sgf_normalize_komi(375), 7.5, 1e-9);    // 3.75 zi
     CHECK_NEAR(sgf_normalize_komi(325), 6.5, 1e-9);    // 3.25 zi
@@ -358,6 +403,7 @@ void register_sgf_tests(void) {
     test_register("report/hawk_eye", test_hawk_eye);
     test_register("sgf/fox_komi", test_fox_komi);
     test_register("tree/eval_report", test_eval_persistence_and_report);
+    test_register("tree/eval_sources", test_eval_sources);
     test_register("sgf/legacy_encoding", test_legacy_encoding);
     test_register("tree/move_loss", test_move_loss);
     test_register("sgf/new_game", test_new_game);

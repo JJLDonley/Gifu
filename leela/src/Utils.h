@@ -32,7 +32,9 @@ namespace Utils {
     void gtp_printf(int id, const char *fmt, ...);
     void gtp_fail_printf(int id, const char *fmt, ...);
     void log_input(std::string input);
-    bool input_pending();
+    bool input_pending();               // a command is waiting (or input ended)
+    void start_input_thread();          // reads standard input into a queue
+    bool next_input_line(std::string & line);   // waits for the next line; false at the end
     bool input_causes_stop();
 
     template<class T>

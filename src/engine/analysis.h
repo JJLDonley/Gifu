@@ -29,6 +29,8 @@ typedef struct AnalysisSnapshot {
     i32 total_visits;
     i32 candidate_count;
     Candidate candidates[ANALYSIS_MAX_CANDIDATES];
+    bool no_score;   // the engine gives no score estimate (Leela): score_lead is meaningless
+    u8 source;       // EvalSource of the engine (core/game_tree.h): KataGo or Leela
     bool has_ownership;
     f32 ownership[BOARD_MAX_POINTS];   // +1 = owned by side to move
 } AnalysisSnapshot;
@@ -58,3 +60,6 @@ NODISCARD bool kata_raw_nn_parse(StringView text, i32 width, i32 height, HumanPo
 // Parses one KataGo `kata-analyze` output line ("info move ... [ownership ...]").
 // Candidates are sorted by `order`. Returns false if nothing usable was found.
 NODISCARD bool kata_analysis_parse_line(StringView line, i32 width, i32 height, AnalysisSnapshot *out);
+// Parses one Leela / Leela Zero `lz-analyze` line: the same "info move ..." layout
+// with win rates, priors and lcb in 1/10000 and no score (sets no_score).
+NODISCARD bool lz_analysis_parse_line(StringView line, i32 width, i32 height, AnalysisSnapshot *out);

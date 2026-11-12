@@ -1,6 +1,7 @@
 #include "test.h"
 
 #include "engine/analysis.h"
+#include "core/game_tree.h"
 #include "engine/rank_estimator.h"
 #include "core/sgf.h"
 #include "engine/batch_analyzer.h"
@@ -34,6 +35,25 @@ static void test_parse_candidates(void) {
     CHECK_EQ(a->candidates[1].pv_len, 3);
     CHECK_NEAR(a->candidates[1].score_lead, -0.61f, 1e-5f);
     CHECK(!a->has_ownership);
+    free(a);
+}
+
+// Leela's lz-analyze line (as Leela built with Gifu prints it): win rates and priors
+// in 1/10000, no score.
+static void test_parse_lz(void) {
+    static const char LZ[] = "info move R4 visits 2940 winrate 6326 prior 2788 order 0 pv R4 D16 R14 "
+                             "info move D17 visits 616 winrate 5928 prior 1297 order 1 pv D17 Q3";
+    AnalysisSnapshot *a = calloc(1, sizeof(AnalysisSnapshot));
+    a->to_play = STONE_WHITE;
+    CHECK(lz_analysis_parse_line(sv(LZ), 19, 19, a));
+    CHECK_EQ(a->candidate_count, 2);
+    CHECK_EQ(a->total_visits, 3556);
+    CHECK_NEAR(a->candidates[0].winrate, 0.6326f, 1e-5f);
+    CHECK_NEAR(a->candidates[1].prior, 0.1297f, 1e-5f);
+    CHECK_EQ(a->candidates[0].pv_len, 3);
+    CHECK(a->no_score && a->source == EVAL_LEELA);
+    CHECK(kata_analysis_parse_line(sv(LINE), 19, 19, a));   // the same buffer, KataGo again
+    CHECK(!a->no_score && a->source == EVAL_KATAGO);
     free(a);
 }
 
@@ -360,6 +380,7 @@ static void test_human_profile_combine(void) {
 
 void register_analysis_tests(void) {
     test_register("analysis/human_profile_combine", test_human_profile_combine);
+    test_register("analysis/parse_lz", test_parse_lz);
     test_register("analysis/katago_tuning", test_katago_tuning);
     test_register("analysis/rank_sgf", test_rank_sgf);
     test_register("analysis/rank_tally", test_rank_tally);

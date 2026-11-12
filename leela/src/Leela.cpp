@@ -178,6 +178,7 @@ int main (int argc, char *argv[]) {
 #endif
 
     thread_pool.initialize(cfg_num_threads);
+    Utils::start_input_thread();
 
     // Use deterministic random numbers for hashing
     std::unique_ptr<Random> rng(new Random(5489));
@@ -209,7 +210,7 @@ int main (int argc, char *argv[]) {
             std::cout << "Leela: ";
         }
 
-        if (std::getline(std::cin, input)) {
+        if (Utils::next_input_line(input)) {
             Utils::log_input(input);
             GTP::execute(*maingame, input);
         } else {

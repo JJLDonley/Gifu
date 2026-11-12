@@ -26,7 +26,7 @@ static void draw_graph(void *user, Rectangle r) {
     // (the win rate always spans the full height).
     f32 max_lead = 0.0f;
     for (isize i = 0; i < st->count; ++i) {
-        if (st->line[i]->eval.valid) max_lead = fmaxf(max_lead, fabsf(st->line[i]->eval.black_score));
+        if (st->line[i]->eval.valid && !st->line[i]->eval.no_score) max_lead = fmaxf(max_lead, fabsf(st->line[i]->eval.black_score));
     }
     f32 guide = fmaxf(10.0f, floorf(max_lead / 10.0f) * 10.0f);   // see the guides below
     f32 max_score = fmaxf(ceilf(max_lead / 10.0f) * 10.0f, guide * 1.25f);   // the guides never sit on the edge
@@ -36,7 +36,8 @@ static void draw_graph(void *user, Rectangle r) {
     // move when that threshold changes. Labelled on a backing on the middle's side
     // of their lines, so they stay inside the graph and read in every theme.
     f32 label_size = 11.0f * ui->scale;
-    for (i32 side = -1; side <= 1; side += 2) {
+    bool points = ui->app->tree->eval_source != EVAL_LEELA;   // Leela: no points, no point guides
+    for (i32 side = -1; side <= 1 && points; side += 2) {
         f32 y = mid - (f32)side * (guide / max_score) * half;
         for (f32 x = r.x; x < r.x + r.width; x += 7.0f * ui->scale) {
             DrawLineEx((Vector2){ x, y }, (Vector2){ fminf(x + 4.0f * ui->scale, r.x + r.width), y }, 1.0f, color_with_alpha(c->score_line, 0.55f));
@@ -45,7 +46,7 @@ static void draw_graph(void *user, Rectangle r) {
 
     // Black win-rate area + line, score line.
     Vector2 prev = { 0 }, prev_score = { 0 };
-    bool has_prev = false;
+    bool has_prev = false, has_prev_score = false;
     for (isize i = 0; i < st->count; ++i) {
         const NodeEval *e = &st->line[i]->eval;
         if (!e->valid) {
@@ -55,19 +56,36 @@ static void draw_graph(void *user, Rectangle r) {
         f32 x = r.x + step * (f32)i;
         Vector2 p = { x, r.y + r.height * (1.0f - e->black_winrate) };
         Vector2 s = { x, mid - (e->black_score / max_score) * half };
+        bool score = !e->no_score;   // Leela evaluations have no score: a gap in the points line
         if (has_prev) {
             DrawTriangle(prev, (Vector2){ prev.x, r.y + r.height }, (Vector2){ p.x, r.y + r.height }, color_with_alpha(c->winrate_black, 0.12f));
             DrawTriangle(prev, (Vector2){ p.x, r.y + r.height }, p, color_with_alpha(c->winrate_black, 0.12f));
-            DrawLineEx(prev_score, s, 1.5f * ui->scale, color_with_alpha(c->score_line, 0.9f));
+            if (score && has_prev_score) DrawLineEx(prev_score, s, 1.5f * ui->scale, color_with_alpha(c->score_line, 0.9f));
             DrawLineEx(prev, p, 2.0f * ui->scale, c->graph_line);
         }
         prev = p;
         prev_score = s;
         has_prev = true;
+        has_prev_score = score;
+    }
+
+    // Without points (Leela): win-rate guides halfway to each edge, Black 75% above the
+    // middle and White 75% below, in the win-rate line's colour.
+    for (i32 side = -1; side <= 1 && !points; side += 2) {
+        f32 y = mid - (f32)side * r.height * 0.25f;
+        for (f32 x = r.x; x < r.x + r.width; x += 7.0f * ui->scale) {
+            DrawLineEx((Vector2){ x, y }, (Vector2){ fminf(x + 4.0f * ui->scale, r.x + r.width), y }, 1.0f, color_with_alpha(c->graph_line, 0.45f));
+        }
+        const char *text = side > 0 ? "B 75%" : "W 75%";
+        Vector2 m = font_measure(ui->fonts, FONT_UI_BOLD, label_size, sv(text));
+        f32 pad = 3.0f * ui->scale;
+        Rectangle box = { r.x + r.width - m.x - pad * 3.0f, side > 0 ? y + 1.0f : y - m.y - 3.0f, m.x + pad * 2.0f, m.y + 2.0f };
+        DrawRectangleRounded(box, 0.4f, 6, color_with_alpha(c->surface, 0.9f));
+        font_draw(ui->fonts, FONT_UI_BOLD, label_size, sv(text), (Vector2){ box.x + pad, box.y + 1.0f }, c->graph_line);
     }
 
     // The guides' labels, over the lines.
-    for (i32 side = -1; side <= 1; side += 2) {
+    for (i32 side = -1; side <= 1 && points; side += 2) {
         f32 y = mid - (f32)side * (guide / max_score) * half;
         char text[16];
         snprintf(text, sizeof(text), "%c+%.0f", side > 0 ? 'B' : 'W', guide);

@@ -140,7 +140,7 @@ void game_report_compute(GameNode *const *line, isize count, GameReport *out) {
         out->total_moves++;
         f32 wr_loss = 0, score_loss = 0;
         if (!game_node_winrate_loss(n, &wr_loss)) continue;
-        game_node_score_loss(n, &score_loss);
+        bool has_score = game_node_score_loss(n, &score_loss);
         Stone c = n->move.color;
         PlayerReport *p = &out->player[c];
         i32 phase = game_phase(n->move_number, n->board.width * n->board.height);
@@ -148,7 +148,7 @@ void game_report_compute(GameNode *const *line, isize count, GameReport *out) {
         p->moves++;
         st->moves++;
         wr_sum[c] += MAX(wr_loss, 0.0f);
-        score_sum[c] += MAX(score_loss, 0.0f);
+        if (has_score) score_sum[c] += MAX(score_loss, 0.0f), p->score_moves++, st->score_moves++;
         f32 acc = 0;
         if (node_accuracy(n, &acc)) {   // Hawk Eye: over the moves whose candidates' visits are known
             acc_sum[c] += acc, stage_acc[phase][c] += acc;
@@ -156,8 +156,7 @@ void game_report_compute(GameNode *const *line, isize count, GameReport *out) {
             if (node_matches_ai(n)) p->matches++, st->matches++;
         }
         stage_wr[phase][c] += MAX(wr_loss, 0.0f);
-        stage_score[phase][c] += MAX(score_loss, 0.0f);
-        p->score_hist[bucket(g_limits.score, score_loss)]++;
+        if (has_score) stage_score[phase][c] += MAX(score_loss, 0.0f), p->score_hist[bucket(g_limits.score, score_loss)]++;
         p->winrate_hist[bucket(g_limits.winrate, wr_loss)]++;
         if (loss_is_blunder(wr_loss)) p->blunders++, st->blunders++;
         else if (loss_is_mistake(wr_loss)) p->mistakes++, st->mistakes++;
@@ -182,7 +181,7 @@ void game_report_compute(GameNode *const *line, isize count, GameReport *out) {
         PlayerReport *p = &out->player[c];
         if (p->moves) {
             p->avg_winrate_loss = (f32)(wr_sum[c] / p->moves);
-            p->avg_score_loss = (f32)(score_sum[c] / p->moves);
+            if (p->score_moves) p->avg_score_loss = (f32)(score_sum[c] / p->score_moves);
         }
         if (p->match_moves) p->accuracy = (f32)(acc_sum[c] / p->match_moves);
         if (p->agreement_moves) p->agreement = (f32)(agree_sum[c] / p->agreement_moves);
@@ -190,7 +189,7 @@ void game_report_compute(GameNode *const *line, isize count, GameReport *out) {
             StageReport *st = &p->stage[ph];
             if (!st->moves) continue;
             st->avg_winrate_loss = (f32)(stage_wr[ph][c] / st->moves);
-            st->avg_score_loss = (f32)(stage_score[ph][c] / st->moves);
+            if (st->score_moves) st->avg_score_loss = (f32)(stage_score[ph][c] / st->score_moves);
             if (st->match_moves) st->accuracy = (f32)(stage_acc[ph][c] / st->match_moves);
             if (st->agreement_moves) st->agreement = (f32)(stage_agree[ph][c] / st->agreement_moves);
         }

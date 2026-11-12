@@ -9,11 +9,8 @@
 #include <mutex>
 #include <cctype>
 #include <string>
-#ifdef _WIN32
-#include <windows.h>
-#else
-#include <sys/select.h>
-#endif
+#include <condition_variable>
+#include <deque>
 
 #include "Utils.h"
 #include "GTP.h"
@@ -56,63 +53,46 @@ void Utils::trim(std::string & s) {
     s.erase(0, i);
 }
 
+// Standard input is read on its own thread into a queue, so a search can see that a
+// command is waiting (and stop) on every platform, pipe or console, without
+// OS-specific polling or losing lines buffered by the C++ stream.
+namespace {
+std::mutex g_input_mutex;
+std::condition_variable g_input_cv;
+std::deque<std::string> g_input_lines;
+bool g_input_eof = false;
+}
+
+void Utils::start_input_thread() {
+    std::thread([] {
+        std::string line;
+        while (std::getline(std::cin, line)) {
+            std::lock_guard<std::mutex> lock(g_input_mutex);
+            g_input_lines.push_back(line);
+            g_input_cv.notify_one();
+        }
+        std::lock_guard<std::mutex> lock(g_input_mutex);
+        g_input_eof = true;
+        g_input_cv.notify_one();
+    }).detach();
+}
+
+bool Utils::next_input_line(std::string & line) {
+    std::unique_lock<std::mutex> lock(g_input_mutex);
+    g_input_cv.wait(lock, [] { return !g_input_lines.empty() || g_input_eof; });
+    if (g_input_lines.empty()) return false;
+    line = std::move(g_input_lines.front());
+    g_input_lines.pop_front();
+    return true;
+}
+
 bool Utils::input_causes_stop() {
     return true;
 }
 
 bool Utils::input_pending(void) {
-#ifndef _WIN32
-    fd_set read_fds;
-    struct timeval timeout;
-    FD_ZERO(&read_fds);
-    FD_SET(0,&read_fds);
-    timeout.tv_sec = timeout.tv_usec = 0;
-    select(1,&read_fds,NULL,NULL,&timeout);
-    if (FD_ISSET(0,&read_fds)) {
-        return input_causes_stop();
-    } else {
-        return false;
-    }
-#else
-    static int init = 0, pipe;
-    static HANDLE inh;
-    DWORD dw;
-
-    if (!init) {
-        init = 1;
-        inh = GetStdHandle(STD_INPUT_HANDLE);
-        pipe = !GetConsoleMode(inh, &dw);
-        if (!pipe) {
-            SetConsoleMode(inh, dw & ~(ENABLE_MOUSE_INPUT | ENABLE_WINDOW_INPUT));
-            FlushConsoleInputBuffer(inh);
-        }
-    }
-
-    if (pipe) {
-        if (!PeekNamedPipe(inh, NULL, 0, NULL, &dw, NULL)) {
-            myprintf("Nothing at other end - exiting\n");
-            exit(EXIT_FAILURE);
-        }
-
-        if (dw) {
-            return input_causes_stop();
-        } else {
-            return false;
-        }
-    } else {
-        if (!GetNumberOfConsoleInputEvents(inh, &dw)) {
-            myprintf("Nothing at other end - exiting\n");
-            exit(EXIT_FAILURE);
-        }
-
-        if (dw <= 1) {
-            return false;
-        } else {
-            return input_causes_stop();
-        }
-    }
-#endif
-    return false;
+    std::lock_guard<std::mutex> lock(g_input_mutex);
+    return !g_input_lines.empty() || g_input_eof;
 }
 
 std::mutex IOmutex;

@@ -201,22 +201,30 @@ static void compute_node(GameTree *tree, GameNode *node) {
         break;
     }
 
+    NodeEval *kata = &node->evals[EVAL_KATAGO], *leela = &node->evals[EVAL_LEELA];
     StringView cge = game_node_prop(node, SV("CGE"));
-    if (cge.len && !node->eval.valid) node_eval_parse(cge, board->width, board->height, &node->eval);
+    if (cge.len && !kata->valid) node_eval_parse(cge, board->width, board->height, kata);
+    StringView cgl = game_node_prop(node, SV("CGL"));
+    if (cgl.len && !leela->valid && node_eval_parse(cgl, board->width, board->height, leela)) leela->source = EVAL_LEELA;
 
     StringView pl = game_node_prop(node, SV("PL"));
     if (sv_eq(pl, SV("B")) || sv_eq(pl, SV("b"))) node->to_play = STONE_BLACK;
     if (sv_eq(pl, SV("W")) || sv_eq(pl, SV("w"))) node->to_play = STONE_WHITE;
 
     // No CGE[]: analysis written by KaTrain (KT[]) or Lizzie / LizzieYzy (LZ[]).
-    if (!node->eval.valid) {
+    if (!kata->valid) {
         SgfProperty *kt = game_node_find_prop(node, SV("KT"));
-        if (kt) kt_parse(kt->values, kt->value_count, board->width, board->height, &node->eval);
+        if (kt) kt_parse(kt->values, kt->value_count, board->width, board->height, kata);
     }
-    if (!node->eval.valid) {
-        StringView lz = game_node_prop(node, SV("LZ"));
-        if (lz.len) lz_parse(lz, node->to_play, board->width, board->height, &node->eval);
+    StringView lz = game_node_prop(node, SV("LZ"));
+    if (lz.len) {   // LZ[] with a score is KataGo's (LizzieYzy); without, Leela Zero's
+        NodeEval e;
+        if (lz_parse(lz, node->to_play, board->width, board->height, &e)) {
+            e.source = e.no_score ? EVAL_LEELA : EVAL_KATAGO;
+            if (!node->evals[e.source].valid) node->evals[e.source] = e;
+        }
     }
+    node->eval = node->evals[tree->eval_source];
 }
 
 void game_tree_rebuild(GameTree *tree, GameNode *from) {
@@ -367,11 +375,13 @@ bool node_eval_parse(StringView text, i32 width, i32 height, NodeEval *out) {
     StringView rest = text;
     f64 wr = 0, score = 0;
     i64 visits = 0;
-    if (!sv_parse_f64(sv_chop_char(&rest, ','), &wr) || !sv_parse_f64(sv_chop_char(&rest, ','), &score) ||
+    StringView score_text = SV("");
+    if (!sv_parse_f64(sv_chop_char(&rest, ','), &wr) || ((score_text = sv_trim(sv_chop_char(&rest, ','))).len && !sv_parse_f64(score_text, &score)) ||
         !sv_parse_i64(sv_chop_char(&rest, ','), &visits)) {
         return false;
     }
     e.valid = true;
+    e.no_score = score_text.len == 0;   // "0.6326,,1200,..." from an engine without scores
     e.black_winrate = (f32)CLAMP(wr, 0.0, 1.0);
     e.black_score = (f32)score;
     e.visits = (i32)visits;
@@ -388,32 +398,66 @@ bool node_eval_parse(StringView text, i32 width, i32 height, NodeEval *out) {
     return true;
 }
 
+static EvalSource clamp_source(u8 source) { return source < EVAL_SOURCES ? (EvalSource)source : EVAL_KATAGO; }
+
+// Keeps the deeper of the stored and the new evaluation of the same engine; other
+// engines' evaluations are untouched.
 bool game_node_update_eval(GameTree *tree, GameNode *node, const NodeEval *eval) {
-    if (!eval->valid || (node->eval.valid && eval->visits < node->eval.visits)) return false;
-    node->eval = *eval;
+    EvalSource s = clamp_source(eval->source);
+    if (!eval->valid || (node->evals[s].valid && eval->visits < node->evals[s].visits)) return false;
+    node->evals[s] = *eval;
+    if (s == tree->eval_source) node->eval = *eval;
     tree->revision++;
     return true;
 }
 
 void game_node_store_eval(GameTree *tree, GameNode *node, const NodeEval *eval) {
+    EvalSource s = clamp_source(eval->source);
     tree->revision++;
-    node->eval = *eval;
+    node->evals[s] = *eval;
+    if (s == tree->eval_source) node->eval = *eval;
     char buffer[40 + NODE_EVAL_TOP * 12];   // header + "pd:0.123 " per candidate
-    i32 n = snprintf(buffer, sizeof(buffer), "%.4f,%.2f,%d,", eval->black_winrate, eval->black_score, eval->visits);
+    i32 n = eval->no_score ? snprintf(buffer, sizeof(buffer), "%.4f,,%d,", eval->black_winrate, eval->visits)
+                           : snprintf(buffer, sizeof(buffer), "%.4f,%.2f,%d,", eval->black_winrate, eval->black_score, eval->visits);
     for (i32 i = 0; i < eval->top_count && n < (i32)sizeof(buffer) - 16; ++i) {
         char coord[3];
         point_to_sgf(eval->top[i], coord);
         n += snprintf(buffer + n, sizeof(buffer) - (usize)n, "%s%s", i ? " " : "", point_is_pass(eval->top[i]) ? "tt" : coord);
         if (eval->top_share[i] > 0) n += snprintf(buffer + n, sizeof(buffer) - (usize)n, ":%.3f", eval->top_share[i]);
     }
-    game_node_set_prop(tree, node, SV("CGE"), sv(buffer));
+    game_node_set_prop(tree, node, s == EVAL_LEELA ? SV("CGL") : SV("CGE"), sv(buffer));
 }
+
+// Pre-order walk of every node.
+static GameNode *next_node(GameNode *node) {
+    if (node->first_child) return node->first_child;
+    while (node && !node->next_sibling) node = node->parent;
+    return node ? node->next_sibling : NULL;
+}
+
+void game_tree_set_eval_source(GameTree *tree, EvalSource source) {
+    if (source >= EVAL_SOURCES || source == tree->eval_source) return;
+    tree->eval_source = source;
+    for (GameNode *n = tree->root; n; n = next_node(n)) n->eval = n->evals[source];
+    tree->revision++;
+}
+
+bool game_tree_has_evals(const GameTree *tree, EvalSource source) {
+    for (GameNode *n = tree->root; n; n = next_node(n)) {
+        if (n->evals[source].valid) return true;
+    }
+    return false;
+}
+
+const char *eval_source_name(EvalSource source) { return source == EVAL_LEELA ? "Leela" : "KataGo"; }
 
 void game_tree_store_evals(GameTree *tree) {
     GameNode *node = tree->root;
     while (node) {
-        if (node->eval.valid) {
-            NodeEval e = node->eval;
+        for (i32 s = 0; s < EVAL_SOURCES; ++s) {
+            if (!node->evals[s].valid) continue;
+            NodeEval e = node->evals[s];
+            e.source = (u8)s;
             game_node_store_eval(tree, node, &e);
         }
         if (node->first_child) {
@@ -434,6 +478,7 @@ bool game_node_winrate_loss(const GameNode *node, f32 *loss) {
 
 bool game_node_score_loss(const GameNode *node, f32 *loss) {
     if (!node->has_move || !node->parent || !node->eval.valid || !node->parent->eval.valid) return false;
+    if (node->eval.no_score || node->parent->eval.no_score) return false;
     f32 before = node->parent->eval.black_score, after = node->eval.black_score;
     *loss = node->move.color == STONE_BLACK ? before - after : after - before;
     return true;

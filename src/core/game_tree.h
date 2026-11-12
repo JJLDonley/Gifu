@@ -19,6 +19,10 @@ struct SgfProperty {
 // Compact engine evaluation summary kept per node (for graphs / hawk-eye).
 enum { NODE_EVAL_TOP = 32 };   // candidates kept per node (Hawk Eye's match may look past the first few)
 
+// Which engine an evaluation comes from. Each one is stored apart (KataGo in CGE[],
+// Leela in CGL[]) and never replaces another's; the tree shows one at a time.
+typedef enum EvalSource { EVAL_KATAGO, EVAL_LEELA, EVAL_SOURCES } EvalSource;
+
 typedef struct NodeEval {
     bool valid;
     f32 black_winrate;   // 0..1
@@ -27,6 +31,8 @@ typedef struct NodeEval {
     i32 top_count;
     Point top[NODE_EVAL_TOP];       // engine's best moves for the side to play here, best first
     f32 top_share[NODE_EVAL_TOP];   // each one's share of the search (visits / root visits); 0 = unknown
+    bool no_score;   // from an engine without score estimates (Leela): black_score is unknown
+    u8 source;       // EvalSource (0 = KataGo)
 } NodeEval;
 
 
@@ -46,7 +52,8 @@ struct GameNode {
     i32 move_number;
     Board board;   // position after this node
 
-    NodeEval eval;
+    NodeEval eval;                    // the shown source's evaluation (GameTree.eval_source)
+    NodeEval evals[EVAL_SOURCES];     // every engine's own
 };
 
 typedef struct GameTree {
@@ -59,6 +66,7 @@ typedef struct GameTree {
     // there is nothing to keep in sync by hand.
     u64 revision;
     bool komi_fixed;   // the loader corrected a Fox-style KM[] (see sgf_fix_komi)
+    EvalSource eval_source;   // whose evaluations GameNode.eval shows (graph, panels, reports)
 } GameTree;
 
 GameTree *game_tree_new(i32 width, i32 height, f64 komi);
@@ -69,6 +77,12 @@ void game_node_store_eval(GameTree *tree, GameNode *node, const NodeEval *eval);
 // stored and the new evaluation, so browsing with live analysis never replaces a
 // game analysis made with more visits. Returns true if it changed.
 bool game_node_update_eval(GameTree *tree, GameNode *node, const NodeEval *eval);
+// Each source is kept apart: an update or store touches only evals[eval->source]
+// (and GameNode.eval when that is the shown source).
+// Shows `source`'s evaluations in GameNode.eval on every node.
+void game_tree_set_eval_source(GameTree *tree, EvalSource source);
+bool game_tree_has_evals(const GameTree *tree, EvalSource source);   // any node evaluated by it
+const char *eval_source_name(EvalSource source);                       // "KataGo", "Leela"
 bool node_eval_parse(StringView text, i32 width, i32 height, NodeEval *out);
 // Writes CGE[] for every node with a valid eval (call before saving).
 void game_tree_store_evals(GameTree *tree);

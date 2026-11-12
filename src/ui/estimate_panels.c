@@ -174,7 +174,9 @@ void panel_human_winrate(Ui *ui) {
     const NodeEval *eval = &app->tree->current->eval;
     i32 move = app->tree->current->move_number;
     f32 level = app->config.human_winrate_level;
-    bool fresh = best || eval->valid;
+    // Derived from the score lead: nothing to show for an engine without scores (Leela).
+    if (best && a->no_score) best = NULL;
+    bool fresh = best || (eval->valid && !eval->no_score);
     if (fresh) {
         f32 lead = best ? analysis_black_score(a, best->score_lead) : eval->black_score;
         f32 ai = best ? analysis_black_winrate(a, best->winrate) : eval->black_winrate;

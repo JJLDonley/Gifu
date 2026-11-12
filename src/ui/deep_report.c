@@ -117,7 +117,7 @@ static StageReport overall_of(const PlayerReport *p) {
     return (StageReport){ .moves = p->moves, .top1 = p->top1, .top3 = p->top3, .match_moves = p->match_moves, .matches = p->matches,
                           .mistakes = p->mistakes, .blunders = p->blunders,
                           .agreement = p->agreement, .agreement_moves = p->agreement_moves, .accuracy = p->accuracy,
-                          .avg_winrate_loss = p->avg_winrate_loss, .avg_score_loss = p->avg_score_loss };
+                          .avg_winrate_loss = p->avg_winrate_loss, .avg_score_loss = p->avg_score_loss, .score_moves = p->score_moves };
 }
 
 // The two players' numbers for the chosen range. Custom ranges are computed from
@@ -283,7 +283,7 @@ static void overview(DeepReport *d) {
         bool visits = s->match_moves > 0;
         f32 v[ROWS] = { s->accuracy, visits ? 100.0f * (f32)s->matches / (f32)s->match_moves : 0,
                         visits ? 100.0f * (f32)s->top1 / (f32)s->match_moves : 0, s->avg_winrate_loss * 100.0f, s->avg_score_loss };
-        bool known[ROWS] = { visits, visits, visits, s->moves > 0, s->moves > 0 };
+        bool known[ROWS] = { visits, visits, visits, s->moves > 0, s->score_moves > 0 };   // no points from Leela
         for (i32 r = 0; r < ROWS; ++r) {
             rows[r].value[color] = v[r];
             rows[r].known[color] = known[r];
@@ -972,6 +972,17 @@ static void body(Ui *ui, void *user) {
             } else {
                 CLAY_TEXT(ui_fmt(ui, "%d / %d " SV_FMT, d->report.analysed_nodes, (i32)d->count, SV_ARG(tr(ui, "report.analysed", "positions analysed"))),
                           ui_text_style(ui, FONT_UI, 13, c->text_muted));
+            }
+        }
+        // Whose analysis the report shows, when more than one engine analysed the game
+        // (each engine's evaluations are kept apart).
+        GameTree *tree = ui->app->tree;
+        if (game_tree_has_evals(tree, EVAL_KATAGO) && game_tree_has_evals(tree, EVAL_LEELA)) {
+            for (i32 src = 0; src < EVAL_SOURCES; ++src) {
+                if (ui_button(ui, CLAY_IDI("DeepSource", (u32)src), sv(eval_source_name((EvalSource)src)), BUTTON_NORMAL,
+                              tree->eval_source == (EvalSource)src, true)) {
+                    app_set_eval_source(ui->app, (EvalSource)src);
+                }
             }
         }
         ui_command_button_ex(ui, SV("analysis.rank"), SV("@rank"), true, BUTTON_NORMAL, 10);

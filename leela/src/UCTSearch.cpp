@@ -1,4 +1,8 @@
 #include "config.h"
+#include <climits>
+#include <cmath>
+#include <vector>
+#include <algorithm>
 
 #include <assert.h>
 #include <limits.h>
@@ -854,6 +858,102 @@ void UCTSearch::ponder() {
     dump_GUI_stats(m_rootstate, m_root);
 
     myprintf("\n%d visits, %d nodes\n\n", m_root.get_visits(), (int)m_nodes);
+}
+
+// The most visited line below `node`, read under each node's lock (the search keeps
+// running; nothing is re-sorted).
+std::string UCTSearch::principal_variation(UCTNode * node) {
+    std::string pv = m_rootstate.move_to_text(node->get_move());
+    UCTNode * current = node;
+    for (int depth = 0; depth < 30; ++depth) {
+        UCTNode * best = nullptr;
+        int best_visits = 0;
+        {
+            LOCK(current->get_mutex(), lock);
+            for (UCTNode * child = current->get_first_child(); child != nullptr; child = child->get_sibling()) {
+                if (child->get_visits() > best_visits) {
+                    best_visits = child->get_visits();
+                    best = child;
+                }
+            }
+        }
+        if (best == nullptr) break;
+        pv += " " + m_rootstate.move_to_text(best->get_move());
+        current = best;
+    }
+    return pv;
+}
+
+// One lz-analyze line: every visited root move, most visited first. Win rates and
+// priors are in 1/10000 as Leela Zero prints them; the win rate is Leela's own mix
+// of playouts and value network (the figure it chooses moves by).
+std::string UCTSearch::analysis_line(int max_moves) {
+    const int color = m_rootstate.board.get_to_move();
+    struct Row {
+        UCTNode * node;
+        int visits;
+        float winrate, prior;
+    };
+    std::vector<Row> rows;
+    {
+        LOCK(m_root.get_mutex(), lock);
+        for (UCTNode * child = m_root.get_first_child(); child != nullptr; child = child->get_sibling()) {
+            int visits = child->get_visits();
+            if (visits > 0) rows.push_back({ child, visits, child->get_mixed_score(color), child->get_score() });
+        }
+    }
+    std::stable_sort(rows.begin(), rows.end(), [](const Row & a, const Row & b) {
+        return a.visits != b.visits ? a.visits > b.visits : a.winrate > b.winrate;
+    });
+    if (max_moves > 0 && (int)rows.size() > max_moves) rows.resize(max_moves);
+    std::string line;
+    int order = 0;
+    for (const auto & row : rows) {
+        line += Utils::format("%sinfo move %s visits %d winrate %d prior %d order %d pv %s",
+                              line.empty() ? "" : " ", m_rootstate.move_to_text(row.node->get_move()).c_str(),
+                              row.visits, (int)std::lround(row.winrate * 10000.0f),
+                              (int)std::lround(row.prior * 10000.0f), order++, principal_variation(row.node).c_str());
+    }
+    return line;
+}
+
+void UCTSearch::analyze(int interval_cs, int max_moves) {
+    MCOwnerTable::get_MCO()->clear();
+    Playout::mc_owner(m_rootstate, 64);
+    m_root.create_children(m_nodes, m_rootstate, true, m_use_nets);
+    if (m_use_nets) {
+        m_root.netscore_children(m_nodes, m_rootstate, true);
+    }
+    m_root.kill_superkos(m_rootstate);
+
+    m_run = true;
+    m_playouts = 0;
+    m_maxplayouts = INT_MAX;
+    ThreadGroup tg(thread_pool);
+    for (int i = 1; i < cfg_num_threads; i++) {
+        tg.add_task(UCTWorker(m_rootstate, this, &m_root));
+    }
+    Time last;
+    do {
+        KoState currstate = m_rootstate;
+        play_simulation(currstate, &m_root);
+        increment_playouts();
+        Time now;
+        if (Time::timediff(last, now) >= interval_cs) {
+            last = now;
+            std::string line = analysis_line(max_moves);
+            if (!line.empty()) {
+                fprintf(stdout, "%s\n", line.c_str());
+                fflush(stdout);
+            }
+        }
+    } while (!Utils::input_pending());
+
+    m_run = false;
+#ifdef USE_OPENCL
+    opencl.join_outstanding_cb();
+#endif
+    tg.wait_all();
 }
 
 void UCTSearch::set_playout_limit(int playouts) {

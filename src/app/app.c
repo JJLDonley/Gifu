@@ -173,6 +173,7 @@ static void start_engine(App *app) {
         }
     }
     app->main.profile = profile;
+    app_follow_eval_source(app);
     if (!profile) {
         app->main.error = string_from(SV("no engine found (see assets/data/engines.kv)"));
         return;
@@ -220,12 +221,34 @@ static void store_node_eval(GameTree *tree, GameNode *node, const AnalysisSnapsh
         .black_winrate = analysis_black_winrate(a, best->winrate),
         .black_score = analysis_black_score(a, best->score_lead),
         .visits = a->total_visits,
+        .no_score = a->no_score,
+        .source = a->source,
     };
     for (i32 i = 0; i < a->candidate_count && e.top_count < NODE_EVAL_TOP; ++i) {
         e.top_share[e.top_count] = a->total_visits > 0 ? (f32)a->candidates[i].visits / (f32)a->total_visits : 0.0f;
         e.top[e.top_count++] = a->candidates[i].move;
     }
-    game_node_update_eval(tree, node, &e);   // keeps a deeper stored evaluation
+    game_node_update_eval(tree, node, &e);   // keeps a deeper stored evaluation of the same engine
+}
+
+// The evaluations the analysing engine writes: Leela's for a plain GTP engine (it
+// speaks lz-analyze), KataGo's otherwise.
+static EvalSource engine_source(const EngineProfile *profile) {
+    return profile && sv_eq(string_sv(&profile->kind), SV("gtp")) ? EVAL_LEELA : EVAL_KATAGO;
+}
+
+// Shows the main engine's evaluations, or the other engine's when the game has only those.
+void app_follow_eval_source(App *app) {
+    if (app->eval_source_pinned) return;
+    EvalSource want = engine_source(app->main.profile);
+    EvalSource other = want == EVAL_KATAGO ? EVAL_LEELA : EVAL_KATAGO;
+    if (!game_tree_has_evals(app->tree, want) && game_tree_has_evals(app->tree, other)) want = other;
+    game_tree_set_eval_source(app->tree, want);
+}
+
+void app_set_eval_source(App *app, EvalSource source) {
+    app->eval_source_pinned = true;
+    game_tree_set_eval_source(app->tree, source);
 }
 
 // ---- Whole-game analysis ------------------------------------------------------------------
@@ -351,6 +374,13 @@ void app_batch_stop(App *app) {
     if (!app->batch_restore_analysis) app_set_analysis(app, false);
 }
 
+// Game analysis over GTP still has to analyse `node`: the analysing engine has not
+// evaluated it yet, or with too few visits (other engines' evaluations do not count).
+static bool batch_needs(const App *app, const GameNode *node) {
+    const NodeEval *own = &node->evals[engine_source(app->main.profile)];
+    return !own->valid || own->visits < app->config.analysis_game_visits;
+}
+
 void app_batch_start(App *app) {
     if (!app->main.engine) return;
     app_batch_stop(app);
@@ -364,10 +394,7 @@ void app_batch_start(App *app) {
     app->batch_count = count;
     app->batch_index = 0;
     // Skip nodes that already have enough visits (e.g. loaded from CGE[]).
-    while (app->batch_index < count && line[app->batch_index]->eval.valid &&
-           line[app->batch_index]->eval.visits >= app->config.analysis_game_visits) {
-        app->batch_index++;
-    }
+    while (app->batch_index < count && !batch_needs(app, line[app->batch_index])) app->batch_index++;
     app->batch_restore_analysis = app->analysis_enabled;
     app->batch_running = true;
     app->ai_plays[STONE_BLACK] = app->ai_plays[STONE_WHITE] = false;
@@ -378,9 +405,7 @@ void app_batch_start(App *app) {
 
 static void batch_advance(App *app) {
     app->batch_index++;
-    while (app->batch_index < app->batch_count && app->batch_nodes[app->batch_index]->eval.visits >= app->config.analysis_game_visits) {
-        app->batch_index++;
-    }
+    while (app->batch_index < app->batch_count && !batch_needs(app, app->batch_nodes[app->batch_index])) app->batch_index++;
     if (app->batch_index >= app->batch_count) {
         app_set_status(app, "Game analysis complete");
         app_batch_stop(app);
@@ -909,6 +934,7 @@ void app_update(App *app) {
             case ENGINE_EVENT_ANALYSIS:
                 if (ev.analysis->position_id != app->main.synced_position_id || !app->main.synced_node) break;
                 store_node_eval(app->tree, app->main.synced_node, ev.analysis);
+                if (ev.analysis->source != app->tree->eval_source) app_follow_eval_source(app);
                 if (app->main.synced_node == app->tree->current) {
                     memcpy(app->analysis, ev.analysis, sizeof(AnalysisSnapshot));
                     app->analysis_valid = true;
@@ -1121,6 +1147,8 @@ static void replace_tree(App *app, GameTree *tree) {
     game_tree_free(app->retired_tree);
     app->retired_tree = app->tree;
     app->tree = tree;
+    app->eval_source_pinned = false;
+    app_follow_eval_source(app);
     app->tree_generation++;
     app->human_policy_node = NULL;   // points into the freed tree (its memory may be reused)
     string_free(&app->autosave_path);   // a new game gets its own auto-save file

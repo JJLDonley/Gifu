@@ -92,6 +92,8 @@ static void panel_winrate_summary(Ui *ui) {
     const Candidate *best = app->analysis_valid ? analysis_best(app->analysis) : NULL;
     const NodeEval *eval = &app->tree->current->eval;
     bool fresh = best || eval->valid;
+    // Leela gives no score: the row shows "—" instead of a made-up B+0.0.
+    bool score_known = best ? !app->analysis->no_score : eval->valid && !eval->no_score;
     if (fresh) {
         f32 target_wr = best ? analysis_black_winrate(app->analysis, best->winrate) : eval->black_winrate;
         f32 target_score = best ? analysis_black_score(app->analysis, best->score_lead) : eval->black_score;
@@ -129,7 +131,7 @@ static void panel_winrate_summary(Ui *ui) {
             }
         }
         char lead[32] = "—";
-        if (known) snprintf(lead, sizeof(lead), "%s+%.1f", score >= 0 ? "B" : "W", score >= 0 ? score : -score);
+        if (known && score_known) snprintf(lead, sizeof(lead), "%s+%.1f", score >= 0 ? "B" : "W", score >= 0 ? score : -score);
         row_begin_end_label(ui, tr(ui, "label.score", "Score"), sv(lead));
         StringView status = !app->main.engine ? tr(ui, "label.no_engine", "No engine")
                             : app->analysis_enabled ? tr(ui, "label.analyzing", "Analyzing")
@@ -151,7 +153,9 @@ static void panel_winrate_graph(Ui *ui) {
         // Legend: each name in its line's colour.
         const ThemeColors *c = &ui->theme->colors;
         CLAY({ .layout = { .childGap = ui_u16(ui, 14), .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
-            for (i32 k = 0; k < 2; ++k) {
+            // Leela's evaluations have no points: only the win-rate line.
+            i32 lines = ui->app->tree->eval_source == EVAL_LEELA ? 1 : 2;
+            for (i32 k = 0; k < lines; ++k) {
                 Color col = k == 0 ? c->graph_line : c->score_line;
                 CLAY({ .layout = { .childGap = ui_u16(ui, 5), .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
                     CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 14)), CLAY_SIZING_FIXED(ui_px(ui, k == 0 ? 3 : 2)) } },
@@ -247,7 +251,8 @@ static void compare_column(Ui *ui, const EngineSlot *slot, const AnalysisSnapsho
                      FONT_UI, 12, c->text_muted);
         } else {
         f32 wr = analysis_black_winrate(a, best->winrate), score = analysis_black_score(a, best->score_lead);
-        CLAY_TEXT(ui_fmt(ui, "B %.1f%%  %s+%.1f", wr * 100.0f, score >= 0 ? "B" : "W", fabsf(score)), ui_text_style(ui, FONT_MONO, 13, c->text));
+        if (a->no_score) CLAY_TEXT(ui_fmt(ui, "B %.1f%%", wr * 100.0f), ui_text_style(ui, FONT_MONO, 13, c->text));
+        else CLAY_TEXT(ui_fmt(ui, "B %.1f%%  %s+%.1f", wr * 100.0f, score >= 0 ? "B" : "W", fabsf(score)), ui_text_style(ui, FONT_MONO, 13, c->text));
         CLAY_TEXT(ui_fmt(ui, "%d " SV_FMT, a->total_visits, SV_ARG(tr(ui, "label.visits", "Visits"))), ui_text_style(ui, FONT_UI, 11, c->text_muted));
         for (i32 i = 0; i < MIN(a->candidate_count, 5); ++i) {
             const Candidate *cand = &a->candidates[i];
@@ -459,7 +464,7 @@ static void panel_candidates(Ui *ui) {
                         CLAY_TEXT(ui_fmt(ui, "%.1f%%", cand->winrate * 100.0f), ui_text_style(ui, FONT_MONO, 13, c->text));
                     }
                     CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 56)), CLAY_SIZING_FIT(0) } } }) {
-                        CLAY_TEXT(ui_fmt(ui, "%+.1f", cand->score_lead), ui_text_style(ui, FONT_MONO, 13, c->text));
+                        CLAY_TEXT(a->no_score ? ui_str(ui, SV("—")) : ui_fmt(ui, "%+.1f", cand->score_lead), ui_text_style(ui, FONT_MONO, 13, c->text));
                     }
                     CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childAlignment = { .x = CLAY_ALIGN_X_RIGHT } } }) {
                         CLAY_TEXT(ui_fmt(ui, "%d", cand->visits), ui_text_style(ui, FONT_MONO, 13, c->text_muted));

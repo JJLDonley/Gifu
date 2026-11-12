@@ -8,11 +8,11 @@ static bool near(f32 a, f32 b) { return fabsf(a - b) < 0.001f; }
 
 static void test_totals(void) {
     GameReport g1 = { 0 }, g2 = { 0 };
-    g1.player[STONE_BLACK] = (PlayerReport){ .moves = 100, .top1 = 50, .accuracy = 80, .avg_score_loss = 1.0f, .agreement = 40, .agreement_moves = 100,
+    g1.player[STONE_BLACK] = (PlayerReport){ .moves = 100, .top1 = 50, .accuracy = 80, .avg_score_loss = 1.0f, .score_moves = 100, .agreement = 40, .agreement_moves = 100,
                                              .mistakes = 3, .score_hist = { 60, 20, 10, 5, 5 } };
     g1.player[STONE_BLACK].stage[GAME_PHASE_OPENING] = (StageReport){ .moves = 25, .accuracy = 90 };
     g1.player[STONE_WHITE] = (PlayerReport){ .moves = 99, .accuracy = 70 };   // the opponent: ignored
-    g2.player[STONE_BLACK] = (PlayerReport){ .moves = 300, .top1 = 120, .accuracy = 60, .avg_score_loss = 2.0f, .agreement = 20, .agreement_moves = 100,
+    g2.player[STONE_BLACK] = (PlayerReport){ .moves = 300, .top1 = 120, .accuracy = 60, .avg_score_loss = 2.0f, .score_moves = 300, .agreement = 20, .agreement_moves = 100,
                                              .mistakes = 7, .score_hist = { 100, 100, 50, 30, 20 } };
     g2.player[STONE_BLACK].stage[GAME_PHASE_OPENING] = (StageReport){ .moves = 75, .accuracy = 70 };
     ProfileTotals t = { 0 };
@@ -23,7 +23,7 @@ static void test_totals(void) {
     CHECK(t.games[STONE_BLACK] == 2 && t.wins[STONE_BLACK] == 1 && t.losses[STONE_BLACK] == 1 && t.games[STONE_WHITE] == 0);
     CHECK(b->moves == 400 && b->top1 == 170 && b->mistakes == 10);
     CHECK(near(b->accuracy, 65.0f));         // (80*100 + 60*300) / 400
-    CHECK(near(b->avg_score_loss, 1.75f));
+    CHECK(near(b->avg_score_loss, 1.75f) && b->score_moves == 400);   // weighted by the moves with scores
     CHECK(near(b->agreement, 30.0f));         // weighted by the moves with shares
     CHECK(near(b->stage[GAME_PHASE_OPENING].accuracy, 75.0f));
     CHECK(b->score_hist[0] == 160 && b->score_hist[4] == 25);

@@ -1,5 +1,7 @@
 #include "engine/analysis.h"
 
+#include "core/game_tree.h"
+
 #include <stdlib.h>
 #include <string.h>
 
@@ -30,6 +32,8 @@ bool kata_analysis_parse_line(StringView line, i32 width, i32 height, AnalysisSn
     out->total_visits = 0;
     out->candidate_count = 0;
     out->has_ownership = false;
+    out->no_score = false;
+    out->source = EVAL_KATAGO;
 
     StringView rest = line;
     StringView token = sv_chop_token(&rest);
@@ -101,6 +105,18 @@ bool kata_analysis_parse_line(StringView line, i32 width, i32 height, AnalysisSn
     if (out->candidate_count > 1) qsort(out->candidates, (usize)out->candidate_count, sizeof(Candidate), compare_order);
     for (i32 i = 0; i < out->candidate_count; ++i) out->total_visits += out->candidates[i].visits;
     return out->candidate_count > 0 || out->has_ownership;
+}
+
+bool lz_analysis_parse_line(StringView line, i32 width, i32 height, AnalysisSnapshot *out) {
+    bool ok = kata_analysis_parse_line(line, width, height, out);
+    for (i32 i = 0; i < out->candidate_count; ++i) {
+        Candidate *c = &out->candidates[i];
+        c->winrate /= 10000.0f, c->prior /= 10000.0f, c->lcb /= 10000.0f;
+        c->score_lead = 0.0f, c->score_stdev = 0.0f;
+    }
+    out->no_score = true;
+    out->source = EVAL_LEELA;
+    return ok;
 }
 
 bool kata_raw_nn_parse(StringView text, i32 width, i32 height, HumanPolicy *out) {

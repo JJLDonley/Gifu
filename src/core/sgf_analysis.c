@@ -38,6 +38,7 @@ bool lz_parse(StringView text, Stone to_play, i32 w, i32 h, NodeEval *out) {
     f64 stm = 1.0 - mover / 100.0;   // side to move at this node
     out->black_winrate = (f32)(to_play == STONE_WHITE ? 1.0 - stm : stm);
     out->black_score = has_score ? (f32)(to_play == STONE_WHITE ? -score : score) : 0.0f;
+    out->no_score = !has_score;   // Leela Zero data has no score
     // Best moves, in order: every "move X" token.
     rest = line2;
     bool have_move = false;
@@ -57,11 +58,14 @@ bool lz_parse(StringView text, Stone to_play, i32 w, i32 h, NodeEval *out) {
 String lz_format(const NodeEval *e, Stone to_play, i32 w, i32 h) {
     f64 stm = to_play == STONE_WHITE ? 1.0 - e->black_winrate : e->black_winrate;
     f64 stm_score = to_play == STONE_WHITE ? -e->black_score : e->black_score;
-    String out = string_format("KataGo %.1f %d %.1f 0.0\n", (1.0 - stm) * 100.0, e->visits, stm_score);
+    // Without a score (Leela) the score fields are left out, as Leela Zero writes them.
+    String out = e->no_score ? string_format("Leela %.1f %d\n", (1.0 - stm) * 100.0, e->visits)
+                             : string_format("KataGo %.1f %d %.1f 0.0\n", (1.0 - stm) * 100.0, e->visits, stm_score);
     if (e->top_count > 0) {
         char coord[8];
         point_to_gtp(e->top[0], w, h, coord);
-        string_pushf(&out, "move %s visits %d winrate %d prior 0 scoreMean %.2f pv %s", coord, e->visits, (i32)(stm * 10000.0), stm_score, coord);
+        if (e->no_score) string_pushf(&out, "move %s visits %d winrate %d prior 0 pv %s", coord, e->visits, (i32)(stm * 10000.0), coord);
+        else string_pushf(&out, "move %s visits %d winrate %d prior 0 scoreMean %.2f pv %s", coord, e->visits, (i32)(stm * 10000.0), stm_score, coord);
     }
     return out;
 }
@@ -137,15 +141,18 @@ void game_tree_store_interop(GameTree *tree, bool lz, bool kt) {
     if (kt) game_node_set_prop(tree, tree->root, SV("KTV"), SV("1.0"));
     GameNode *node = tree->root;
     while (node) {
-        if (node->eval.valid) {
+        // KataGo's evaluation for both (KaTrain expects scores); Leela's for LZ[] when
+        // KataGo did not analyse the position.
+        const NodeEval *kata = &node->evals[EVAL_KATAGO], *any = kata->valid ? kata : &node->evals[EVAL_LEELA];
+        if (any->valid) {
             if (lz) {
-                String text = lz_format(&node->eval, node->to_play, w, h);
+                String text = lz_format(any, node->to_play, w, h);
                 game_node_set_prop(tree, node, SV("LZ"), string_sv(&text));
                 string_free(&text);
             }
-            if (kt) {
+            if (kt && kata->valid) {
                 String parts[3];
-                kt_format(&node->eval, w, h, parts);
+                kt_format(kata, w, h, parts);
                 game_node_remove_prop(tree, node, SV("KT"));
                 for (i32 i = 0; i < 3; ++i) {
                     game_node_add_prop_value(tree, node, SV("KT"), string_sv(&parts[i]));
