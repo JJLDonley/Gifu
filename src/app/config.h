@@ -41,6 +41,7 @@ typedef struct Config {
     i32 engine_max_processes;
     i32 report_compare_rank;
     String report_mistakes_sort, report_mistakes_by;
+    i32 report_range, report_range_from, report_range_to;
     bool sgf_autosave;         // save the game (with its analysis) automatically
     i32 sgf_autosave_seconds;  // how often analysis changes are saved (edits: a few seconds after)
     bool sgf_save_lz;         // also write analysis as LZ[] (Lizzie / LizzieYzy)

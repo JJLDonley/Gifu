@@ -82,6 +82,10 @@ static const ConfigField FIELDS[] = {
     // Mistakes table: sorted by winrate | points | move; `by` picks which biggest
     // losses are listed when sorted by move number.
     STR("report.mistakes_sort", report_mistakes_sort, "winrate"),
+    // Overview range: 0 whole game, 1-3 a phase, 4 moves report.range_from..range_to (0 = the end).
+    INT("report.range", report_range, 0, 0, 4),
+    INT("report.range_from", report_range_from, 1, 1, 9999),
+    INT("report.range_to", report_range_to, 0, 0, 9999),
     STR("report.mistakes_by", report_mistakes_by, "winrate"),
     INT("engine.max_processes", engine_max_processes, 1, 1, 4),
     INT("new_game.size", new_game_size, 19, 5, 25),
