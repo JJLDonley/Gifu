@@ -484,12 +484,12 @@ static void sync_window(Ui *ui) {
     app->desktop = (ScreenRect){ x0, y0, x1 - x0, y1 - y0 };
 }
 
-// The layout follows what you are doing: the play preset (ai.layout) while an AI
-// plays, the analysis preset (analysis.layout) otherwise, from startup on. An empty
-// setting means layout.lisp.
+// The layout follows what you last did: New game or an AI button -> the play preset
+// (ai.layout); Space in it -> the analysis preset (analysis.layout), also at startup.
+// An empty setting means layout.lisp.
 static void follow_game_layout(Ui *ui) {
     const App *app = ui->app;
-    StringView want = app_hints_hidden(app) ? string_sv(&app->config.ai_layout) : string_sv(&app->config.analysis_layout);
+    StringView want = app->play_layout ? string_sv(&app->config.ai_layout) : string_sv(&app->config.analysis_layout);
     if (!sv_eq(want, string_sv(&ui->layout_preset))) layout_use_preset(ui, want);
 }
 
