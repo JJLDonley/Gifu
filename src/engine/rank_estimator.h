@@ -10,6 +10,10 @@
 
 enum { RANK_COUNT = 12 };
 StringView rank_label(i32 index);     // "20k" ... "9d"
+// An estimate for display: "3d KGS". KataGo's human profiles (rank_X) are KGS ranks
+// (KataGo's sgfmetadata.cpp: source KGS, 20 min + 5x30 s); other servers differ
+// (Fox runs about 2 ranks higher at dan level).
+StringView rank_estimate_label(i32 index);
 StringView rank_profile(i32 index);   // "rank_20k" ...
 
 // ---- Pure scoring (unit-tested) -------------------------------------------------------------

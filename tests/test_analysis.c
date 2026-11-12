@@ -96,7 +96,7 @@ static void test_json_human_query(void) {
     CHECK_SV(string_sv(&q), SV("{\"id\":\"r.r4\",\"moves\":[[\"B\",\"D4\"],[\"W\",\"Q16\"]],\"initialStones\":[],"
                                "\"rules\":\"chinese\",\"komi\":7.5,\"boardXSize\":19,\"boardYSize\":19,\"maxVisits\":1,"
                                "\"initialPlayer\":\"B\",\"analyzeTurns\":[0,1],\"includePolicy\":true,"
-                               "\"overrideSettings\":{\"humanSLProfile\":\"rank_5k\"}}"));
+                               "\"overrideSettings\":{\"ignorePreRootHistory\":false,\"humanSLProfile\":\"rank_5k\"}}"));
     string_free(&q);
     // humanPolicy: width*height + pass, row-major from the top-left, -1 = illegal (3x2 board).
     TurnResult r;

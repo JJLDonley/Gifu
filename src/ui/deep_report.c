@@ -199,11 +199,11 @@ static void butterfly_header(DeepReport *d, const StageReport st[3]) {
                 if (!left) {
                     CLAY_TEXT(ui_fmt(ui, "%d %s", st[color].moves, st[color].moves == 1 ? "move" : "moves"), ui_text_style(ui, FONT_UI, 12, c->text_muted));
                 }
-                if (!left && rank >= 0) CLAY_TEXT(ui_fmt(ui, "≈ " SV_FMT, SV_ARG(rank_label(rank))), ui_text_style(ui, FONT_UI_BOLD, 13, c->human_policy));
+                if (!left && rank >= 0) CLAY_TEXT(ui_fmt(ui, "≈ " SV_FMT, SV_ARG(rank_estimate_label(rank))), ui_text_style(ui, FONT_UI_BOLD, 13, c->human_policy));
                 if (left) ui_stone_dot(ui, color);
                 ui_label(ui, player_name(ui, color), FONT_UI_BOLD, 16, c->text);
                 if (!left) ui_stone_dot(ui, color);
-                if (left && rank >= 0) CLAY_TEXT(ui_fmt(ui, "≈ " SV_FMT, SV_ARG(rank_label(rank))), ui_text_style(ui, FONT_UI_BOLD, 13, c->human_policy));
+                if (left && rank >= 0) CLAY_TEXT(ui_fmt(ui, "≈ " SV_FMT, SV_ARG(rank_estimate_label(rank))), ui_text_style(ui, FONT_UI_BOLD, 13, c->human_policy));
                 if (left) {
                     CLAY_TEXT(ui_fmt(ui, "%d %s", st[color].moves, st[color].moves == 1 ? "move" : "moves"), ui_text_style(ui, FONT_UI, 12, c->text_muted));
                 }
@@ -758,7 +758,7 @@ static void rank_card(DeepReport *d, Stone color, i32 ref) {
             ui_label(ui, player_name(ui, color), FONT_UI_BOLD, 16, c->text);
             CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) } } }) {}
             if (est >= 0) {
-                CLAY_TEXT(ui_fmt(ui, "≈ " SV_FMT, SV_ARG(rank_label(est))), ui_text_style(ui, FONT_UI_BOLD, 22, c->human_policy));
+                CLAY_TEXT(ui_fmt(ui, "≈ " SV_FMT, SV_ARG(rank_estimate_label(est))), ui_text_style(ui, FONT_UI_BOLD, 22, c->human_policy));
                 CLAY_TEXT(ui_fmt(ui, "%.0f%%", post[est] * 100.0f), ui_text_style(ui, FONT_MONO, 13, c->text_muted));
             }
         }
@@ -798,7 +798,7 @@ static void rank_card(DeepReport *d, Stone color, i32 ref) {
                 i32 r = rank_tally_best(&app->rank.phase[ph][color]);
                 CLAY({ .layout = { .childGap = ui_u16(ui, 5), .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
                     ui_label(ui, tr(ui, PHASE_KEYS[ph], PHASE_FALLBACK[ph]), FONT_UI, 13, c->text_muted);
-                    ui_label(ui, r >= 0 ? rank_label(r) : SV("—"), FONT_UI_BOLD, 15, c->text);
+                    ui_label(ui, r >= 0 ? rank_estimate_label(r) : SV("—"), FONT_UI_BOLD, 15, c->text);
                 }
             }
         }
@@ -835,11 +835,14 @@ static void rank_page(DeepReport *d) {
         return;
     }
     i32 ref = CLAMP(app->config.report_compare_rank, 0, RANK_COUNT - 1);
+    // The scale: KataGo's human ranks are KGS ranks.
+    ui_label(ui, tr(ui, "report.rank_scale", "Ranks are on the KGS scale (KataGo's human network). Fox ranks are about 2 higher at dan level; one game gives roughly ±2 ranks."),
+             FONT_UI, 12, c->text_muted);
     // Reference rank picker.
     CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 4),
                        .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
         CLAY({ .layout = { .padding = { 0, ui_u16(ui, 8), 0, 0 } } }) {
-            ui_label(ui, tr(ui, "report.compare_with", "Compare with"), FONT_UI_BOLD, 14, c->text);
+            ui_label(ui, tr(ui, "report.compare_with_kgs", "Compare with (KGS)"), FONT_UI_BOLD, 14, c->text);
         }
         for (i32 r = 0; r < RANK_COUNT; ++r) {
             if (ui_button(ui, CLAY_IDI("RankRef", (u32)r), rank_label(r), BUTTON_NORMAL, r == ref, true)) app->config.report_compare_rank = r;

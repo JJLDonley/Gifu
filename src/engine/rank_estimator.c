@@ -14,6 +14,11 @@ static const char *const PROFILES[RANK_COUNT] = { "rank_20k", "rank_15k", "rank_
                                                   "rank_1k",  "rank_1d",  "rank_3d",  "rank_5d", "rank_7d", "rank_9d" };
 
 StringView rank_label(i32 i) { return i >= 0 && i < RANK_COUNT ? sv(LABELS[i]) : SV("?"); }
+StringView rank_estimate_label(i32 i) {
+    static const char *const KGS[RANK_COUNT] = { "20k KGS", "15k KGS", "10k KGS", "7k KGS", "5k KGS", "3k KGS",
+                                                 "1k KGS",  "1d KGS",  "3d KGS",  "5d KGS", "7d KGS", "9d KGS" };
+    return i >= 0 && i < RANK_COUNT ? sv(KGS[i]) : SV("?");
+}
 StringView rank_profile(i32 i) { return i >= 0 && i < RANK_COUNT ? sv(PROFILES[i]) : SV(""); }
 
 // ---- Scoring ----------------------------------------------------------------------------------

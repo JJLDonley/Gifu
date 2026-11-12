@@ -66,7 +66,9 @@ String katago_analysis_query(const AnalysisJob *job) {
     string_push_char(&q, ']');
     if (job->include_human_policy) string_push(&q, SV(",\"includePolicy\":true"));
     if (job->human_profile.len) {
-        string_push(&q, SV(",\"overrideSettings\":{\"humanSLProfile\":"));
+        // Human moves depend on the recent moves: KataGo's analysis ignores the history
+        // by default, which its docs say to turn off for the human model.
+        string_push(&q, SV(",\"overrideSettings\":{\"ignorePreRootHistory\":false,\"humanSLProfile\":"));
         push_json_string(&q, job->human_profile);
         string_push_char(&q, '}');
     }

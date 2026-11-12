@@ -323,7 +323,7 @@ static void rank_chip(Ui *ui, Stone color) {
                        .padding = { ui_u16(ui, 6), ui_u16(ui, 6), ui_u16(ui, 2), ui_u16(ui, 2) } },
            .backgroundColor = color_to_clay(color_with_alpha(c->human_policy, 0.14f)),
            .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 4)) }) {
-        CLAY_TEXT(ui_fmt(ui, "≈ " SV_FMT, SV_ARG(rank_label(best))), ui_text_style(ui, FONT_UI_BOLD, 12, c->human_policy));
+        CLAY_TEXT(ui_fmt(ui, "≈ " SV_FMT, SV_ARG(rank_estimate_label(best))), ui_text_style(ui, FONT_UI_BOLD, 12, c->human_policy));
         CLAY_TEXT(ui_fmt(ui, "%.0f%%", post[best] * 100.0f), ui_text_style(ui, FONT_MONO, 10, c->text_muted));
     }
 }

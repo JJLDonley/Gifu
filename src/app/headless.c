@@ -36,8 +36,8 @@ static void print_rank_line(const GameTree *tree, const RankProgress *p) {
         rank_tally_posterior(t, post);
         i32 best = rank_tally_best(t);
         StringView name = game_tree_info(tree, c == STONE_BLACK ? SV("PB") : SV("PW"));
-        printf("  %s %-20.*s ~%-4.*s (%.0f%%, %d moves)\n", c == STONE_BLACK ? "B" : "W", (int)name.len, name.data,
-               SV_ARG(rank_label(best)), best >= 0 ? post[best] * 100.0f : 0.0f, t->moves);
+        printf("  %s %-20.*s ~%-8.*s (%.0f%%, %d moves)\n", c == STONE_BLACK ? "B" : "W", (int)name.len, name.data,
+               SV_ARG(rank_estimate_label(best)), best >= 0 ? post[best] * 100.0f : 0.0f, t->moves);
     }
 }
 

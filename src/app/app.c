@@ -638,8 +638,8 @@ static void rank_update(App *app) {
             if (p->failed) {
                 app_set_status(app, "Rank estimate failed: %s", string_cstr(&p->error));
             } else {
-                app_set_status(app, "Estimated ranks: Black " SV_FMT ", White " SV_FMT, SV_ARG(rank_label(rank_tally_best(&p->tally[STONE_BLACK]))),
-                               SV_ARG(rank_label(rank_tally_best(&p->tally[STONE_WHITE]))));
+                app_set_status(app, "Estimated ranks: Black " SV_FMT ", White " SV_FMT, SV_ARG(rank_estimate_label(rank_tally_best(&p->tally[STONE_BLACK]))),
+                               SV_ARG(rank_estimate_label(rank_tally_best(&p->tally[STONE_WHITE]))));
             }
             app_rank_stop(app);
         }
