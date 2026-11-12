@@ -60,6 +60,9 @@ static void style_page(DeepReport *d, const StyleCounts *black, const StyleCount
 
 // The Profile dialog shows a profile with the same views: "you as Black / White".
 static bool g_profile_mode;
+// Edit mode (the Deep report's Edit button, for all its tabs): settings such as the
+// match rule, the filters and the Distribution limits become inputs; otherwise text.
+static bool g_editing;
 
 static StringView player_name(Ui *ui, Stone color) {
     if (g_profile_mode) {
@@ -162,7 +165,7 @@ static void butterfly_row(Ui *ui, const ButterflyRow *row, f32 row_px, f32 font,
             if (!left) {   // the label, centred between the two halves
                 CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, font * 8.1f)), CLAY_SIZING_FIT(0) },
                                    .childAlignment = { .x = CLAY_ALIGN_X_CENTER } } }) {
-                    ui_label(ui, row->label, FONT_UI, font * 0.9f, c->text_muted);
+                    ui_label(ui, row->label, FONT_UI, font * 0.81f, c->text_muted);
                 }
             }
             f32 v = row->value[color];
@@ -230,9 +233,13 @@ static i32 range_bar(DeepReport *d, i32 *from, i32 *to, i32 last_move) {
             i32 hi = MAX(last_move, 1);
             i32 a = CLAMP(cfg->report_range_from, 1, hi), b = cfg->report_range_to > 0 ? CLAMP(cfg->report_range_to, 1, hi) : hi;
             ui_label(ui, tr(ui, "report.range_moves", "Moves"), FONT_UI, 13, ui->theme->colors.text_muted);
-            a = move_stepper(ui, 0, a, 1, hi);
-            ui_label(ui, SV("–"), FONT_UI, 13, ui->theme->colors.text_muted);
-            b = move_stepper(ui, 1, b, 1, hi);
+            if (g_editing) {
+                a = move_stepper(ui, 0, a, 1, hi);
+                ui_label(ui, SV("–"), FONT_UI, 13, ui->theme->colors.text_muted);
+                b = move_stepper(ui, 1, b, 1, hi);
+            } else {
+                ui_label(ui, arena_format(&ui->frame, "%d–%d", a, b), FONT_UI, 13, ui->theme->colors.text_muted);
+            }
             if (a > b) {   // the one being changed pushes the other
                 if (a != cfg->report_range_from) b = a;
                 else a = b;
@@ -287,11 +294,19 @@ static void overview(DeepReport *d) {
         Config *cfg = &ui->app->config;
         CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 8),
                            .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
-            ui_label(ui, tr(ui, "report.match_rule", "Match: one of the top"), FONT_UI, 13, ui->theme->colors.text_muted);
-            f32 moves = value_stepper(ui, 10, (f32)cfg->report_match_moves, 1.0f, 1.0f, (f32)NODE_EVAL_TOP, "%.0f");
-            ui_label(ui, tr(ui, "report.match_rule2", "moves, with at least (%)"), FONT_UI, 13, ui->theme->colors.text_muted);
-            f32 pct = value_stepper(ui, 11, cfg->report_match_percent, 5.0f, 0.0f, 100.0f, "%g");
-            ui_label(ui, tr(ui, "report.match_rule3", "of the best move's visits"), FONT_UI, 13, ui->theme->colors.text_muted);
+            f32 moves = (f32)cfg->report_match_moves, pct = cfg->report_match_percent;
+            if (g_editing) {
+                ui_label(ui, tr(ui, "report.match_rule", "Match: one of the top"), FONT_UI, 13, ui->theme->colors.text_muted);
+                moves = value_stepper(ui, 10, moves, 1.0f, 1.0f, (f32)NODE_EVAL_TOP, "%.0f");
+                ui_label(ui, tr(ui, "report.match_rule2", "moves, with at least (%)"), FONT_UI, 13, ui->theme->colors.text_muted);
+                pct = value_stepper(ui, 11, pct, 5.0f, 0.0f, 100.0f, "%g");
+                ui_label(ui, tr(ui, "report.match_rule3", "of the best move's visits"), FONT_UI, 13, ui->theme->colors.text_muted);
+            } else {
+                ui_label(ui, arena_format(&ui->frame, SV_FMT " %d " SV_FMT " %g%% " SV_FMT, SV_ARG(tr(ui, "report.match_rule", "Match: one of the top")),
+                                          cfg->report_match_moves, SV_ARG(tr(ui, "report.match_rule_text", "moves, with at least")),
+                                          (f64)cfg->report_match_percent, SV_ARG(tr(ui, "report.match_rule3", "of the best move's visits"))),
+                         FONT_UI, 13, ui->theme->colors.text_muted);
+            }
             if ((i32)moves != cfg->report_match_moves || fabsf(pct - cfg->report_match_percent) > 1e-4f) {
                 cfg->report_match_moves = (i32)moves, cfg->report_match_percent = pct;
                 app_apply_loss_limits(ui->app);   // also applies the match rule
@@ -495,15 +510,22 @@ static void distribution(DeepReport *d, bool winrate, f32 row_px) {
                             f32 unit = winrate ? 100.0f : 1.0f;
                             f64 start = b > 0 ? lim[b - 1] * unit : 0.0;
                             Clay_ElementId fid = CLAY_IDI("DistStart", idx);
-                            if (ui_number_input(ui, fid, &start, 0.0, 100.0, "%g", font * 3.2f, editable)) set_limit(ui, winrate, b, (f32)start);
                             StringView end = b < LOSS_BUCKETS - 1 ? arena_format(&ui->frame, "–%g%s", (f64)(lim[b] * unit), winrate ? "%" : "")
                                                                   : arena_format(&ui->frame, "+%s", winrate ? "%" : "");
-                            CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, font * 3.4f)), CLAY_SIZING_FIT(0) } } }) {
-                                ui_label(ui, end, FONT_MONO, font, c->text);
+                            if (!g_editing) {   // the range as text: "5–10%", "< 2%", "≥ 20%"
+                                StringView text = b == 0                 ? arena_format(&ui->frame, "< %g%s", (f64)(lim[0] * unit), winrate ? "%" : "")
+                                                  : b == LOSS_BUCKETS - 1 ? arena_format(&ui->frame, "≥ %g%s", (f64)(lim[b - 1] * unit), winrate ? "%" : "")
+                                                                         : arena_format(&ui->frame, "%g" SV_FMT, start, SV_ARG(end));
+                                ui_label(ui, text, FONT_MONO, font * 0.9f, c->text);
+                            } else {
+                                if (ui_number_input(ui, fid, &start, 0.0, 100.0, "%g", font * 3.2f, editable)) set_limit(ui, winrate, b, (f32)start);
+                                CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, font * 3.4f)), CLAY_SIZING_FIT(0) } } }) {
+                                    ui_label(ui, end, FONT_MONO, font * 0.9f, c->text);
+                                }
+                                if (ui_button(ui, CLAY_IDI("DistMinus", idx), SV("−"), BUTTON_GHOST, false, editable) && editable) set_limit(ui, winrate, b, lim[b - 1] * unit - step);
+                                if (ui_button(ui, CLAY_IDI("DistPlus", idx), SV("+"), BUTTON_GHOST, false, editable) && editable) set_limit(ui, winrate, b, lim[b - 1] * unit + step);
+                                if (editable && ui->wheel != 0 && Clay_PointerOver(fid) && ui->focus_id != fid.id) set_limit(ui, winrate, b, lim[b - 1] * unit + (ui->wheel > 0 ? step : -step));
                             }
-                            if (ui_button(ui, CLAY_IDI("DistMinus", idx), SV("−"), BUTTON_GHOST, false, editable) && editable) set_limit(ui, winrate, b, lim[b - 1] * unit - step);
-                            if (ui_button(ui, CLAY_IDI("DistPlus", idx), SV("+"), BUTTON_GHOST, false, editable) && editable) set_limit(ui, winrate, b, lim[b - 1] * unit + step);
-                            if (editable && ui->wheel != 0 && Clay_PointerOver(fid) && ui->focus_id != fid.id) set_limit(ui, winrate, b, lim[b - 1] * unit + (ui->wheel > 0 ? step : -step));
                         }
                     }
                     Clay_String count = ui_fmt(ui, "%d · %.0f%%", hist[b], share * 100.0f);
@@ -566,11 +588,17 @@ static void mistakes(DeepReport *d) {
     // Filters: which moves are listed.
     CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 8),
                        .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
-        ui_label(ui, tr(ui, "report.filter_winrate", "Win rate lost ≥ (%)"), FONT_UI, 13, c->text_muted);
-        cfg->report_filter_winrate = value_stepper(ui, 0, cfg->report_filter_winrate, 1.0f, 0.0f, 100.0f, "%g");
-        CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 10)), CLAY_SIZING_FIT(0) } } }) {}
-        ui_label(ui, tr(ui, "report.filter_points", "Points lost ≥"), FONT_UI, 13, c->text_muted);
-        cfg->report_filter_points = value_stepper(ui, 1, cfg->report_filter_points, 0.5f, 0.0f, 100.0f, "%g");
+        if (g_editing) {
+            ui_label(ui, tr(ui, "report.filter_winrate", "Win rate lost ≥ (%)"), FONT_UI, 13, c->text_muted);
+            cfg->report_filter_winrate = value_stepper(ui, 0, cfg->report_filter_winrate, 1.0f, 0.0f, 100.0f, "%g");
+            CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 10)), CLAY_SIZING_FIT(0) } } }) {}
+            ui_label(ui, tr(ui, "report.filter_points", "Points lost ≥"), FONT_UI, 13, c->text_muted);
+            cfg->report_filter_points = value_stepper(ui, 1, cfg->report_filter_points, 0.5f, 0.0f, 100.0f, "%g");
+        } else {
+            ui_label(ui, arena_format(&ui->frame, SV_FMT " %g%%  ·  " SV_FMT " %g", SV_ARG(tr(ui, "report.filter_winrate_text", "Win rate lost ≥")),
+                                      (f64)cfg->report_filter_winrate, SV_ARG(tr(ui, "report.filter_points", "Points lost ≥")), (f64)cfg->report_filter_points),
+                     FONT_UI, 13, c->text_muted);
+        }
     }
     // Sorted by win rate lost, points lost or move number (a click on the column
     // title; remembered).
@@ -921,6 +949,7 @@ static void block(Ui *ui, StringView title, StringView help) {
 
 static void body(Ui *ui, void *user) {
     DeepReport *d = user;
+    g_editing = ui->deep_report_editing;
     const ThemeColors *c = &ui->theme->colors;
     // Progress / actions.
     CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 8),
@@ -942,6 +971,11 @@ static void body(Ui *ui, void *user) {
         }
         ui_command_button_ex(ui, SV("analysis.rank"), SV("@rank"), true, BUTTON_NORMAL, 10);
         ui_command_button_ex(ui, SV("analysis.game"), SV("@chart"), true, BUTTON_NORMAL, 11);
+        // Edit: the report's settings (match rule, custom range, filters, Distribution
+        // limits) as inputs on every tab; Done shows them as text again.
+        StringView edit_label = ui->deep_report_editing ? arena_format(&ui->frame, "@check " SV_FMT, SV_ARG(tr(ui, "report.done", "Done")))
+                                                        : arena_format(&ui->frame, "@pen " SV_FMT, SV_ARG(tr(ui, "report.edit", "Edit")));
+        if (ui_button(ui, CLAY_ID("DeepEdit"), edit_label, BUTTON_NORMAL, ui->deep_report_editing, true)) ui->deep_report_editing = !ui->deep_report_editing;
         ui_help_button(ui, SV("deep_report"));
     }
     // Tabs: one kind of data per page.
@@ -1222,6 +1256,7 @@ void profile_dialog_body(Ui *ui, void *user) {
     f32 page_h = fminf(ui_px(ui, 520), (f32)GetScreenHeight() * 0.58f);
     d->page_h = page_h;
     g_profile_mode = true;
+    g_editing = false;   // the Profile dialog shows the settings as text
     Clay_ElementId page = CLAY_ID("ProfilePage");
     CLAY({ .id = page, .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(page_h) }, .layoutDirection = CLAY_TOP_TO_BOTTOM,
                                    .childGap = ui_u16(ui, 12), .padding = { 0, ui_u16(ui, 12), 0, 0 } },

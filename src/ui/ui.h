@@ -127,6 +127,7 @@ typedef struct Ui {
     bool debug;
     char help_topic[32];   // open "?" popover (empty = none)
     i32 deep_report_tab;
+    bool deep_report_editing;   // the Deep report's Edit button: its settings shown as inputs
     i32 profile_tab;
     i32 deep_report_filter;   // All moves tab: bit 0 Black, bit 1 White, bit 2 losses >= 2 points
     ThemeEditor theme_editor;
