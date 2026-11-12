@@ -1486,6 +1486,7 @@ static void cmd_match(void *c) {
 }
 static bool in_match(const void *c) { return CAPP(c)->match_mode; }
 
+bool app_hints_hidden(const App *app) { return app->ai_plays[STONE_BLACK] || app->ai_plays[STONE_WHITE]; }
 bool app_eval_hidden(const App *app) { return (app->ai_plays[STONE_BLACK] || app->ai_plays[STONE_WHITE]) && !app->config.ai_show_eval; }
 
 static void cmd_show_eval(void *c) {

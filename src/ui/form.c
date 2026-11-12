@@ -182,6 +182,9 @@ static void choice_field(Ui *ui, const Sexpr *v, const ConfigField *f, u32 index
                                 if (numeric) config_set_number(config, f, options[i].number);
                                 else config_set_string(config, f, options[i].value);
                                 apply_change(ui, f);
+                                // The old value was freed: the remaining options compare against the new one.
+                                current = config_get_string(config, f);
+                                current_number = config_get_number(config, f);
                             }
                         }
                     }

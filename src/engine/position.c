@@ -73,6 +73,7 @@ void position_spec_from_node(const GameTree *tree, const GameNode *node, StringV
     out->to_play = node->to_play;
     out->setup_count = 0;
     out->move_count = 0;
+    out->handicap = false;
 
     // Collect the root..node path (deepest first), then walk it forward.
     const GameNode *path[1024 + 1];
@@ -85,6 +86,8 @@ void position_spec_from_node(const GameTree *tree, const GameNode *node, StringV
             if (b->cells[i] == STONE_EMPTY) continue;
             out->setup[out->setup_count++] = (Move){ (Stone)b->cells[i], board_point(b, i) };
         }
+        out->handicap = base_node == tree->root && out->setup_count >= 2;
+        for (i32 i = 0; i < out->setup_count; ++i) out->handicap &= out->setup[i].color == STONE_BLACK;
     } else if (base_node->has_move) {
         out->moves[out->move_count++] = base_node->move;
     }

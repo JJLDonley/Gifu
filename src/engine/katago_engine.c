@@ -187,11 +187,14 @@ static void kg_set_position(Engine *e, const PositionSpec *pos) {
         vec_clear(&k->setup);
         vec_clear(&k->moves);
         if (pos->setup_count > 0) {
-            String cmd = string_from(SV("set_position"));
+            // Handicap stones go in as handicap (GTP set_free_handicap): with set_position
+            // KataGo keeps Black to move and does not count them as handicap.
+            String cmd = string_from(pos->handicap ? SV("set_free_handicap") : SV("set_position"));
             for (i32 i = 0; i < pos->setup_count; ++i) {
                 char coord[8];
                 point_to_gtp(pos->setup[i].point, k->width, k->height, coord);
-                string_pushf(&cmd, " %s %s", pos->setup[i].color == STONE_BLACK ? "B" : "W", coord);
+                if (pos->handicap) string_pushf(&cmd, " %s", coord);
+                else string_pushf(&cmd, " %s %s", pos->setup[i].color == STONE_BLACK ? "B" : "W", coord);
                 vec_push(&k->setup, pos->setup[i]);
             }
             gtp_client_send(k->gtp, string_sv(&cmd));

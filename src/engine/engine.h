@@ -24,6 +24,10 @@ typedef struct PositionSpec {
     Stone to_play;
     i32 setup_count;
     Move setup[BOARD_MAX_POINTS];
+    // The setup is handicap stones (the game starts from black stones only, two or
+    // more): engines must get them as handicap (GTP set_free_handicap), so that
+    // White moves first and gets the handicap bonus (KataGo's whiteHandicapBonus).
+    bool handicap;
     i32 move_count;
     Move moves[1024];
 } PositionSpec;

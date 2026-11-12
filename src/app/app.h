@@ -229,6 +229,10 @@ String app_katago_dir(const App *app);
 bool app_has_human_engine(const App *app);
 // Playing the engine without "Show evaluation": no win rate, score, graph, candidates, territory...
 bool app_eval_hidden(const App *app);
+// Playing against the AI: no move suggestions at all (board candidates, their
+// variations, human-policy rings, the candidates list), whatever "Show evaluation"
+// says. That option only brings back the win rate and score.
+bool app_hints_hidden(const App *app);
 // Starts / stops the rank estimate for the active line.
 void app_rank_start(App *app);
 void app_rank_stop(App *app);

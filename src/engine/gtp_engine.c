@@ -82,9 +82,21 @@ static void ge_set_position(Engine *e, const PositionSpec *pos) {
         send(g, "komi %g", pos->komi);
         vec_clear(&g->setup);
         vec_clear(&g->moves);
-        for (i32 i = 0; i < pos->setup_count; ++i) {
-            send_play(g, pos->setup[i]);
-            vec_push(&g->setup, pos->setup[i]);
+        if (pos->handicap) {   // standard GTP: the engine knows they are handicap stones, White to move
+            String cmd = string_from(SV("set_free_handicap"));
+            for (i32 i = 0; i < pos->setup_count; ++i) {
+                char coord[8];
+                point_to_gtp(pos->setup[i].point, g->width, g->height, coord);
+                string_pushf(&cmd, " %s", coord);
+                vec_push(&g->setup, pos->setup[i]);
+            }
+            gtp_client_send(g->gtp, string_sv(&cmd));
+            string_free(&cmd);
+        } else {
+            for (i32 i = 0; i < pos->setup_count; ++i) {
+                send_play(g, pos->setup[i]);
+                vec_push(&g->setup, pos->setup[i]);
+            }
         }
     }
     // Undo back to the common prefix, then play forward.
