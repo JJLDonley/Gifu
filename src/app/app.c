@@ -997,7 +997,7 @@ void app_update(App *app) {
     if (engine_turn && slot->engine && !anyone_waiting && slot->status == ENGINE_STATUS_READY &&
         slot->synced_node == app->tree->current) {
         MoveRequest req = { slot->synced_position_id, to_play, app->config.ai_seconds_per_move,
-                            style == AI_STYLE_HUMAN && slot == &app->main };
+                            style == AI_STYLE_HUMAN && slot == &app->main, app->config.ai_max_visits };
         engine_request_move(slot->engine, &req);
         slot->waiting_move = true;
         app->ai_move_once = false;

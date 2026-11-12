@@ -181,6 +181,8 @@ static void kg_request_move(Engine *e, const MoveRequest *request) {
     // Not "0 0 0": KataGo takes that as no time at all (measured: ~0.05 s, 100 visits).
     if (request->seconds > 0) send(k, "time_settings 0 %.2f 1", MAX(request->seconds, 0.1f));
     else send(k, "time_settings 0 1 0");
+    // The visit limit for this move (human-style moves set their own below, then restore).
+    if (request->max_visits > 0 && !request->human_style) send(k, "kata-set-param maxVisits %d", request->max_visits);
     k->genmove = *request;
     // Human style: pick the move from the human policy (KataGo's gtp_human*_example.cfg
     // settings, switched in for this move only).
