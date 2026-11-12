@@ -157,6 +157,9 @@
       (option none "Nobody")
       (option white "White")
       (option black "Black"))
+    ;; Which engine plays (KataGo, Leela...): the same setting as Settings -> AI play.
+    (choice ai.engine :source opponents :when "new_game.opponent=white|new_game.opponent=black" :columns 2
+      :label settings.opponent :fallback "AI opponent")
     ;; Human: KataGo's human network at the strength below. The others choose, among KataGo's
     ;; moves that lose at most a point, the one that fits the style (app/ai_style.h).
     (choice ai.style :when "ai.engine=" :columns 3 :label settings.ai_style :fallback "How it plays"

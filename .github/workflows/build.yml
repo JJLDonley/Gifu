@@ -88,9 +88,17 @@ jobs:
           cmake --preset linux-debug
           cmake --build build/linux-debug --target gifu_tests
           ./build/linux-debug/gifu_tests
+      # Leela (leela/) is compiled only when its sources change: the programs are kept
+      # in the cache under a hash of leela/ and the build files, and copied otherwise.
+      - name: Cache the Leela build
+        uses: actions/cache@v6
+        with:
+          path: leela-prebuilt
+          key: leela-${{ runner.os }}-${{ hashFiles('leela/**', 'cmake/*.cmake', 'CMakePresets.json') }}-v1
       - name: Build and package (tar.xz, AppImage)
         env:
           APPIMAGE_EXTRACT_AND_RUN: "1"   # appimagetool without FUSE on the runner
+          GIFU_LEELA_PREBUILT: ${{ github.workspace }}/leela-prebuilt
         run: python3 tools/package.py linux appimage
       - uses: actions/upload-artifact@v7
         with:
@@ -130,7 +138,16 @@ jobs:
           cmake --preset msys2-debug
           cmake --build build/msys2-debug --target gifu_tests
           ./build/msys2-debug/gifu_tests.exe
+      # Leela (leela/) is compiled only when its sources change: the programs are kept
+      # in the cache under a hash of leela/ and the build files, and copied otherwise.
+      - name: Cache the Leela build
+        uses: actions/cache@v6
+        with:
+          path: leela-prebuilt
+          key: leela-${{ runner.os }}-${{ hashFiles('leela/**', 'cmake/*.cmake', 'CMakePresets.json') }}-v1
       - name: Build and package (zip)
+        env:
+          GIFU_LEELA_PREBUILT: ${{ github.workspace }}/leela-prebuilt
         run: python tools/package.py msys2
       - uses: actions/upload-artifact@v7
         with:
@@ -156,11 +173,20 @@ jobs:
       - name: Build and run the tests (platform layer included)
         run: |
           cmake --preset macos-debug
-          cmake --build build/macos-debug -- -k 0   # report every compile error at once
+          cmake --build build/macos-debug --target gifu gifu_tests -- -k 0   # every compile error at once; Leela builds with the package
           ./build/macos-debug/gifu_tests
       # (No start-up screenshot: GitHub's macOS runners are virtual machines without
       # OpenGL 3.3, so the window cannot open there; real Macs have it.)
+      # Leela (leela/) is compiled only when its sources change: the programs are kept
+      # in the cache under a hash of leela/ and the build files, and copied otherwise.
+      - name: Cache the Leela build
+        uses: actions/cache@v6
+        with:
+          path: leela-prebuilt
+          key: leela-${{ runner.os }}-${{ hashFiles('leela/**', 'cmake/*.cmake', 'CMakePresets.json') }}-v1
       - name: Package (Gifu.app)
+        env:
+          GIFU_LEELA_PREBUILT: ${{ github.workspace }}/leela-prebuilt
         run: python3 tools/package.py macos
       - uses: actions/upload-artifact@v7
         with:

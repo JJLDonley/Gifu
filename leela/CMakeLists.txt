@@ -7,9 +7,30 @@
 # Both read the network from leela-0.11.weights, copied next to them.
 enable_language(CXX)
 
+# GIFU_LEELA_PREBUILT: a folder holding leela[.exe] and leela-opencl[.exe] built earlier
+# from these same sources (CI keeps them in its cache, keyed by a hash of leela/):
+# they are copied instead of compiled. Empty or incomplete: built from source.
+set(GIFU_LEELA_PREBUILT "" CACHE PATH "Prebuilt leela / leela-opencl to use instead of compiling (CI cache)")
+set(LEELA_EXE "${CMAKE_EXECUTABLE_SUFFIX}")
+set(LEELA_OUT ${CMAKE_BINARY_DIR}/leela)
+if(GIFU_LEELA_PREBUILT AND EXISTS "${GIFU_LEELA_PREBUILT}/leela${LEELA_EXE}" AND EXISTS "${GIFU_LEELA_PREBUILT}/leela-opencl${LEELA_EXE}")
+    message(STATUS "Leela: prebuilt programs from ${GIFU_LEELA_PREBUILT}")
+    foreach(name leela leela-opencl)
+        add_custom_target(${name} ALL
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${LEELA_OUT}
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different "${GIFU_LEELA_PREBUILT}/${name}${LEELA_EXE}" "${LEELA_OUT}/${name}${LEELA_EXE}"
+            VERBATIM)
+        install(PROGRAMS "${GIFU_LEELA_PREBUILT}/${name}${LEELA_EXE}" DESTINATION leela)
+    endforeach()
+    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/weights/leela-0.11.weights ${LEELA_OUT}/leela-0.11.weights COPYONLY)
+    install(FILES weights/leela-0.11.weights DESTINATION leela)
+    install(FILES LICENSE DESTINATION licenses RENAME leela-LICENSE.txt)
+    install(FILES opencl/LICENSE DESTINATION licenses RENAME opencl-headers-LICENSE.txt)
+    return()
+endif()
+
 file(GLOB LEELA_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp)
 list(REMOVE_ITEM LEELA_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/OpenCL.cpp ${CMAKE_CURRENT_SOURCE_DIR}/src/OpenCLLoader.cpp)
-set(LEELA_OUT ${CMAKE_BINARY_DIR}/leela)
 
 find_package(Threads REQUIRED)
 

@@ -28,8 +28,24 @@ def version():
     core = re.search(r"project\(Gifu VERSION ([0-9.]+)", text).group(1)
     return f"{core}-{LABEL}" if LABEL else core
 
+# Prebuilt Leela programs (CI restores them from its cache when leela/ is unchanged).
+_prebuilt = os.environ.get("GIFU_LEELA_PREBUILT", "").strip()
+LEELA_PREBUILT = os.path.abspath(_prebuilt).replace("\\", "/") if _prebuilt else ""   # forward slashes for CMake
+
 def configure(preset):
-    run(CMAKE, "--preset", preset, f"-DGIFU_VERSION_LABEL={LABEL}")
+    run(CMAKE, "--preset", preset, f"-DGIFU_VERSION_LABEL={LABEL}", f"-DGIFU_LEELA_PREBUILT={LEELA_PREBUILT}")
+
+def keep_leela(preset):
+    """Copies this build's Leela programs into $GIFU_LEELA_PREBUILT for CI to cache."""
+    if not LEELA_PREBUILT:
+        return
+    os.makedirs(LEELA_PREBUILT, exist_ok=True)
+    exe = ".exe" if "windows" in preset or "msys2" in preset else ""
+    for name in ("leela", "leela-opencl"):
+        src = os.path.join(ROOT, "build", preset, "leela", name + exe)
+        dst = os.path.join(LEELA_PREBUILT, name + exe)
+        if os.path.exists(src) and not os.path.exists(dst):
+            shutil.copy2(src, dst)
 
 def run(*args):
     print("+", " ".join(args), flush=True)
@@ -39,6 +55,7 @@ def package(platform, preset=None):
     preset = preset or f"{platform}-release"
     configure(preset)
     run(CMAKE, "--build", os.path.join(ROOT, "build", preset), "--target", "gifu", "leela", "leela-opencl")
+    keep_leela(preset)
     name = f"Gifu-{version()}-{platform}-x64"
     stage = os.path.join(DIST, name)
     shutil.rmtree(stage, ignore_errors=True)
@@ -89,6 +106,7 @@ def package_macos(preset="macos-release"):
     """Gifu.app (the program, its assets and notices in Contents/MacOS), zipped with ditto."""
     configure(preset)
     run(CMAKE, "--build", os.path.join(ROOT, "build", preset), "--target", "gifu", "leela", "leela-opencl")
+    keep_leela(preset)
     stage = os.path.join(DIST, "macos")
     shutil.rmtree(stage, ignore_errors=True)
     app = os.path.join(stage, "Gifu.app")
@@ -138,6 +156,7 @@ def package_appimage(pack=True):
     preset = "linux-release"
     configure(preset)
     run(CMAKE, "--build", os.path.join(ROOT, "build", preset), "--target", "gifu", "leela", "leela-opencl")
+    keep_leela(preset)
     appdir = os.path.join(DIST, "Gifu.AppDir")
     shutil.rmtree(appdir, ignore_errors=True)
     app = os.path.join(appdir, "usr", "lib", "gifu")   # the program finds assets/ next to itself

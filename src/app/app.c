@@ -1402,9 +1402,13 @@ static void cmd_new(void *c) {
     App *app = APP(c);
     StringView opponent = string_sv(&app->config.new_game_opponent);
     Stone engine_color = sv_eq(opponent, SV("black")) ? STONE_BLACK : sv_eq(opponent, SV("white")) ? STONE_WHITE : STONE_EMPTY;
-    // The engine's name goes into PB/PW when that player has none.
+    // The name of the engine that will play goes into PB/PW when that player has none:
+    // the opponent engine (ai.engine) or the main one; KataGo's with its style.
     char engine_name[64] = "";
-    if (engine_color != STONE_EMPTY) {
+    const EngineProfile *playing = opponent_profile(app) ? opponent_profile(app) : app->main.profile;
+    if (engine_color != STONE_EMPTY && playing && !sv_eq(string_sv(&playing->kind), SV("katago-gtp"))) {
+        snprintf(engine_name, sizeof(engine_name), "%s", string_cstr(&playing->name));   // e.g. "Leela · OpenCL"
+    } else if (engine_color != STONE_EMPTY) {
         StringView profile = sv_starts_with(app_ai_human_profile(app), SV("rank_")) ? sv_drop(app_ai_human_profile(app), 5) : app_ai_human_profile(app);
         AiStyle style = ai_style_from(string_sv(&app->config.ai_style));
         if (style == AI_STYLE_HUMAN) snprintf(engine_name, sizeof(engine_name), "KataGo (human " SV_FMT ")", SV_ARG(profile));
