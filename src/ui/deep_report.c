@@ -96,7 +96,7 @@ static f32 value_stepper(Ui *ui, u32 index, f32 value, f32 step, f32 lo, f32 hi,
     Clay_ElementId id = CLAY_IDI("DeepStepValue", index);
     CLAY({ .layout = { .childGap = ui_u16(ui, 4), .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
         f64 v = value;
-        if (ui_number_input(ui, id, &v, lo, hi, fmt, 64, true)) value = (f32)v;
+        if (ui_number_input(ui, id, &v, lo, hi, fmt, 58, 12.6f, true)) value = (f32)v;
         if (ui_button(ui, CLAY_IDI("DeepStepMinus", index), SV("−"), BUTTON_NORMAL, false, value > lo + 1e-4f)) value -= step;
         if (ui_button(ui, CLAY_IDI("DeepStepPlus", index), SV("+"), BUTTON_NORMAL, false, value < hi - 1e-4f)) value += step;
     }
@@ -503,7 +503,9 @@ static void distribution(DeepReport *d, bool winrate, f32 row_px) {
                         u32 idx = (winrate ? 100u : 0u) + (u32)b;
                         // Fixed columns so every row lines up: the start (typed; the first
                         // row's 0 is read-only), where the bucket ends, then - / +.
-                        CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, font * 10.8f)), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 4),
+                        // Compact controls with room on both sides, so the bars do not crowd them.
+                        CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, font * 10.8f)), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 2),
+                                           .padding = { ui_u16(ui, 10), ui_u16(ui, 10), 0, 0 },
                                            .childAlignment = { .x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER } } }) {
                             bool editable = b > 0;
                             f32 step = (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) ? 5.0f : (winrate ? 1.0f : 0.5f);
@@ -518,12 +520,12 @@ static void distribution(DeepReport *d, bool winrate, f32 row_px) {
                                                                          : arena_format(&ui->frame, "%g" SV_FMT, start, SV_ARG(end));
                                 ui_label(ui, text, FONT_MONO, font * 0.9f, c->text);
                             } else {
-                                if (ui_number_input(ui, fid, &start, 0.0, 100.0, "%g", font * 3.2f, editable)) set_limit(ui, winrate, b, (f32)start);
-                                CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, font * 3.4f)), CLAY_SIZING_FIT(0) } } }) {
-                                    ui_label(ui, end, FONT_MONO, font * 0.9f, c->text);
+                                if (ui_number_input(ui, fid, &start, 0.0, 100.0, "%g", font * 2.35f, 10.8f, editable)) set_limit(ui, winrate, b, (f32)start);
+                                CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, font * 2.9f)), CLAY_SIZING_FIT(0) } } }) {
+                                    ui_label(ui, end, FONT_MONO, font * 0.8f, c->text);
                                 }
-                                if (ui_button(ui, CLAY_IDI("DistMinus", idx), SV("−"), BUTTON_GHOST, false, editable) && editable) set_limit(ui, winrate, b, lim[b - 1] * unit - step);
-                                if (ui_button(ui, CLAY_IDI("DistPlus", idx), SV("+"), BUTTON_GHOST, false, editable) && editable) set_limit(ui, winrate, b, lim[b - 1] * unit + step);
+                                if (ui_button(ui, CLAY_IDI("DistMinus", idx), SV("−"), BUTTON_SMALL, false, editable) && editable) set_limit(ui, winrate, b, lim[b - 1] * unit - step);
+                                if (ui_button(ui, CLAY_IDI("DistPlus", idx), SV("+"), BUTTON_SMALL, false, editable) && editable) set_limit(ui, winrate, b, lim[b - 1] * unit + step);
                                 if (editable && ui->wheel != 0 && Clay_PointerOver(fid) && ui->focus_id != fid.id) set_limit(ui, winrate, b, lim[b - 1] * unit + (ui->wheel > 0 ? step : -step));
                             }
                         }

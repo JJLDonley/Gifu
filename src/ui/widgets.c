@@ -73,22 +73,24 @@ bool ui_button(Ui *ui, Clay_ElementId id, StringView label, ButtonStyle style, b
         text = sv_trim(tail);
     }
     bool icon_only = icon >= 0 && text.len == 0;
-    u16 pad_x = ui_u16(ui, icon_only ? 6 : 10);
+    bool small = style == BUTTON_SMALL;
+    u16 pad_x = ui_u16(ui, small ? 4 : icon_only ? 6 : 10), pad_y = ui_u16(ui, small ? 2 : 6);
+    f32 text_size = small ? 12.0f : 14.0f;
     // Never narrower than its content: a row that runs out of room clips or scrolls
     // (see bar() in layout.c) instead of squeezing the label out of the button.
     f32 min_w = 2.0f * pad_x;
     if (icon >= 0) min_w += ui_px(ui, 18);
-    if (text.len) min_w += font_measure(ui->fonts, FONT_UI_BOLD, (f32)ui_u16(ui, 14), text).x + (icon >= 0 ? ui_px(ui, 5) : 0);
+    if (text.len) min_w += font_measure(ui->fonts, FONT_UI_BOLD, (f32)ui_u16(ui, text_size), text).x + (icon >= 0 ? ui_px(ui, 5) : 0);
     CLAY({ .id = id,
            .layout = { .sizing = { CLAY_SIZING_FIT(ceilf(min_w)), CLAY_SIZING_FIT(0) },
-                       .padding = { pad_x, pad_x, ui_u16(ui, 6), ui_u16(ui, 6) }, .childGap = ui_u16(ui, 5),
+                       .padding = { pad_x, pad_x, pad_y, pad_y }, .childGap = ui_u16(ui, 5),
                        .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER } },
            .backgroundColor = color_to_clay(bg),
            .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, ui->theme->shape.radius * 0.6f)),
            .border = { .color = color_to_clay(border), .width = CLAY_BORDER_OUTSIDE(border.a ? 1 : 0) } }) {
         if (icon >= 0) ui_icon(ui, icon, 18, fg);
         if (text.len) {
-            CLAY_TEXT(ui_str(ui, text), CLAY_TEXT_CONFIG({ .fontId = FONT_UI_BOLD, .fontSize = ui_u16(ui, 14),
+            CLAY_TEXT(ui_str(ui, text), CLAY_TEXT_CONFIG({ .fontId = FONT_UI_BOLD, .fontSize = ui_u16(ui, text_size),
                                                            .textColor = color_to_clay(fg), .wrapMode = CLAY_TEXT_WRAP_NONE }));
         }
     }

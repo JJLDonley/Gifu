@@ -275,7 +275,8 @@ i32 icon_find(StringView name);   // "@prev" or "prev"; -1 if unknown
 void icon_draw(i32 icon, Rectangle r, Color color, f32 stroke);
 void ui_icon(Ui *ui, i32 icon, f32 size, Color color);
 
-typedef enum ButtonStyle { BUTTON_GHOST, BUTTON_NORMAL, BUTTON_PRIMARY } ButtonStyle;
+// BUTTON_SMALL: a ghost button with less padding and smaller text (compact steppers).
+typedef enum ButtonStyle { BUTTON_GHOST, BUTTON_NORMAL, BUTTON_PRIMARY, BUTTON_SMALL } ButtonStyle;
 // Immediate-mode button; returns true when clicked this frame.
 bool ui_button(Ui *ui, Clay_ElementId id, StringView label, ButtonStyle style, bool checked, bool enabled);
 // Pressed and released on element `id` (any element: rows, cards...).
@@ -286,7 +287,7 @@ TextInputResult ui_text_input(Ui *ui, Clay_ElementId id, TextEdit *edit, f32 fon
 // Shows `*value` with `fmt` until clicked; Enter or a click elsewhere applies the typed
 // number (clamped to lo..hi), Escape restores it. True when *value changed.
 // `enabled` false: the same box, read-only (it cannot take the focus).
-bool ui_number_input(Ui *ui, Clay_ElementId id, f64 *value, f64 lo, f64 hi, const char *fmt, f32 width, bool enabled);
+bool ui_number_input(Ui *ui, Clay_ElementId id, f64 *value, f64 lo, f64 hi, const char *fmt, f32 width, f32 font_size, bool enabled);
 // Small on/off switch; returns true when toggled this frame.
 bool ui_toggle(Ui *ui, Clay_ElementId id, bool on);
 // Button bound to a registered command (label from i18n "command.<id>").
