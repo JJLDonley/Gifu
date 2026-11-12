@@ -25,6 +25,7 @@ colors.danger           = #FF6B6B
 colors.board            = #1D5566
 colors.board_line       = #A8DCE3
 colors.board_label      = #6FB3C0
+colors.markup           = #EAF6F8
 colors.black_stone      = #03141A
 colors.white_stone      = #F1FBFC
 colors.black_stone_edge = #010A0D

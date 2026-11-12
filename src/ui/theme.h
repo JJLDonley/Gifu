@@ -16,6 +16,9 @@ typedef struct ThemeColors {
     Color winrate_black, winrate_white, graph_line, score_line;
     Color candidate_best, candidate_good, candidate_bad, candidate_text;
     Color human_policy;   // human SL network move rings
+    // Markup on the board: marks and labels on empty points, and arrows / lines.
+    // Fully transparent (the default) = chosen from the board's colours for contrast.
+    Color markup, markup_line;
 } ThemeColors;
 
 typedef enum BackgroundKind { BACKGROUND_SOLID, BACKGROUND_IMAGE, BACKGROUND_PAPER } BackgroundKind;

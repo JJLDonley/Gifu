@@ -59,6 +59,7 @@ static const struct {
     F(hover), F(danger), F(board), F(board_line), F(board_label), F(black_stone), F(white_stone),
     F(black_stone_edge), F(white_stone_edge), F(last_move), F(winrate_black), F(winrate_white), F(graph_line),
     F(score_line), F(candidate_best), F(candidate_good), F(candidate_bad), F(candidate_text), F(human_policy),
+    F(markup), F(markup_line),
 #undef F
 };
 

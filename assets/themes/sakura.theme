@@ -30,6 +30,7 @@ colors.danger           = #D32F2F
 colors.board            = #FBE3EA
 colors.board_line       = #8E4A62
 colors.board_label      = #7A3F55
+colors.markup           = #4A2A38
 colors.black_stone      = #2A1A20
 colors.white_stone      = #FFFFFF
 colors.black_stone_edge = #120A0D

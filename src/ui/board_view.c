@@ -389,13 +389,43 @@ static void draw_human_policy(Ui *ui, const BoardGeometry *g, const HumanPolicy 
 
 static Vector2 board_xy(const BoardGeometry *g, f32 x, f32 y) { return (Vector2){ g->origin.x + g->cell * x, g->origin.y + g->cell * y }; }
 
-// Ink that reads on whatever is under the point: the other stone colour on a
-// stone, the grid's colour on the board (it always stands out from its own board,
-// dark boards included).
+// WCAG contrast ratio of two colours (1..21).
+static f32 contrast(Color a, Color b) {
+    f32 la = 0, lb = 0;
+    for (i32 k = 0; k < 2; ++k) {
+        Color c = k ? b : a;
+        f32 ch[3] = { c.r / 255.0f, c.g / 255.0f, c.b / 255.0f };
+        for (i32 j = 0; j < 3; ++j) ch[j] = ch[j] <= 0.03928f ? ch[j] / 12.92f : powf((ch[j] + 0.055f) / 1.055f, 2.4f);
+        *(k ? &lb : &la) = 0.2126f * ch[0] + 0.7152f * ch[1] + 0.0722f * ch[2];
+    }
+    return (fmaxf(la, lb) + 0.05f) / (fminf(la, lb) + 0.05f);
+}
+
+// Markup ink on the empty board: the theme's colors.markup, else the grid colour
+// when it stands out from the board (glowing grids), else the stone colour that
+// stands out more (grids are often drawn faint on purpose).
+static Color board_markup_ink(const Theme *t) {
+    const ThemeColors *c = &t->colors;
+    if (c->markup.a) return c->markup;
+    Color line = color_with_alpha(c->board_line, 1.0f);
+    if (contrast(line, c->board) >= 4.5f) return line;
+    return contrast(c->black_stone, c->board) >= contrast(c->white_stone, c->board) ? c->black_stone : c->white_stone;
+}
+
+// Arrows and lines: colors.markup_line, else the accent when it stands out from
+// the board, else the markup ink.
+static Color board_markup_line(const Theme *t) {
+    const ThemeColors *c = &t->colors;
+    if (c->markup_line.a) return c->markup_line;
+    if (contrast(c->accent, c->board) >= 3.0f) return color_with_alpha(c->accent, 0.95f);
+    return board_markup_ink(t);
+}
+
+// Ink that reads on whatever is under the point: the other stone colour on a stone.
 static Color mark_ink(const Theme *t, Stone under) {
     if (under == STONE_BLACK) return t->colors.white_stone;
     if (under == STONE_WHITE) return t->colors.black_stone;
-    return color_with_alpha(t->colors.board_line, 1.0f);
+    return board_markup_ink(t);
 }
 
 // A piece of the board's own surface (texture and tint, or its colour) over `r`:
@@ -532,7 +562,7 @@ static void board_draw_markup(Ui *ui, const BoardGeometry *g, const Markup *m, c
         }
     }
     // Lines and arrows, then pen strokes, on top.
-    Color line_ink = color_with_alpha(t->colors.accent, 0.95f);
+    Color line_ink = board_markup_line(t);
     for (i32 i = 0; i < m->line_count; ++i) draw_arrow(g, m->lines[i].from, m->lines[i].to, line_ink, false);
     for (i32 i = 0; i < m->arrow_count; ++i) draw_arrow(g, m->arrows[i].from, m->arrows[i].to, line_ink, true);
     for (i32 s = 0; s < m->stroke_count; ++s) {

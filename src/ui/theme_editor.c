@@ -27,6 +27,8 @@ static const EditableColor COLORS[] = {
     C(white_stone, "White stone", GROUP_BOARD),
     C(white_stone_edge, "White stone edge", GROUP_BOARD),
     C(last_move, "Last move marker", GROUP_BOARD),
+    C(markup, "Markup (marks, labels)", GROUP_BOARD),
+    C(markup_line, "Markup arrows", GROUP_BOARD),
     C(background, "Window background", GROUP_INTERFACE),
     C(surface, "Panels", GROUP_INTERFACE),
     C(surface_alt, "Panel insets", GROUP_INTERFACE),
