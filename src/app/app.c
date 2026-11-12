@@ -675,6 +675,22 @@ static void play_engine_move(App *app, EngineSlot *s, const EngineEvent *ev, con
     s->synced_node = NULL;
 }
 
+// Hidden analysis while an AI plays (see App.background_analysis). Not while the
+// engine is lent out (rank estimate) or analysing a whole game.
+static void background_analysis_update(App *app) {
+    bool playing = app->ai_plays[STONE_BLACK] || app->ai_plays[STONE_WHITE];
+    bool want = playing && !app->analysis_enabled && app->main.engine && app->main.status == ENGINE_STATUS_READY &&
+                app->rank_slot != &app->main && !app->batch_running;
+    if (want == app->background_analysis) return;
+    app->background_analysis = want;
+    if (want) {
+        AnalysisRequest req = app_analysis_request(app);
+        engine_start_analysis(app->main.engine, &req);
+    } else if (!app->analysis_enabled && app->main.engine) {
+        engine_stop_analysis(app->main.engine);
+    }
+}
+
 static void second_update(App *app) {
     EngineSlot *s = &app->second;
     if (!s->engine || app->rank_slot == s) return;   // lent to the rank job
@@ -948,6 +964,7 @@ void app_update(App *app) {
         free(spec);
     }
     if (app->main.synced_node != app->tree->current) app->analysis_valid = false;
+    background_analysis_update(app);
     human_update(app);
 
     // Two consecutive passes end the game: score it once and stop engine play.

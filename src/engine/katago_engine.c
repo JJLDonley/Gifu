@@ -26,6 +26,10 @@ typedef struct KataGoEngine {
     i32 sync_ids[256];
     i32 sync_head, sync_count;
     PositionSpec *last_pos;
+    // A position asked for while a genmove runs: KataGo queues commands until its move
+    // is placed, so our record of its moves would end up in the wrong order. Applied
+    // when the move comes back.
+    bool sync_deferred;
     i32 rebuilds;   // consecutive rebuilds that failed again (gives up after a few)
     i32 width, height;
     f32 komi;
@@ -213,6 +217,10 @@ static void kg_set_position(Engine *e, const PositionSpec *pos) {
         if (!k->last_pos) abort();
         memcpy(k->last_pos, pos, sizeof(PositionSpec));
     }
+    if (k->genmove_id > 0) {   // KataGo is placing its own move: sync once it has
+        k->sync_deferred = true;
+        return;
+    }
     k->analysis_id = -1;   // ignore output from the previous analysis
 
     bool full_reset = !k->synced || pos->width != k->width || pos->height != k->height || pos->komi != k->komi ||
@@ -381,6 +389,10 @@ static bool kg_poll(Engine *e, EngineEvent *out) {
                         k->position_id = 0;
                     }
                     // Analysis resumes on the next set_position (the app always resyncs after a move).
+                    if (k->sync_deferred) {   // a position came in while KataGo was thinking
+                        k->sync_deferred = false;
+                        kg_set_position(&k->base, k->last_pos);
+                    }
                     *out = move_event;
                     return true;
                 }

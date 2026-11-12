@@ -98,6 +98,10 @@ typedef struct App {
     EngineSlot second;
     EngineSlot opponent;   // ai.engine: plays against you (e.g. Leela) while the main engine analyses
     bool analysis_enabled;
+    // During a game against the AI the main engine keeps analysing, hidden (its own
+    // moves pause it): the positions are analysed when the player switches to the
+    // analysis (Space), and the graph and report are complete.
+    bool background_analysis;
     AnalysisSnapshot *analysis;   // latest snapshot for the current node
     bool analysis_valid;
     HumanPolicy *human_policy;          // human SL network policy ...

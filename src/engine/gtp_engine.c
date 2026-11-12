@@ -26,6 +26,10 @@ typedef struct GtpEngine {
     u64 position_id;
 
     i32 genmove_id;
+    // A position asked for during genmove: applied when the move comes back (the
+    // engine queues commands until then, which would scramble our record of its moves).
+    PositionSpec *pending_pos;
+    bool sync_pending;
     MoveRequest genmove;
     i32 score_id;
     u64 score_position;
@@ -73,6 +77,14 @@ static void ge_stop_analysis(Engine *e) { UNUSED(e); }
 static void ge_set_position(Engine *e, const PositionSpec *pos) {
     GtpEngine *g = as_gtp(e);
     if (!g->gtp || (g->synced && pos->id == g->position_id)) return;
+    if (g->genmove_id > 0) {
+        if (!g->pending_pos) g->pending_pos = malloc(sizeof(PositionSpec));
+        if (!g->pending_pos) abort();
+        if (pos != g->pending_pos) memcpy(g->pending_pos, pos, sizeof(PositionSpec));
+        g->pending_pos->id = pos->id;
+        g->sync_pending = true;
+        return;
+    }
     bool full_reset = !g->synced || pos->width != g->width || pos->height != g->height || pos->komi != g->komi ||
                       pos->setup_count != (i32)g->setup.len || !same_moves(pos->setup, g->setup.items, pos->setup_count);
     if (full_reset) {
@@ -164,6 +176,10 @@ static bool ge_poll(Engine *e, EngineEvent *out) {
                         vec_push(&g->moves, move_event.move);   // on its board already: not replayed by the next sync
                         g->position_id = 0;
                     }
+                    if (g->sync_pending) {
+                        g->sync_pending = false;
+                        ge_set_position(&g->base, g->pending_pos);
+                    }
                     *out = move_event;
                     return true;
                 }
@@ -192,6 +208,7 @@ static void ge_destroy(Engine *e) {
     gtp_event_free(&g->last_event);
     gtp_client_stop(g->gtp);
     string_free(&g->name);
+    free(g->pending_pos);
     vec_free(&g->setup);
     vec_free(&g->moves);
     free(g);

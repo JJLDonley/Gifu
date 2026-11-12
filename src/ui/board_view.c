@@ -826,7 +826,10 @@ void board_view_handle_input(Ui *ui) {
     }
     if (ui->wheel > 0) command_execute(&app->commands, SV("nav.back"));
     if (ui->wheel < 0) command_execute(&app->commands, SV("nav.forward"));
-    if (ui->mouse_pressed && !point_is_pass(p)) {
+    // The AI's turn (its colour is on): clicks do not play its move.
+    bool ai_turn = app->ai_plays[app->tree->current->to_play];
+    if (ui->mouse_pressed && !point_is_pass(p) && ai_turn) app_set_status(app, "It is the AI's turn");
+    if (ui->mouse_pressed && !point_is_pass(p) && !ai_turn) {
         MoveError err = app_play(app, p);
         if (err != MOVE_OK && err != MOVE_ERR_OCCUPIED) app_set_status(app, "Illegal move: %s", move_error_name(err));
         ui->hover_candidate = -1;
