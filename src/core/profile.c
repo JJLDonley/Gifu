@@ -5,8 +5,13 @@
 // a (weight wa) and b (weight wb) averaged.
 static f32 mix(f32 a, i32 wa, f32 b, i32 wb) { return wa + wb > 0 ? (a * (f32)wa + b * (f32)wb) / (f32)(wa + wb) : 0.0f; }
 
+// Accuracy is averaged over the moves with known candidate visits (older cached
+// profiles without that count weigh by moves).
+#define ACC_WEIGHT(r) ((r)->match_moves ? (r)->match_moves : (r)->moves)
+
 static void add_stage(StageReport *to, const StageReport *from) {
-    to->accuracy = mix(to->accuracy, to->moves, from->accuracy, from->moves);
+    to->accuracy = mix(to->accuracy, ACC_WEIGHT(to), from->accuracy, ACC_WEIGHT(from));
+    to->match_moves += from->match_moves, to->matches += from->matches;
     to->avg_winrate_loss = mix(to->avg_winrate_loss, to->moves, from->avg_winrate_loss, from->moves);
     to->avg_score_loss = mix(to->avg_score_loss, to->moves, from->avg_score_loss, from->moves);
     to->agreement = mix(to->agreement, to->agreement_moves, from->agreement, from->agreement_moves);
@@ -16,7 +21,8 @@ static void add_stage(StageReport *to, const StageReport *from) {
 }
 
 static void add_player(PlayerReport *to, const PlayerReport *from) {
-    to->accuracy = mix(to->accuracy, to->moves, from->accuracy, from->moves);
+    to->accuracy = mix(to->accuracy, ACC_WEIGHT(to), from->accuracy, ACC_WEIGHT(from));
+    to->match_moves += from->match_moves, to->matches += from->matches;
     to->avg_winrate_loss = mix(to->avg_winrate_loss, to->moves, from->avg_winrate_loss, from->moves);
     to->avg_score_loss = mix(to->avg_score_loss, to->moves, from->avg_score_loss, from->moves);
     to->agreement = mix(to->agreement, to->agreement_moves, from->agreement, from->agreement_moves);

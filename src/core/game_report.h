@@ -10,9 +10,22 @@ enum { GAME_PHASE_OPENING, GAME_PHASE_MIDDLE, GAME_PHASE_ENDGAME, GAME_PHASES };
 i32 game_phase(i32 move_number, i32 board_points);
 i32 game_phase_start(i32 phase, i32 board_points);   // first move number of the phase
 
-// Accuracy of one move, 0..100, from the points it lost: 100 * exp(-loss / 8)
-// (1 point -> 88, 3 -> 69, 5 -> 54, 10 -> 29). Gains count as 100.
-f32 move_accuracy(f32 score_loss);
+// Hawk Eye (LizzieYzy) per-move figures, from the candidates' visits in the position
+// before the move: the played move's visits / the most-visited candidate's (1 for
+// KataGo's first choice, 0 when it was not a candidate) and its rank (1 = first, 0 =
+// not a candidate). False when the position has no visit shares.
+bool node_match_value(const GameNode *node, f32 *ratio, i32 *rank);
+// Accuracy of one move, 0..100: the match value x 100 (Hawk Eye's "Accuracy").
+bool node_accuracy(const GameNode *node, f32 *accuracy);
+// Hawk Eye's "Match": the move is among the top `moves` candidates and got at least
+// `percent` % of the best candidate's visits (defaults 3 and 20).
+typedef struct MatchRule {
+    i32 moves;
+    f32 percent;
+} MatchRule;
+const MatchRule *match_rule(void);
+void match_rule_set(MatchRule rule);
+bool node_matches_ai(const GameNode *node);
 // Share of the search (0..1) the played move got in the position before it;
 // false when the parent has no shares (older analysis). 0 if it was not a candidate.
 bool node_played_share(const GameNode *node, f32 *share);
@@ -37,10 +50,11 @@ bool loss_is_blunder(f32 winrate_loss);   // >= winrate[2]
 
 typedef struct StageReport {
     i32 moves, top1, top3;
+    i32 match_moves, matches;   // moves with candidate visits known; those matching the AI (MatchRule)
     i32 mistakes, blunders;
     f32 agreement;         // 0..100, mean share of the search on the played move
     i32 agreement_moves;   // moves where the shares are known
-    f32 accuracy;          // 0..100, mean of move_accuracy
+    f32 accuracy;          // 0..100, Hawk Eye accuracy: mean of node_accuracy over match_moves
     f32 avg_winrate_loss;  // 0..1
     f32 avg_score_loss;    // points
 } StageReport;
@@ -48,11 +62,13 @@ typedef struct StageReport {
 typedef struct PlayerReport {
     i32 moves;            // moves with a known loss
     i32 top1, top3;       // moves matching the engine's best / top three
+    i32 match_moves;      // moves with candidate visits known (Hawk Eye's "analysed")
+    i32 matches;          // of those, moves matching the AI (MatchRule)
     i32 mistakes;         // win-rate loss > 5%
     i32 blunders;         // win-rate loss > 10%
     f32 avg_winrate_loss; // 0..1
     f32 avg_score_loss;   // points
-    f32 accuracy;         // 0..100, mean of move_accuracy
+    f32 accuracy;         // 0..100, Hawk Eye accuracy: mean of node_accuracy over match_moves
     // Engine agreement (LizzieYzy's "accuracy"): how much of KataGo's search went
     // to the move that was played, 0..100, over moves where the shares are known.
     f32 agreement;

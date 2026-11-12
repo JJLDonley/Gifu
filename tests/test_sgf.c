@@ -194,9 +194,8 @@ static void test_eval_persistence_and_report(void) {
         CHECK_EQ(report.player[STONE_WHITE].worst_count, 1);
         CHECK_NEAR(report.player[STONE_WHITE].worst_loss[0], 0.21f, 1e-3f);
         CHECK_NEAR(player_accuracy(&report.player[STONE_BLACK]), 1.0f, 1e-6f);
-        // Deep report: accuracy from score loss, stages, loss histograms.
-        CHECK_NEAR(report.player[STONE_BLACK].accuracy, move_accuracy(0.2f), 1e-3f);   // lost 0.2 points
-        CHECK_NEAR(report.player[STONE_WHITE].accuracy, move_accuracy(5.7f), 1e-3f);   // lost 5.7 points
+        // Deep report: no candidate visits in this analysis, so no Hawk Eye accuracy.
+        CHECK_EQ(report.player[STONE_BLACK].match_moves, 0);
         CHECK_EQ(report.player[STONE_WHITE].stage[GAME_PHASE_OPENING].moves, 1);
         CHECK_EQ(report.player[STONE_WHITE].score_hist[3], 1);     // 5..10 points
         CHECK_EQ(report.player[STONE_WHITE].winrate_hist[4], 1);   // >= 20%
@@ -230,10 +229,45 @@ static void test_phases_accuracy(void) {
     CHECK_EQ(game_phase(50, 361), GAME_PHASE_OPENING);
     CHECK_EQ(game_phase(51, 361), GAME_PHASE_MIDDLE);
     CHECK_EQ(game_phase(151, 361), GAME_PHASE_ENDGAME);
-    CHECK_NEAR(move_accuracy(0.0f), 100.0f, 1e-4f);
-    CHECK_NEAR(move_accuracy(-3.0f), 100.0f, 1e-4f);
-    CHECK_NEAR(move_accuracy(1.0f), 88.25f, 0.05f);
-    CHECK(move_accuracy(10.0f) < 30.0f);
+}
+
+// Hawk Eye (LizzieYzy): accuracy = played visits / best visits (1 for the first
+// choice, 0 off the list); match = top N with at least P% of the best's visits.
+static void test_hawk_eye(void) {
+    GameTree *t = game_tree_new(19, 19, 6.5);
+    Point q16 = { 15, 3 }, d4 = { 3, 15 }, c3 = { 2, 16 }, k10 = { 9, 9 };
+    NodeEval e = { .valid = true, .black_winrate = 0.5f, .top_count = 3, .top = { q16, d4, c3 }, .top_share = { 0.5f, 0.3f, 0.05f } };
+    game_node_update_eval(t, t->root, &e);
+    CHECK(game_tree_play(t, (Move){ STONE_BLACK, d4 }) == MOVE_OK);
+    GameNode *b1 = t->current;
+    f32 ratio = 0, acc = 0;
+    i32 rank = 0;
+    CHECK(node_match_value(b1, &ratio, &rank) && rank == 2 && fabsf(ratio - 0.6f) < 1e-5f);
+    CHECK(node_accuracy(b1, &acc) && fabsf(acc - 60.0f) < 1e-3f);
+    CHECK(node_matches_ai(b1));                                   // 2nd of 3, 60% >= 20%
+    match_rule_set((MatchRule){ 1, 20.0f });
+    CHECK(!node_matches_ai(b1));                                  // only the first choice matches
+    match_rule_set((MatchRule){ 3, 20.0f });
+    // A move off the list: accuracy 0, no match; the first choice: 100.
+    game_tree_goto(t, t->root);
+    CHECK(game_tree_play(t, (Move){ STONE_BLACK, k10 }) == MOVE_OK);
+    CHECK(node_accuracy(t->current, &acc) && acc == 0.0f && !node_matches_ai(t->current));
+    game_tree_goto(t, t->root);
+    CHECK(game_tree_play(t, (Move){ STONE_BLACK, q16 }) == MOVE_OK);
+    CHECK(node_accuracy(t->current, &acc) && acc == 100.0f);
+    // A third-choice move with 10% of the best's visits does not match at 20%.
+    game_tree_goto(t, t->root);
+    CHECK(game_tree_play(t, (Move){ STONE_BLACK, c3 }) == MOVE_OK);
+    CHECK(node_match_value(t->current, &ratio, &rank) && rank == 3 && !node_matches_ai(t->current));
+    // The report averages over moves with known visits.
+    NodeEval after = { .valid = true, .black_winrate = 0.5f };
+    game_node_update_eval(t, b1, &after);
+    GameNode *line[2] = { t->root, b1 };
+    GameReport r;
+    game_report_compute(line, 2, &r);
+    CHECK(r.player[STONE_BLACK].match_moves == 1 && r.player[STONE_BLACK].matches == 1);
+    CHECK(fabsf(r.player[STONE_BLACK].accuracy - 60.0f) < 1e-3f);
+    game_tree_free(t);
 }
 
 static void test_eval_shares(void) {
@@ -321,6 +355,7 @@ void register_sgf_tests(void) {
     test_register("tree/eval_shares", test_eval_shares);
     test_register("report/phases_accuracy", test_phases_accuracy);
     test_register("report/loss_limits", test_loss_limits);
+    test_register("report/hawk_eye", test_hawk_eye);
     test_register("sgf/fox_komi", test_fox_komi);
     test_register("tree/eval_report", test_eval_persistence_and_report);
     test_register("sgf/legacy_encoding", test_legacy_encoding);

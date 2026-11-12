@@ -47,6 +47,8 @@ typedef struct Config {
     String report_mistakes_sort, report_mistakes_by;
     f32 report_filter_winrate, report_filter_points;
     String report_winrate_limits, report_score_limits;
+    i32 report_match_moves;
+    f32 report_match_percent;
     i32 report_range, report_range_from, report_range_to;
     bool sgf_autosave;         // save the game (with its analysis) automatically
     i32 sgf_autosave_seconds;  // how often analysis changes are saved (edits: a few seconds after)

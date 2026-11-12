@@ -1050,10 +1050,11 @@ void app_apply_loss_limits(App *app) {
     LossLimits l;
     loss_limits_parse(string_sv(&app->config.report_winrate_limits), string_sv(&app->config.report_score_limits), &l);
     loss_limits_set(&l);
+    match_rule_set((MatchRule){ app->config.report_match_moves, app->config.report_match_percent });
 }
 
 void app_config_changed(App *app, StringView key) {
-    if (sv_eq(key, SV("report.winrate_limits")) || sv_eq(key, SV("report.score_limits"))) {
+    if (sv_eq(key, SV("report.winrate_limits")) || sv_eq(key, SV("report.score_limits")) || sv_starts_with(key, SV("report.match_"))) {
         app_apply_loss_limits(app);
     } else if (sv_eq(key, SV("language"))) {
         app_reload_language(app);

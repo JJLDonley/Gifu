@@ -346,6 +346,7 @@ bool ui_init(Ui *ui, App *app) {
 }
 
 void ui_shutdown(Ui *ui) {
+    for (i32 i = 0; i < (i32)countof(ui->number_fields); ++i) text_edit_free(&ui->number_fields[i].edit);
     theme_editor_cancel(ui);
     layout_editor_close(ui);
     text_edit_free(&ui->layout_editor.preset_name);
@@ -494,6 +495,7 @@ static void follow_game_layout(Ui *ui) {
 
 void ui_frame(Ui *ui) {
     arena_reset(&ui->frame);
+    ui->number_frame++;
     follow_game_layout(ui);
     anim_begin_frame(&ui->anim, GetFrameTime());
     // Effective scale = user preference x monitor content scale (150% / 200%

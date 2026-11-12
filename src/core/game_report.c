@@ -59,7 +59,42 @@ i32 game_phase(i32 move_number, i32 board_points) {
     return GAME_PHASE_OPENING;
 }
 
-f32 move_accuracy(f32 score_loss) { return 100.0f * expf(-fmaxf(score_loss, 0.0f) / 8.0f); }
+bool node_match_value(const GameNode *node, f32 *ratio, i32 *rank) {
+    if (!node->has_move || !node->parent || !node->parent->eval.valid) return false;
+    const NodeEval *e = &node->parent->eval;
+    if (e->top_count == 0 || e->top_share[0] <= 0) return false;
+    f32 best = 0;
+    for (i32 k = 0; k < e->top_count; ++k) best = fmaxf(best, e->top_share[k]);
+    *ratio = 0, *rank = 0;
+    for (i32 k = 0; k < e->top_count; ++k) {
+        if (!point_eq(e->top[k], node->move.point)) continue;
+        *rank = k + 1;
+        *ratio = k == 0 ? 1.0f : e->top_share[k] / best;   // KataGo's first choice counts 1 (as in LizzieYzy)
+        break;
+    }
+    return true;
+}
+
+bool node_accuracy(const GameNode *node, f32 *accuracy) {
+    f32 ratio = 0;
+    i32 rank = 0;
+    if (!node_match_value(node, &ratio, &rank)) return false;
+    *accuracy = ratio * 100.0f;
+    return true;
+}
+
+static MatchRule g_match = { 3, 20.0f };
+const MatchRule *match_rule(void) { return &g_match; }
+void match_rule_set(MatchRule rule) {
+    g_match.moves = CLAMP(rule.moves, 1, NODE_EVAL_TOP);
+    g_match.percent = CLAMP(rule.percent, 0.0f, 100.0f);
+}
+
+bool node_matches_ai(const GameNode *node) {
+    f32 ratio = 0;
+    i32 rank = 0;
+    return node_match_value(node, &ratio, &rank) && rank > 0 && rank <= g_match.moves && ratio * 100.0f >= g_match.percent - 1e-4f;
+}
 
 bool node_played_share(const GameNode *node, f32 *share) {
     if (!node->has_move || !node->parent || !node->parent->eval.valid) return false;
@@ -110,15 +145,18 @@ void game_report_compute(GameNode *const *line, isize count, GameReport *out) {
         PlayerReport *p = &out->player[c];
         i32 phase = game_phase(n->move_number, n->board.width * n->board.height);
         StageReport *st = &p->stage[phase];
-        f32 acc = move_accuracy(score_loss);
         p->moves++;
         st->moves++;
         wr_sum[c] += MAX(wr_loss, 0.0f);
         score_sum[c] += MAX(score_loss, 0.0f);
-        acc_sum[c] += acc;
+        f32 acc = 0;
+        if (node_accuracy(n, &acc)) {   // Hawk Eye: over the moves whose candidates' visits are known
+            acc_sum[c] += acc, stage_acc[phase][c] += acc;
+            p->match_moves++, st->match_moves++;
+            if (node_matches_ai(n)) p->matches++, st->matches++;
+        }
         stage_wr[phase][c] += MAX(wr_loss, 0.0f);
         stage_score[phase][c] += MAX(score_loss, 0.0f);
-        stage_acc[phase][c] += acc;
         p->score_hist[bucket(g_limits.score, score_loss)]++;
         p->winrate_hist[bucket(g_limits.winrate, wr_loss)]++;
         if (loss_is_blunder(wr_loss)) p->blunders++, st->blunders++;
@@ -145,15 +183,15 @@ void game_report_compute(GameNode *const *line, isize count, GameReport *out) {
         if (p->moves) {
             p->avg_winrate_loss = (f32)(wr_sum[c] / p->moves);
             p->avg_score_loss = (f32)(score_sum[c] / p->moves);
-            p->accuracy = (f32)(acc_sum[c] / p->moves);
         }
+        if (p->match_moves) p->accuracy = (f32)(acc_sum[c] / p->match_moves);
         if (p->agreement_moves) p->agreement = (f32)(agree_sum[c] / p->agreement_moves);
         for (i32 ph = 0; ph < GAME_PHASES; ++ph) {
             StageReport *st = &p->stage[ph];
             if (!st->moves) continue;
             st->avg_winrate_loss = (f32)(stage_wr[ph][c] / st->moves);
             st->avg_score_loss = (f32)(stage_score[ph][c] / st->moves);
-            st->accuracy = (f32)(stage_acc[ph][c] / st->moves);
+            if (st->match_moves) st->accuracy = (f32)(stage_acc[ph][c] / st->match_moves);
             if (st->agreement_moves) st->agreement = (f32)(stage_agree[ph][c] / st->agreement_moves);
         }
     }

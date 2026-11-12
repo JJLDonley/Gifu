@@ -86,13 +86,33 @@ static void stat_cell(Ui *ui, StringView label, StringView value, Color color) {
 // Logical font size that fits a row of `row_px` pixels.
 static f32 font_for_row(Ui *ui, f32 row_px, f32 lo, f32 hi) { return CLAMP(row_px / ui->scale * 0.42f, lo, hi); }
 
+// A typed number (digits and a point only; Enter or a click elsewhere applies it)
+// followed by - / + (Shift: 10 steps; the mouse wheel over the field works too).
+static f32 value_stepper(Ui *ui, u32 index, f32 value, f32 step, f32 lo, f32 hi, const char *fmt) {
+    if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) step *= 10.0f;
+    Clay_ElementId id = CLAY_IDI("DeepStepValue", index);
+    CLAY({ .layout = { .childGap = ui_u16(ui, 4), .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
+        f64 v = value;
+        if (ui_number_input(ui, id, &v, lo, hi, fmt, 64)) value = (f32)v;
+        if (ui_button(ui, CLAY_IDI("DeepStepMinus", index), SV("−"), BUTTON_NORMAL, false, value > lo + 1e-4f)) value -= step;
+        if (ui_button(ui, CLAY_IDI("DeepStepPlus", index), SV("+"), BUTTON_NORMAL, false, value < hi - 1e-4f)) value += step;
+    }
+    if (Clay_PointerOver(id) && ui->wheel != 0 && ui->focus_id != id.id) value += (ui->wheel > 0 ? 1.0f : -1.0f) * step;
+    return CLAMP(value, lo, hi);
+}
+
+static i32 move_stepper(Ui *ui, u32 index, i32 value, i32 lo, i32 hi) {
+    return (i32)lroundf(value_stepper(ui, 20 + index, (f32)value, 1.0f, (f32)lo, (f32)hi, "%.0f"));
+}
+
 // ---- Overview: a butterfly chart of both players ------------------------------------------------------
 
 // Report ranges: the whole game, a phase, or moves n..N (games only, not profiles).
 enum { RANGE_ALL, RANGE_OPENING, RANGE_MIDDLE, RANGE_ENDGAME, RANGE_CUSTOM, RANGE_COUNT };
 
 static StageReport overall_of(const PlayerReport *p) {
-    return (StageReport){ .moves = p->moves, .top1 = p->top1, .top3 = p->top3, .mistakes = p->mistakes, .blunders = p->blunders,
+    return (StageReport){ .moves = p->moves, .top1 = p->top1, .top3 = p->top3, .match_moves = p->match_moves, .matches = p->matches,
+                          .mistakes = p->mistakes, .blunders = p->blunders,
                           .agreement = p->agreement, .agreement_moves = p->agreement_moves, .accuracy = p->accuracy,
                           .avg_winrate_loss = p->avg_winrate_loss, .avg_score_loss = p->avg_score_loss };
 }
@@ -189,20 +209,6 @@ static void butterfly_header(DeepReport *d, const StageReport st[3]) {
     }
 }
 
-// A move number with − / + (Shift: 10; the mouse wheel over it works too).
-static i32 move_stepper(Ui *ui, u32 index, i32 value, i32 lo, i32 hi) {
-    i32 step = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT) ? 10 : 1;
-    Clay_ElementId id = CLAY_IDI("DeepRangeValue", index);
-    CLAY({ .layout = { .childGap = ui_u16(ui, 4), .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
-        CLAY({ .id = id, .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 44)), CLAY_SIZING_FIT(0) }, .childAlignment = { .x = CLAY_ALIGN_X_RIGHT } } }) {
-            ui_label(ui, arena_format(&ui->frame, "%d", value), FONT_MONO, 14, ui->theme->colors.text);
-        }
-        if (ui_button(ui, CLAY_IDI("DeepRangeMinus", index), SV("−"), BUTTON_NORMAL, false, value > lo)) value -= step;
-        if (ui_button(ui, CLAY_IDI("DeepRangePlus", index), SV("+"), BUTTON_NORMAL, false, value < hi)) value += step;
-    }
-    if (Clay_PointerOver(id) && ui->wheel != 0) value += (ui->wheel > 0 ? 1 : -1) * step;
-    return CLAMP(value, lo, hi);
-}
 
 // The range buttons (and the custom range's move numbers). Returns the range in use.
 static i32 range_bar(DeepReport *d, i32 *from, i32 *to, i32 last_move) {
@@ -253,24 +259,43 @@ static void overview(DeepReport *d) {
     StageReport st[3];
     range_stats(d, range, from, to, st);
     butterfly_header(d, st);
+    // Hawk Eye's figures (LizzieYzy): accuracy (played visits / best visits), match
+    // (top N with at least P% of the best's visits), best move, average losses.
     enum { ROWS = 5 };
-    f32 row_px = fmaxf((d->page_h - ui_px(ui, 110)) / (f32)ROWS, ui_px(ui, 28));
+    f32 row_px = fmaxf((d->page_h - ui_px(ui, 150)) / (f32)ROWS, ui_px(ui, 28));
     f32 font = font_for_row(ui, row_px, 13.0f, 18.0f);
     ButterflyRow rows[ROWS] = {
         { tr(ui, "report.accuracy_score_title", "Accuracy"), { 0 }, { 0 }, "%.1f", 100.0f, false },
+        { tr(ui, "report.match", "Match"), { 0 }, { 0 }, "%.0f%%", 100.0f, false },
         { tr(ui, "report.accuracy", "Best move"), { 0 }, { 0 }, "%.0f%%", 100.0f, false },
-        { tr(ui, "report.top3", "Top 3"), { 0 }, { 0 }, "%.0f%%", 100.0f, false },
         { tr(ui, "report.avg_loss", "Avg loss"), { 0 }, { 0 }, "%.1f%%", 0, true },
         { tr(ui, "report.avg_score_loss", "Avg points lost"), { 0 }, { 0 }, "%.2f", 0, true },
     };
     for (Stone color = STONE_BLACK; color <= STONE_WHITE; ++color) {
         const StageReport *s = &st[color];
-        bool has = s->moves > 0;
-        f32 v[ROWS] = { s->accuracy, has ? 100.0f * (f32)s->top1 / (f32)s->moves : 0, has ? 100.0f * (f32)s->top3 / (f32)s->moves : 0,
-                        s->avg_winrate_loss * 100.0f, s->avg_score_loss };
+        bool visits = s->match_moves > 0;
+        f32 v[ROWS] = { s->accuracy, visits ? 100.0f * (f32)s->matches / (f32)s->match_moves : 0,
+                        visits ? 100.0f * (f32)s->top1 / (f32)s->match_moves : 0, s->avg_winrate_loss * 100.0f, s->avg_score_loss };
+        bool known[ROWS] = { visits, visits, visits, s->moves > 0, s->moves > 0 };
         for (i32 r = 0; r < ROWS; ++r) {
             rows[r].value[color] = v[r];
-            rows[r].known[color] = has;
+            rows[r].known[color] = known[r];
+        }
+    }
+    // The Match rule, editable: top N candidates with at least P% of the best's visits.
+    {
+        Config *cfg = &ui->app->config;
+        CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 8),
+                           .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
+            ui_label(ui, tr(ui, "report.match_rule", "Match: one of the top"), FONT_UI, 13, ui->theme->colors.text_muted);
+            f32 moves = value_stepper(ui, 10, (f32)cfg->report_match_moves, 1.0f, 1.0f, (f32)NODE_EVAL_TOP, "%.0f");
+            ui_label(ui, tr(ui, "report.match_rule2", "moves, with at least (%)"), FONT_UI, 13, ui->theme->colors.text_muted);
+            f32 pct = value_stepper(ui, 11, cfg->report_match_percent, 5.0f, 0.0f, 100.0f, "%g");
+            ui_label(ui, tr(ui, "report.match_rule3", "of the best move's visits"), FONT_UI, 13, ui->theme->colors.text_muted);
+            if ((i32)moves != cfg->report_match_moves || fabsf(pct - cfg->report_match_percent) > 1e-4f) {
+                cfg->report_match_moves = (i32)moves, cfg->report_match_percent = pct;
+                app_apply_loss_limits(ui->app);   // also applies the match rule
+            }
         }
     }
     CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM } }) {
@@ -353,9 +378,9 @@ static void draw_loss_graph(void *user, Rectangle r) {
                 f32 *v = &values[(color - 1) * d->count + i];
                 *v = -1.0f;
                 const GameNode *node = d->line[i];
-                f32 loss = 0;
-                if (!node->has_move || node->move.color != color || !game_node_score_loss(node, &loss)) continue;
-                window[head] = move_accuracy(loss);
+                f32 acc = 0;
+                if (!node->has_move || node->move.color != color || !node_accuracy(node, &acc)) continue;
+                window[head] = acc;   // Hawk Eye accuracy of the move
                 head = (head + 1) % TREND_WINDOW;
                 if (n < TREND_WINDOW) n++;
                 f32 sum = 0;
@@ -434,13 +459,14 @@ static StringView bucket_label(Ui *ui, const f32 *lim, i32 b, bool winrate) {
 
 // Moves the start of bucket b (limit b-1) by `delta` (in % or points), keeping the
 // limits increasing; saved to the settings (report.*_limits) and applied at once.
-static void nudge_limit(Ui *ui, bool winrate, i32 b, f32 delta) {
+// Sets where bucket b starts (in % or points), kept between its neighbours.
+static void set_limit(Ui *ui, bool winrate, i32 b, f32 shown) {
     LossLimits l = *loss_limits();
     f32 *lim = winrate ? l.winrate : l.score;
-    f32 scale = winrate ? 0.01f : 1.0f, step = (winrate ? 0.5f : 0.5f) * scale;
+    f32 scale = winrate ? 0.01f : 1.0f, gap = 0.1f * scale;
     i32 i = b - 1;
-    f32 lo = i > 0 ? lim[i - 1] + step : step, hi = i < LOSS_BUCKETS - 2 ? lim[i + 1] - step : 100.0f * scale;
-    lim[i] = CLAMP(roundf((lim[i] + delta * scale) / step) * step, lo, hi);
+    f32 lo = i > 0 ? lim[i - 1] + gap : gap, hi = i < LOSS_BUCKETS - 2 ? lim[i + 1] - gap : 100.0f * scale;
+    lim[i] = CLAMP(shown * scale, lo, hi);
     loss_limits_set(&l);
     Config *cfg = &ui->app->config;
     String *field = winrate ? &cfg->report_winrate_limits : &cfg->report_score_limits;
@@ -468,18 +494,29 @@ static void distribution(DeepReport *d, bool winrate, f32 row_px) {
                     bool left = color == STONE_BLACK;
                     if (!left) {   // the bucket's range, centred between the halves; - / + move where it starts
                         u32 idx = (winrate ? 100u : 0u) + (u32)b;
-                        CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, font * 10.0f)), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 4),
+                        CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, font * 12.0f)), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 4),
                                            .childAlignment = { .x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER } } }) {
                             bool editable = b > 0;
                             f32 step = (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) ? 5.0f : (winrate ? 1.0f : 0.5f);
+                            // The bucket's start, typed (in % or points), then where it ends; the
+                            // first bucket follows the second one's start.
+                            f32 unit = winrate ? 100.0f : 1.0f;
                             Clay_ElementId lid = CLAY_IDI("DistLabel", idx);
-                            CLAY({ .id = lid, .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childAlignment = { .x = CLAY_ALIGN_X_CENTER } } }) {
-                                ui_label(ui, bucket_label(ui, lim, b, winrate), FONT_MONO, font, c->text);
+                            CLAY({ .id = lid, .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 2),
+                                                          .childAlignment = { .x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER } } }) {
+                                if (!editable) {
+                                    ui_label(ui, bucket_label(ui, lim, b, winrate), FONT_MONO, font, c->text);
+                                } else {
+                                    f64 start = lim[b - 1] * unit;
+                                    if (ui_number_input(ui, CLAY_IDI("DistStart", idx), &start, 0.0, 100.0, "%g", font * 3.6f)) set_limit(ui, winrate, b, (f32)start);
+                                    StringView end = b < LOSS_BUCKETS - 1 ? arena_format(&ui->frame, "–%g%s", (f64)(lim[b] * unit), winrate ? "%" : "")
+                                                                          : arena_format(&ui->frame, "+%s", winrate ? "%" : "");
+                                    ui_label(ui, end, FONT_MONO, font, c->text);
+                                }
                             }
-                            // The first bucket follows the second one's start; its buttons keep the column aligned.
-                            if (ui_button(ui, CLAY_IDI("DistMinus", idx), SV("−"), BUTTON_GHOST, false, editable) && editable) nudge_limit(ui, winrate, b, -step);
-                            if (ui_button(ui, CLAY_IDI("DistPlus", idx), SV("+"), BUTTON_GHOST, false, editable) && editable) nudge_limit(ui, winrate, b, step);
-                            if (editable && ui->wheel != 0 && Clay_PointerOver(lid)) nudge_limit(ui, winrate, b, ui->wheel > 0 ? step : -step);
+                            if (ui_button(ui, CLAY_IDI("DistMinus", idx), SV("−"), BUTTON_GHOST, false, editable) && editable) set_limit(ui, winrate, b, lim[b - 1] * unit - step);
+                            if (ui_button(ui, CLAY_IDI("DistPlus", idx), SV("+"), BUTTON_GHOST, false, editable) && editable) set_limit(ui, winrate, b, lim[b - 1] * unit + step);
+                            if (editable && ui->wheel != 0 && Clay_PointerOver(lid)) set_limit(ui, winrate, b, lim[b - 1] * unit + (ui->wheel > 0 ? step : -step));
                         }
                     }
                     Clay_String count = ui_fmt(ui, "%d · %.0f%%", hist[b], share * 100.0f);
@@ -523,20 +560,6 @@ static i32 by_move_number(const void *a, const void *b) {
     return (*(GameNode *const *)a)->move_number - (*(GameNode *const *)b)->move_number;
 }
 
-// A number with - / + (Shift: 10 steps; the mouse wheel over the value works too).
-static f32 value_stepper(Ui *ui, u32 index, f32 value, f32 step, f32 lo, f32 hi, const char *fmt) {
-    if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) step *= 10.0f;
-    Clay_ElementId id = CLAY_IDI("DeepStepValue", index);
-    CLAY({ .layout = { .childGap = ui_u16(ui, 4), .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
-        CLAY({ .id = id, .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 56)), CLAY_SIZING_FIT(0) }, .childAlignment = { .x = CLAY_ALIGN_X_RIGHT } } }) {
-            ui_label(ui, arena_format(&ui->frame, fmt, (f64)value), FONT_MONO, 14, ui->theme->colors.text);
-        }
-        if (ui_button(ui, CLAY_IDI("DeepStepMinus", index), SV("−"), BUTTON_NORMAL, false, value > lo + 1e-4f)) value -= step;
-        if (ui_button(ui, CLAY_IDI("DeepStepPlus", index), SV("+"), BUTTON_NORMAL, false, value < hi - 1e-4f)) value += step;
-    }
-    if (Clay_PointerOver(id) && ui->wheel != 0) value += (ui->wheel > 0 ? 1.0f : -1.0f) * step;
-    return CLAMP(roundf(value / step * 10.0f) / 10.0f * step, lo, hi);
-}
 
 // The moves the list shows: a win-rate loss of at least report.filter_winrate %
 // and a points loss of at least report.filter_points (both, like LizzieYzy's
@@ -556,11 +579,11 @@ static void mistakes(DeepReport *d) {
     // Filters: which moves are listed.
     CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 8),
                        .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
-        ui_label(ui, tr(ui, "report.filter_winrate", "Win rate lost ≥"), FONT_UI, 13, c->text_muted);
-        cfg->report_filter_winrate = value_stepper(ui, 0, cfg->report_filter_winrate, 1.0f, 0.0f, 100.0f, "%.0f%%");
+        ui_label(ui, tr(ui, "report.filter_winrate", "Win rate lost ≥ (%)"), FONT_UI, 13, c->text_muted);
+        cfg->report_filter_winrate = value_stepper(ui, 0, cfg->report_filter_winrate, 1.0f, 0.0f, 100.0f, "%g");
         CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 10)), CLAY_SIZING_FIT(0) } } }) {}
         ui_label(ui, tr(ui, "report.filter_points", "Points lost ≥"), FONT_UI, 13, c->text_muted);
-        cfg->report_filter_points = value_stepper(ui, 1, cfg->report_filter_points, 0.5f, 0.0f, 100.0f, "%.1f");
+        cfg->report_filter_points = value_stepper(ui, 1, cfg->report_filter_points, 0.5f, 0.0f, 100.0f, "%g");
     }
     // Sorted by win rate lost, points lost or move number (a click on the column
     // title; remembered).
@@ -887,7 +910,8 @@ static void moves_page(DeepReport *d) {
                 cell(ui, arena_format(&ui->frame, "%.1f%%", node->eval.black_winrate * 100.0f), FONT_MONO, c->text, 0, true);
                 cell(ui, arena_format(&ui->frame, "%+.1f%%", -wr_loss * 100.0f), FONT_MONO, wr_loss > 0.10f ? c->candidate_bad : c->text, 110, true);
                 cell(ui, has_points ? arena_format(&ui->frame, "%+.1f", -points) : SV("—"), FONT_MONO, loss_color, 100, true);
-                cell(ui, has_points ? arena_format(&ui->frame, "%.0f", move_accuracy(points)) : SV("—"), FONT_MONO, c->text, 80, true);
+                f32 acc = 0;
+                cell(ui, node_accuracy(node, &acc) ? arena_format(&ui->frame, "%.0f", acc) : SV("—"), FONT_MONO, c->text, 80, true);
                 f32 share = 0;
                 cell(ui, node_played_share(node, &share) ? arena_format(&ui->frame, "%.0f%%", share * 100.0f) : SV("—"), FONT_MONO, c->text, 100, true);
             }

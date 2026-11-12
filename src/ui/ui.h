@@ -140,6 +140,9 @@ typedef struct Ui {
     f32 wheel;
     u32 active_id;        // Clay id of the button being pressed
     u32 focus_id;         // Clay id of the focused text input (0 = none)
+    // Number inputs (ui_number_input): an edit buffer per field, reused by id.
+    struct { u32 id; TextEdit edit; f64 shown; u64 frame; } number_fields[32];
+    u64 number_frame;
     bool focus_claimed;   // a focused input was laid out this frame
     bool text_dragging;
     u32 scrollbar_drag;   // scrollbar thumb being dragged (Clay id), 0 = none
@@ -278,6 +281,10 @@ bool ui_button(Ui *ui, Clay_ElementId id, StringView label, ButtonStyle style, b
 bool ui_clicked(Ui *ui, Clay_ElementId id, bool enabled);
 // Text input (single or multi-line). The caller owns `edit`.
 TextInputResult ui_text_input(Ui *ui, Clay_ElementId id, TextEdit *edit, f32 font_size, i32 min_rows, StringView placeholder);
+// A single-line field for a number: digits, one '.', a leading '-' when lo < 0.
+// Shows `*value` with `fmt` until clicked; Enter or a click elsewhere applies the typed
+// number (clamped to lo..hi), Escape restores it. True when *value changed.
+bool ui_number_input(Ui *ui, Clay_ElementId id, f64 *value, f64 lo, f64 hi, const char *fmt, f32 width);
 // Small on/off switch; returns true when toggled this frame.
 bool ui_toggle(Ui *ui, Clay_ElementId id, bool on);
 // Button bound to a registered command (label from i18n "command.<id>").

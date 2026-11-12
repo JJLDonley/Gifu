@@ -7,6 +7,7 @@
 #include "ui/ui.h"
 
 #include <math.h>
+#include <stdio.h>
 #include <string.h>
 
 enum { MAX_VISUAL_LINES = 2048 };
@@ -274,4 +275,76 @@ TextInputResult ui_text_input(Ui *ui, Clay_ElementId id, TextEdit *edit, f32 fon
            .custom = { .customData = ui_custom(ui, draw_text_input, st) } }) {}
     if (over) SetMouseCursor(MOUSE_CURSOR_IBEAM);
     return result;
+}
+
+// ---- Number input ---------------------------------------------------------------------------------
+
+static TextEdit *number_slot(Ui *ui, u32 id, bool *fresh) {
+    i32 free_slot = -1, oldest = 0;
+    for (i32 i = 0; i < (i32)countof(ui->number_fields); ++i) {
+        if (ui->number_fields[i].id == id) {
+            ui->number_fields[i].frame = ui->number_frame;
+            *fresh = false;
+            return &ui->number_fields[i].edit;
+        }
+        if (!ui->number_fields[i].id && free_slot < 0) free_slot = i;
+        if (ui->number_fields[i].frame < ui->number_fields[oldest].frame) oldest = i;
+    }
+    i32 i = free_slot >= 0 ? free_slot : oldest;   // reuse the field not drawn for the longest
+    ui->number_fields[i].id = id;
+    ui->number_fields[i].frame = ui->number_frame;
+    *fresh = true;
+    return &ui->number_fields[i].edit;
+}
+
+// Keeps only what a number may contain.
+static void number_filter(TextEdit *edit, bool negative) {
+    String out = { 0 };
+    bool dot = false;
+    StringView t = string_sv(&edit->text);
+    for (isize i = 0; i < t.len; ++i) {
+        char ch = t.data[i];
+        if ((ch >= '0' && ch <= '9') || (ch == '.' && !dot) || (ch == '-' && negative && out.len == 0)) {
+            string_push_char(&out, ch);
+            if (ch == '.') dot = true;
+        }
+    }
+    if (out.len != t.len) {
+        text_edit_set(edit, string_sv(&out));
+        edit->caret = edit->anchor = edit->text.len;
+    }
+    string_free(&out);
+}
+
+bool ui_number_input(Ui *ui, Clay_ElementId id, f64 *value, f64 lo, f64 hi, const char *fmt, f32 width) {
+    bool fresh = false;
+    TextEdit *edit = number_slot(ui, id.id, &fresh);
+    bool focused = ui->focus_id == id.id;
+    char shown[48];
+    snprintf(shown, sizeof(shown), fmt, *value);
+    // Not being edited: show the current value (it may change elsewhere).
+    if (!focused && (fresh || !sv_eq(string_sv(&edit->text), sv(shown)))) text_edit_set(edit, sv(shown));
+    TextInputResult r = TEXT_INPUT_NONE;
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, width)), CLAY_SIZING_FIT(0) } } }) {
+        r = ui_text_input(ui, id, edit, 14, 1, SV(""));
+    }
+    if (ui->focus_id == id.id && !focused) text_edit_select_all(edit);   // just clicked: typing replaces it
+    number_filter(edit, lo < 0);
+    if (r == TEXT_INPUT_CANCELLED) {
+        text_edit_set(edit, sv(shown));
+        return false;
+    }
+    if (r != TEXT_INPUT_COMMITTED) return false;
+    f64 typed = 0;
+    StringView text = sv_trim(string_sv(&edit->text));
+    if (!text.len || !sv_parse_f64(text, &typed)) {
+        text_edit_set(edit, sv(shown));
+        return false;
+    }
+    typed = CLAMP(typed, lo, hi);
+    bool changed = fabs(typed - *value) > 1e-9;
+    *value = typed;
+    snprintf(shown, sizeof(shown), fmt, *value);
+    text_edit_set(edit, sv(shown));
+    return changed;
 }
