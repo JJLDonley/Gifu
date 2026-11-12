@@ -314,7 +314,11 @@ bool ui_init(Ui *ui, App *app) {
     string_free(&forms_path);
     ui->language_version = app->language_version;
 
-    layout_load(ui);
+    ui->layout_preset = string_from(string_sv(&app->config.analysis_layout));   // the startup layout (no flash of layout.lisp)
+    if (!layout_load(ui) && ui->layout_preset.len) {   // no such preset: layout.lisp
+        string_free(&ui->layout_preset);
+        layout_load(ui);
+    }
 
     Clay_SetMaxElementCount(16384);
     u32 memory_size = Clay_MinMemorySize();
@@ -480,14 +484,11 @@ static void sync_window(Ui *ui) {
 }
 
 // The layout follows what you are doing: the play preset (ai.layout) while an AI
-// plays, the analysis preset (analysis.layout) while analysing (live, or a whole
-// game), your usual layout otherwise.
+// plays, the analysis preset (analysis.layout) otherwise, from startup on. An empty
+// setting means layout.lisp.
 static void follow_game_layout(Ui *ui) {
     const App *app = ui->app;
-    bool analysing = app->analysis_enabled || app->flash_running || app->batch_running;
-    StringView want = app_hints_hidden(app) ? string_sv(&app->config.ai_layout)
-                      : analysing          ? string_sv(&app->config.analysis_layout)
-                                           : SV("");
+    StringView want = app_hints_hidden(app) ? string_sv(&app->config.ai_layout) : string_sv(&app->config.analysis_layout);
     if (!sv_eq(want, string_sv(&ui->layout_preset))) layout_use_preset(ui, want);
 }
 

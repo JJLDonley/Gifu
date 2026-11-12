@@ -29,7 +29,7 @@ static const ConfigField FIELDS[] = {
     STR("ai.engine", ai_engine, ""),
     STR("ai.style", ai_style, "strongest"),
     STR("ai.layout", ai_layout, "play"),   // layout preset while the AI plays ("" = keep the current one)
-    STR("analysis.layout", analysis_layout, "analysis"),   // layout preset while analysing ("" = keep the current one)   // strongest | human | territorial | influence | fighting | calm (app/ai_style.h)
+    STR("analysis.layout", analysis_layout, "analysis"),   // layout preset when no AI plays, from startup ("" = layout.lisp)   // strongest | human | territorial | influence | fighting | calm (app/ai_style.h)
     STR("profile.names", profile_names, ""),     // the user's player names, comma-separated
     STR("profile.folder", profile_folder, ""),   // where the user's games are   // the engine that plays against you ("" = the main engine)
     STR("install.backend", install_backend, "opencl"),
