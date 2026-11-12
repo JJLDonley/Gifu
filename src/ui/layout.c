@@ -109,7 +109,7 @@ static void engine_status_widget(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
             isize done = 0, total = 0;
             app_game_analysis_progress(app, &done, &total);
             CLAY_TEXT(ui_fmt(ui, "· %td/%td", done, total), ui_text_style(ui, FONT_MONO, 12, c->text_muted));
-        } else if (app->analysis_valid && app->analysis_enabled) {
+        } else if (app->analysis_valid && app->analysis_enabled && !app_eval_hidden(app)) {   // nothing about the analysis while playing the AI
             CLAY_TEXT(ui_fmt(ui, "· %d", app->analysis->total_visits), ui_text_style(ui, FONT_MONO, 12, c->text_muted));
         }
     }

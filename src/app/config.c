@@ -53,7 +53,6 @@ static const ConfigField FIELDS[] = {
     INT("ai.max_visits", ai_max_visits, 1000, 0, 10000000),                 // KataGo's search per move when it plays (0 = its config)
     FLOAT("human_winrate.level", human_winrate_level, 1.0, -11.0, 9.0),   // Fox rank: -11 = 12k, 0 = 1k, 1 = 1d, 9 = 9d
     BOOL("ai.human_style", ai_human_style, 0),
-    BOOL("ai.show_eval", ai_show_eval, 0),
     INT("katago.search_threads", katago_search_threads, 0, 0, 256),
     INT("katago.max_visits", katago_max_visits, 0, 0, 10000000),
     INT("katago.gpu", katago_gpu, -1, -1, 15),
@@ -218,6 +217,7 @@ bool config_load(Config *config, String *error) {
     vec_foreach(KvEntry, e, &kv.entries) {
         const ConfigField *f = config_field(e->key);
         if (!f && sv_eq(e->key, SV("updates.channel"))) continue;   // retired: saved by 0.1.0-alpha.1 without the user choosing
+        if (!f && sv_eq(e->key, SV("ai.show_eval"))) continue;      // retired: no evaluation while playing the AI (Space analyses)
         if (!f && sv_eq(e->key, SV("board.show_move_numbers"))) {   // retired: on/off is now all / last N / none
             bool on = false;
             if (kv_parse_bool(e->value, &on) && on) config->move_numbers = -1;

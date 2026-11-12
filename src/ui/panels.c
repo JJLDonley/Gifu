@@ -569,7 +569,6 @@ static void panel_hidden(Ui *ui, StringView name) {
     CLAY(ui_card(ui, CLAY_IDI("PanelHidden", index))) {
         ui_card_title(ui, app_tr(ui->app, key, key + 6));
         ui_label(ui, tr(ui, "label.eval_hidden", "Hidden while you play the engine"), FONT_UI, 12, c->text_muted);
-        if (!sv_eq(name, SV("candidates"))) ui_command_button(ui, SV("game.show_eval"), SV(""), BUTTON_NORMAL, 100 + (index % 1000));
     }
 }
 
