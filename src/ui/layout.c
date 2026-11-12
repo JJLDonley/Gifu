@@ -770,19 +770,23 @@ static void upgrade_saved_layout(Ui *ui, Arena *arena, Sexpr *app_node) {
     Sexpr *builtin = root->first, *prev, *unused;
     Sexpr *menus = find_child_list(builtin, "menubar", &unused), *bar = find_child_list(builtin, "toolbar", &unused);
     Sexpr *builtin_modes = bar ? find_child_list(bar, "modes", &unused) : NULL;
-    Sexpr *saved_menus = find_child_list(app_node, "menubar", &prev);
-    if (saved_menus && menus && !sexpr_flag(saved_menus, "custom")) replace_child(app_node, prev, saved_menus, menus);
-    if (!find_child_list(app_node, "board-menu", &unused)) {   // older saved layouts: the built-in board menus
-        Sexpr *tail = last_element(app_node);
-        for (Sexpr *c = builtin->first; c && tail; c = c->next) {
+    // Older saved layouts get the built-in board menus (copied now: the menubar
+    // splice below relinks the built-in list right before them).
+    Sexpr *board_menus = NULL, *board_menus_tail = NULL;
+    if (!find_child_list(app_node, "board-menu", &unused)) {
+        for (Sexpr *c = builtin->first; c; c = c->next) {
             if (!sexpr_is_list(c, "board-menu")) continue;
             Sexpr *copy = arena_new(arena, Sexpr);
             *copy = *c;
             copy->next = NULL;
-            tail->next = copy;
-            tail = copy;
+            if (board_menus_tail) board_menus_tail->next = copy;
+            else board_menus = copy;
+            board_menus_tail = copy;
         }
     }
+    Sexpr *saved_menus = find_child_list(app_node, "menubar", &prev);
+    if (saved_menus && menus && !sexpr_flag(saved_menus, "custom")) replace_child(app_node, prev, saved_menus, menus);
+    if (board_menus) last_element(app_node)->next = board_menus;
 
     Sexpr *saved_bar = find_child_list(app_node, "toolbar", &prev);
     if (!saved_bar || find_child_list(saved_bar, "modes", &unused) || !builtin_modes) return;
