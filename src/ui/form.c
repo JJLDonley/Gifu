@@ -61,35 +61,56 @@ static void bool_field(Ui *ui, const Sexpr *v, const ConfigField *f, u32 index) 
     }
 }
 
+// Splits a :format such as "%.0f s" into the number's own conversion ("%.0f") and
+// the text after it (" s"), shown as a unit beside the input.
+static void split_format(StringView format, char *number, isize number_cap, StringView *unit) {
+    isize start = sv_find_char(format, '%'), end = start;
+    if (start < 0) {
+        snprintf(number, (usize)number_cap, "%%g");
+        *unit = SV("");
+        return;
+    }
+    while (end < format.len && !strchr("fgeFGE", format.data[end])) ++end;
+    end = MIN(end + 1, format.len);
+    snprintf(number, (usize)number_cap, SV_FMT, SV_ARG(sv_slice(format, start, end)));
+    *unit = sv_trim(sv_drop(format, end));
+}
+
+// A typed number (digits and a point; Enter or a click elsewhere applies it), then its
+// unit, then - / + (Shift: ten steps; the mouse wheel over the input steps too).
 static void number_field(Ui *ui, const Sexpr *v, const ConfigField *f, u32 index) {
     Config *config = &ui->app->config;
+    const ThemeColors *c = &ui->theme->colors;
     f64 value = config_get_number(config, f);
     f64 step = sexpr_prop_number(v, "step", 1.0);
     f64 lo = sexpr_prop_number(v, "min", f->min), hi = sexpr_prop_number(v, "max", f->max);
-    // Shift+click steps ten times as far (visits, cache sizes...).
     if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) step *= 10.0;
-    char text[48];
+    char fmt[16];
+    StringView unit;
+    split_format(sexpr_prop_text(v, "format", SV("%g")), fmt, sizeof(fmt), &unit);
+    // "Unset" (e.g. no clock, the engine's own value): its name instead of the unit.
     StringView zero_key = sexpr_prop_text(v, "zero", SV(""));
     f64 zero_value = sexpr_prop_number(v, "zero_value", 0.0);
-    if (zero_key.len && fabs(value - zero_value) < 1e-9) {   // "unset": keep the engine's own value
+    if (zero_key.len && fabs(value - zero_value) < 1e-9) {
         String key = string_from(zero_key);
-        snprintf(text, sizeof(text), SV_FMT, SV_ARG(app_tr(ui->app, string_cstr(&key), "default")));
+        unit = arena_format(&ui->frame, SV_FMT, SV_ARG(app_tr(ui->app, string_cstr(&key), "default")));
         string_free(&key);
-    } else {
-        String fmt = string_from(sexpr_prop_text(v, "format", SV("%g")));
-        snprintf(text, sizeof(text), string_cstr(&fmt), value);
-        string_free(&fmt);
     }
-    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 6),
+    Clay_ElementId input = CLAY_IDI("FormNumber", index);
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 4),
                        .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
         field_label(ui, label_of(ui, v));
-        f64 next = value;
+        f64 typed = value, next = value;
+        bool was_typed = ui_number_input(ui, input, &typed, lo, hi, fmt, 60, 13, true);
+        if (unit.len) ui_label(ui, unit, FONT_UI, 13, c->text_muted);   // "s", "no clock"...
         if (ui_button(ui, CLAY_IDI("FormMinus", index), SV("−"), BUTTON_NORMAL, false, value > lo + 1e-9)) next = value - step;
-        CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 96)), CLAY_SIZING_FIT(0) }, .childAlignment = { .x = CLAY_ALIGN_X_CENTER } } }) {
-            ui_label(ui, sv(text), FONT_MONO, 14, ui->theme->colors.text);
-        }
         if (ui_button(ui, CLAY_IDI("FormPlus", index), SV("+"), BUTTON_NORMAL, false, value < hi - 1e-9)) next = value + step;
-        if (next != value) {
+        if (Clay_PointerOver(input) && ui->wheel != 0 && ui->focus_id != input.id) next = value + (ui->wheel > 0 ? step : -step);
+        // A typed value is kept as typed; the buttons and the wheel snap to the step.
+        if (was_typed) {
+            config_set_number(config, f, CLAMP(typed, lo, hi));
+            apply_change(ui, f);
+        } else if (next != value) {
             config_set_number(config, f, CLAMP(round(next / step) * step, lo, hi));
             apply_change(ui, f);
         }
