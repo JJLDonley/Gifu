@@ -73,7 +73,8 @@
       (option rank_3k 3k) (option rank_1k 1k) (option rank_1d 1d) (option rank_3d 3d) (option rank_5d 5d)
       (option rank_7d 7d) (option rank_9d 9d) (option proyear_2023 "Pro 2023"))
     (number ai.seconds_per_move :max 60 :step 1 :format "%.0f s" :zero settings.no_clock :label settings.ai_time :fallback "Time per move")
-    (number ai.max_visits :when "ai.engine=" :step 100 :format "%.0f" :zero settings.cfg_default :label settings.ai_visits :fallback "Visits per move"))
+    (number ai.max_visits :when "ai.engine=" :step 100 :format "%.0f" :zero settings.cfg_default :label settings.ai_visits :fallback "Visits per move")
+    (bool ai.click_plays_ai :label settings.ai_click_plays :fallback "Clicks can play the AI's move"))
   (section settings.analysis :fallback Analysis
     ;; Human win rate widget: the players' strength on Fox ranks (Rendu 2023).
     (choice human_winrate.level :columns 7 :label settings.human_winrate_level :fallback "Human win rate: players' strength (Fox)"

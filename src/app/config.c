@@ -51,6 +51,7 @@ static const ConfigField FIELDS[] = {
     BOOL("board.drag_stones", drag_stones, 1),
     FLOAT("ai.seconds_per_move", ai_seconds_per_move, 10.0, 0.0, 120.0),   // 0 = no clock: the engine's own limits
     INT("ai.max_visits", ai_max_visits, 1000, 0, 10000000),                 // KataGo's search per move when it plays (0 = its config)
+    BOOL("ai.click_plays_ai", ai_click_plays_ai, 0),                         // a click on the AI's turn plays its move
     FLOAT("human_winrate.level", human_winrate_level, 1.0, -11.0, 9.0),   // Fox rank: -11 = 12k, 0 = 1k, 1 = 1d, 9 = 9d
     BOOL("ai.human_style", ai_human_style, 0),
     INT("katago.search_threads", katago_search_threads, 0, 0, 256),

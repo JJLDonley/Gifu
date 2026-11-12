@@ -20,6 +20,7 @@ typedef struct Config {
     String ai_engine;   // opponent engine profile id ("" = the analysis engine plays)
     String ai_style;    // the analysis engine's playing style (app/ai_style.h)
     i32 ai_max_visits;   // visits per engine move (0 = the engine's config)
+    bool ai_click_plays_ai;   // a click on the board during the AI's turn plays the AI's move
     String ai_layout;   // layout preset while the AI plays ("" = keep the current one)
     String analysis_layout;   // layout preset when no AI plays (the default on startup)
     String profile_names, profile_folder;   // Profile: who the user is, where their games are

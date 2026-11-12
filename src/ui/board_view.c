@@ -826,8 +826,9 @@ void board_view_handle_input(Ui *ui) {
     }
     if (ui->wheel > 0) command_execute(&app->commands, SV("nav.back"));
     if (ui->wheel < 0) command_execute(&app->commands, SV("nav.forward"));
-    // The AI's turn (its colour is on): clicks do not play its move.
-    bool ai_turn = app->ai_plays[app->tree->current->to_play];
+    // The AI's turn (its colour is on): clicks do not play its move, unless the
+    // setting ai.click_plays_ai says so (its own move for that position is then dropped).
+    bool ai_turn = app->ai_plays[app->tree->current->to_play] && !app->config.ai_click_plays_ai;
     if (ui->mouse_pressed && !point_is_pass(p) && ai_turn) app_set_status(app, "It is the AI's turn");
     if (ui->mouse_pressed && !point_is_pass(p) && !ai_turn) {
         MoveError err = app_play(app, p);
