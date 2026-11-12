@@ -231,13 +231,19 @@ static bool read_pipe(int fd, u8 *dst, isize want, const ScreenCapture *c) {
 // Gifu's window runs through XWayland, and the area is picked in its pixels. With
 // "apply scaling themselves" (XWayland at the full resolution) those are not
 // KWin's logical pixels: compare the X screen with KWin's workspace once.
+static bool x_screen_size(i32 *w, i32 *h) {
+    Display *d = XOpenDisplay(NULL);
+    if (!d) return false;
+    *w = DisplayWidth(d, DefaultScreen(d)), *h = DisplayHeight(d, DefaultScreen(d));
+    XCloseDisplay(d);
+    return *w > 0 && *h > 0;
+}
+
 static f32 kwin_area_scale(ScreenCapture *c, DbusLink *link) {
     if (c->area_scale > 0) return c->area_scale;
     c->area_scale = 1.0f;
-    Display *d = XOpenDisplay(NULL);
-    if (!d) return c->area_scale;
-    i32 xw = DisplayWidth(d, DefaultScreen(d)), xh = DisplayHeight(d, DefaultScreen(d));
-    XCloseDisplay(d);
+    i32 xw = 0, xh = 0;
+    if (!x_screen_size(&xw, &xh)) return c->area_scale;
     int fds[2];
     if (pipe2(fds, O_CLOEXEC) != 0) return c->area_scale;
     DbusMsg *m = dbus_msg_method(SV("org.kde.KWin.ScreenShot2"), SV("/org/kde/KWin/ScreenShot2"), SV("org.kde.KWin.ScreenShot2"), SV("CaptureWorkspace"));
@@ -283,6 +289,7 @@ static bool capture_grab_kwin(ScreenCapture *c, const ScreenRect *rect_in, RgbaI
     dbus_msg_uint32(m, (u32)MAX(rect->height, 1));
     dbus_msg_dict_begin(m);
     dbus_msg_dict_bool(m, SV("include-cursor"), false);
+    dbus_msg_dict_bool(m, SV("native-resolution"), true);   // the screen's pixels, not the logical (e.g. half-size at 200%) ones
     dbus_msg_dict_end(m);
     dbus_msg_fd(m, fds[1]);
     DbusValue reply = { 0 };
@@ -461,6 +468,22 @@ static bool kwin_refused(StringView error) {
            sv_find(error, SV("not provided")) >= 0;
 }
 
+// The portal and grim return the whole screen in device pixels, while the area is in
+// Gifu's (XWayland) pixels: logical ones when XWayland is scaled by the compositor
+// (GNOME, sway, KDE's legacy mode). Compare the picture with the X screen once.
+static f32 crop_scale(ScreenCapture *c, const RgbaImage *full) {
+    if (c->crop_scale > 0) return c->crop_scale;
+    c->crop_scale = 1.0f;
+    i32 xw = 0, xh = 0;
+    if (!x_screen_size(&xw, &xh)) return c->crop_scale;
+    f32 sx = (f32)full->width / (f32)xw, sy = (f32)full->height / (f32)xh;
+    bool uniform = fabsf(sx - sy) < 0.03f * sx, sane = sx >= 0.25f && sx <= 4.0f;
+    if (uniform && sane && fabsf(sx - 1.0f) > 0.02f) c->crop_scale = sx;
+    log_info("screen capture: X screen %dx%d, screenshot %dx%d -> area scale %.3f%s", xw, xh, full->width, full->height, (f64)c->crop_scale,
+             uniform && sane ? "" : " (screens scaled differently: not adjusted)");
+    return c->crop_scale;
+}
+
 bool capture_grab_native(ScreenCapture *c, const ScreenRect *rect, RgbaImage *out, String *error) {
     if (c->kind == CAPTURE_X11) return capture_grab_x11(c, rect, out, error);
     if (c->kind == CAPTURE_KWIN) {
@@ -472,7 +495,12 @@ bool capture_grab_native(ScreenCapture *c, const ScreenRect *rect, RgbaImage *ou
     }
     RgbaImage full;
     bool ok = c->kind == CAPTURE_PORTAL ? capture_grab_portal(c, &full, error) : capture_grab_tool(c, &full, error);
-    return ok && capture_crop_to(&full, rect, out, error);
+    if (!ok) return false;
+    if (!rect) return capture_crop_to(&full, NULL, out, error);
+    f32 scale = crop_scale(c, &full);
+    ScreenRect scaled = { (i32)lroundf((f32)rect->x * scale), (i32)lroundf((f32)rect->y * scale), (i32)lroundf((f32)rect->width * scale),
+                          (i32)lroundf((f32)rect->height * scale) };
+    return capture_crop_to(&full, &scaled, out, error);
 }
 
 void capture_close_native(ScreenCapture *c) {

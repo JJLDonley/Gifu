@@ -29,6 +29,7 @@ typedef struct Fake {
     FakeMode kwin, portal;
     i32 workspace_w, workspace_h;   // CaptureWorkspace answers this size (0: refuse)
     i32 asked_w, asked_h;           // the last CaptureArea size requested
+    i32 screen_w, screen_h;         // the portal's screenshot size (0: the 4x3 TEST_PNG); pixel (x, y) = (x, y, 7) mod 256
     volatile bool stop;
     String png_path;
 } Fake;
@@ -107,7 +108,23 @@ static void answer_portal(Fake *f, DbusCall *call) {
     dbus_msg_path(r, string_sv(&path));
     dbus_link_send(f->link, r);
     if (f->portal != FAKE_SILENT) {
-        if (!os_write_file(string_sv(&f->png_path), sv_from_parts((const char *)TEST_PNG, (isize)sizeof(TEST_PNG)))) return;
+        String shot = { 0 };
+        if (f->screen_w > 0) {
+            RgbaImage img;
+            if (!rgba_image_alloc(&img, f->screen_w, f->screen_h)) return;
+            for (i32 y = 0; y < img.height; ++y)
+                for (i32 x = 0; x < img.width; ++x) {
+                    u8 *p = img.pixels + ((usize)y * (usize)img.width + (usize)x) * 4;
+                    p[0] = (u8)x, p[1] = (u8)y, p[2] = 7, p[3] = 255;
+                }
+            png_encode(&img, &shot);
+            rgba_image_free(&img);
+        } else {
+            string_push(&shot, sv_from_parts((const char *)TEST_PNG, (isize)sizeof(TEST_PNG)));
+        }
+        bool written = os_write_file(string_sv(&f->png_path), string_sv(&shot));
+        string_free(&shot);
+        if (!written) return;
         // Response goes to the caller only (destination set), like xdg-desktop-portal.
         DbusMsg *sig = dbus_msg_signal(string_sv(&path), SV("org.freedesktop.portal.Request"), SV("Response"), string_sv(&call->sender));
         dbus_msg_uint32(sig, f->portal == FAKE_OK ? 0 : 1);
@@ -235,5 +252,33 @@ static void test_kwin_scale(void) {
     fake_stop(&f, &t);
 }
 
+// The portal's screenshot is in device pixels; with XWayland scaled by the compositor
+// (GNOME, KDE's legacy mode) the area in Gifu's pixels is doubled at 200%.
+static void test_portal_scale(void) {
+    if (!dbus_link_available() || !start_bus()) return;
+    Display *d = XOpenDisplay(NULL);
+    i32 xw = d ? DisplayWidth(d, DefaultScreen(d)) : 0, xh = d ? DisplayHeight(d, DefaultScreen(d)) : 0;
+    if (d) XCloseDisplay(d);
+    if (xw <= 0) {
+        printf("    (skipped: no X display)\n");
+        return;
+    }
+    Fake f = { .kwin = FAKE_OK, .portal = FAKE_OK, .screen_w = xw * 2, .screen_h = xh * 2 };
+    Thread t;
+    if (!fake_start(&f, &t)) return;
+    String err = { 0 };
+    ScreenCapture *c = screen_capture_open(SV("portal"), SV(""), &err);
+    ScreenRect rect = { 100, 60, 400, 300 };
+    RgbaImage img = { 0 };
+    CHECK(screen_capture_grab(c, &rect, &img, &err));
+    CHECK(img.width == 800 && img.height == 600);
+    if (img.pixels) CHECK(img.pixels[0] == (u8)200 && img.pixels[1] == (u8)120 && img.pixels[2] == 7);   // from (200, 120)
+    rgba_image_free(&img);
+    screen_capture_close(c);
+    string_free(&err);
+    fake_stop(&f, &t);
+}
+
 void register_capture_linux_tests(void) {
-    test_register("capture/kwin_scale", test_kwin_scale); test_register("capture/linux_dbus", test_kwin_and_portal); }
+    test_register("capture/kwin_scale", test_kwin_scale); test_register("capture/portal_scale", test_portal_scale);
+    test_register("capture/linux_dbus", test_kwin_and_portal); }
