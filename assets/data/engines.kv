@@ -12,7 +12,7 @@ katago-opencl.config = ${root}/katago/${platform}-opencl/default_gtp.cfg
 katago-opencl.analysis_config = ${root}/katago/${platform}-opencl/analysis_example.cfg
 katago-opencl.human_model = ${root}/katago/networks/human
 
-katago-cpu.name = KataGo · CPU (Eigen AVX2)
+katago-cpu.name = KataGo · CPU
 katago-cpu.kind = katago-gtp
 katago-cpu.platforms = linux
 katago-cpu.program = ${root}/katago/linux-eigenavx2/katago
@@ -24,7 +24,7 @@ katago-cpu.human_model = ${root}/katago/networks/human
 # human_model is loaded when the network is installed (Human moves overlay, rank
 # estimate) without changing KataGo's own search. The Human style profile also
 # *plays* like a human of the rank chosen in Settings (KataGo's human example cfg).
-katago-human.name = KataGo · Human style (OpenCL)
+katago-human.name = KataGo · Human OpenCL
 katago-human.kind = katago-gtp
 katago-human.program = ${root}/katago/${platform}-opencl/katago${exe}
 katago-human.model = ${root}/katago/networks

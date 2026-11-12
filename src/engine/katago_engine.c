@@ -188,6 +188,10 @@ static void kg_request_move(Engine *e, const MoveRequest *request) {
     // settings, switched in for this move only).
     k->human_move = request->human_style && k->has_human_model && k->default_max_visits[0];
     if (k->human_move) {
+        // The AI's own strength for this move; the overlay's profile comes back after it.
+        if (request->human_profile[0] && strcmp(request->human_profile, k->human_profile) != 0) {
+            send(k, "kata-set-param humanSLProfile %s", request->human_profile);
+        }
         send(k, "kata-set-param humanSLChosenMoveProp 1.0");
         send(k, "kata-set-param humanSLChosenMoveIgnorePass true");
         send(k, "kata-set-param humanSLChosenMovePiklLambda 100000000");
@@ -352,6 +356,9 @@ static bool kg_poll(Engine *e, EngineEvent *out) {
                     k->genmove_id = 0;
                     if (k->human_move) {   // back to normal search
                         k->human_move = false;
+                        if (k->genmove.human_profile[0] && strcmp(k->genmove.human_profile, k->human_profile) != 0) {
+                            send(k, "kata-set-param humanSLProfile %s", k->human_profile);
+                        }
                         send(k, "kata-set-param humanSLChosenMoveProp 0.0");
                         send(k, "kata-set-param maxVisits %s", k->default_max_visits);
                     }

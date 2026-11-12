@@ -26,6 +26,7 @@ typedef struct Config {
     String install_backend;
     String human_profile;     // humanSLProfile for engines with a human network (rank_5k, preaz_1d, proyear_1990...)   // KataGo build the installer downloads (opencl, eigenavx2, ...)        // second engine (comparison / engine-vs-engine); "" = same as main
     String human_white_rank;  // "" = same as Black; else White imitates this rank ("1d") -> rank_{B}_{W}
+    String analysis_human_profile;   // humanSLProfile of the Human moves overlay (engines start with it)
     String rules;          // KataGo rules name
     bool analyze_on_start;
     i32 analysis_interval_cs;

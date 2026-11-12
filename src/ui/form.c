@@ -115,9 +115,11 @@ static isize collect_options(Ui *ui, const Sexpr *v, ChoiceOption *out, isize ca
             if (n < cap) out[n++] = (ChoiceOption){ string_sv(&p->id), 0, string_sv(&p->name), engine_profile_available(p) };
         }
     } else if (sv_eq(source, SV("opponents"))) {
-        // The engine that plays against you: the main engine, or any other profile.
-        out[n++] = (ChoiceOption){ SV(""), 0, app_tr(ui->app, "settings.opponent_main", "The main engine"), true };
+        // The engine that plays against you, by name: the one that analyses (""), or another profile.
+        StringView analysing = ui->app->main.profile ? string_sv(&ui->app->main.profile->name) : SV("KataGo");
+        out[n++] = (ChoiceOption){ SV(""), 0, analysing, true };
         vec_foreach(EngineProfile, p, &ui->app->engine_profiles) {
+            if (ui->app->main.profile && sv_eq(string_sv(&p->id), string_sv(&ui->app->main.profile->id))) continue;   // listed first
             if (n < cap) out[n++] = (ChoiceOption){ string_sv(&p->id), 0, string_sv(&p->name), engine_profile_available(p) };
         }
     } else if (sv_eq(source, SV("networks")) || sv_eq(source, SV("human_networks"))) {
@@ -145,7 +147,9 @@ static isize collect_options(Ui *ui, const Sexpr *v, ChoiceOption *out, isize ca
             const Sexpr *value = sexpr_next_arg(o, NULL);
             if (!value) continue;
             const Sexpr *label = sexpr_next_arg(o, value);
-            out[n++] = (ChoiceOption){ value->text, value->number, label ? label->text : value->text, true };
+            // Human-like play needs KataGo's human network (Engine -> Download engines).
+            bool available = !(sv_eq(field_key(v), SV("ai.style")) && sv_eq(value->text, SV("human")) && !ui->app->human_available);
+            out[n++] = (ChoiceOption){ value->text, value->number, label ? label->text : value->text, available };
         }
     }
     return n;
@@ -237,6 +241,36 @@ const Sexpr *ui_form(Ui *ui, const char *name) {
     return NULL;
 }
 
+// (field ... :when "key=value,key2=value2|key3=value3"): shown while every setting
+// of one of the |-separated groups has its value ("key=" = empty). Numbers compare
+// by value.
+static bool when_group(const Ui *ui, StringView rest) {
+    while (rest.len) {
+        StringView cond = sv_trim(sv_chop_char(&rest, ','));
+        isize eq = sv_find(cond, SV("="));
+        if (eq < 0) continue;
+        const ConfigField *f = config_field(sv_trim(sv_take(cond, eq)));
+        StringView want = sv_trim(sv_drop(cond, eq + 1));
+        if (!f) return false;
+        if (f->type == CONFIG_STRING) {
+            if (!sv_eq(config_get_string(&ui->app->config, f), want)) return false;
+        } else {
+            f64 n = 0;
+            if (!sv_parse_f64(want, &n) || fabs(config_get_number(&ui->app->config, f) - n) > 1e-9) return false;
+        }
+    }
+    return true;
+}
+
+static bool field_visible(const Ui *ui, const Sexpr *v) {
+    StringView when = sexpr_prop_text(v, "when", SV(""));
+    if (!when.len) return true;
+    while (when.len) {
+        if (when_group(ui, sv_chop_char(&when, '|'))) return true;
+    }
+    return false;
+}
+
 static void form_section(Ui *ui, const Sexpr *section, u32 index, bool title) {
     const ThemeColors *c = &ui->theme->colors;
     CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM,
@@ -248,6 +282,7 @@ static void form_section(Ui *ui, const Sexpr *section, u32 index, bool title) {
                 ui_command_button_ex(ui, field_key(v), SV(""), true, BUTTON_NORMAL, 100 + index);
                 continue;
             }
+            if (!field_visible(ui, v)) continue;
             const ConfigField *f = config_field(field_key(v));
             if (!f) {
                 ui_label(ui, arena_format(&ui->frame, "unknown setting '" SV_FMT "'", SV_ARG(field_key(v))), FONT_UI, 12, c->danger);

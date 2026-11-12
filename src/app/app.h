@@ -122,7 +122,8 @@ typedef struct App {
     RankEstimator *rank_job;    // over GTP, inside a running engine...
     RankBatch *rank_batch;      // ...or on the JSON analyzer (with Analyze game, or when a process slot is free)
     EngineSlot *rank_slot;      // engine lent to the rank job (not polled by the app meanwhile)
-    char human_profile_effective[48];   // app_human_profile's buffer
+    char human_profile_effective[48];      // app_human_profile's buffer
+    char ai_human_profile_effective[48];   // app_ai_human_profile's buffer
     bool rank_pending;          // requested while the engine was starting: runs once it is ready
     bool restart_main_pending, restart_second_pending;   // engine settings changed, not applied yet
     GameNode *rank_end;         // last node of the line the job is scoring
@@ -217,6 +218,7 @@ void app_mark_edited(App *app);
 bool app_human_policy_for(const App *app, const GameNode *node);
 // Effective humanSLProfile (ai.human_profile + ai.human_white_rank).
 StringView app_human_profile(App *app);
+StringView app_ai_human_profile(App *app);   // the AI's human-like play (ai.human_profile + White rank)
 // The user's KataGo settings (Settings -> KataGo) for engine_create / batch_analyzer_create.
 KataGoTuning app_katago_tuning(const App *app);
 // Game info dialog: copies the root SGF properties (players, ranks, komi,

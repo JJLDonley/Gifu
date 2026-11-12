@@ -33,7 +33,8 @@ static const ConfigField FIELDS[] = {
     STR("profile.names", profile_names, ""),     // the user's player names, comma-separated
     STR("profile.folder", profile_folder, ""),   // where the user's games are   // the engine that plays against you ("" = the main engine)
     STR("install.backend", install_backend, "opencl"),
-    STR("ai.human_profile", human_profile, "rank_5k"),
+    STR("ai.human_profile", human_profile, "rank_5k"),        // the AI's human-like play
+    STR("analysis.human_profile", analysis_human_profile, "rank_5k"),   // the Human moves overlay (and the engines' default)
     STR("ai.human_white_rank", human_white_rank, ""),
     STR("rules", rules, "chinese"),
     STR("last_directory", last_directory, ""),

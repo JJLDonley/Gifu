@@ -109,12 +109,19 @@ void app_set_region(App *app, BoardRegion region) {
     if (region.active) app_set_status(app, "Analysis limited to the selected region");
 }
 
-// The humanSLProfile everything uses (engines, overlay cache key, AI play, rank
-// estimates): ai.human_profile, with White at ai.human_white_rank when set.
+// The engines' humanSLProfile (the Human moves overlay and its cache key, rank
+// estimates restore it): analysis.human_profile.
 StringView app_human_profile(App *app) {
-    human_profile_combine(string_sv(&app->config.human_profile), string_sv(&app->config.human_white_rank), app->human_profile_effective,
-                          (isize)sizeof(app->human_profile_effective));
+    snprintf(app->human_profile_effective, sizeof(app->human_profile_effective), "%s", string_cstr(&app->config.analysis_human_profile));
     return sv(app->human_profile_effective);
+}
+
+// The AI's human-like play: ai.human_profile, with White at ai.human_white_rank when
+// set. KataGo switches to it for its own move only.
+StringView app_ai_human_profile(App *app) {
+    human_profile_combine(string_sv(&app->config.human_profile), string_sv(&app->config.human_white_rank), app->ai_human_profile_effective,
+                          (isize)sizeof(app->ai_human_profile_effective));
+    return sv(app->ai_human_profile_effective);
 }
 
 KataGoTuning app_katago_tuning(const App *app) {
@@ -743,7 +750,7 @@ static void opponent_start(App *app) {
     }
     String err = { 0 };
     KataGoTuning tuning = app_katago_tuning(app);
-    s->engine = engine_create(p, app_human_profile(app), &tuning, &err);
+    s->engine = engine_create(p, app_ai_human_profile(app), &tuning, &err);
     s->profile = p;
     if (!s->engine) {
         s->status = ENGINE_STATUS_FAILED;
@@ -998,6 +1005,7 @@ void app_update(App *app) {
         slot->synced_node == app->tree->current) {
         MoveRequest req = { slot->synced_position_id, to_play, app->config.ai_seconds_per_move,
                             style == AI_STYLE_HUMAN && slot == &app->main, app->config.ai_max_visits };
+        if (req.human_style) snprintf(req.human_profile, sizeof(req.human_profile), SV_FMT, SV_ARG(app_ai_human_profile(app)));
         engine_request_move(slot->engine, &req);
         slot->waiting_move = true;
         app->ai_move_once = false;
@@ -1044,7 +1052,9 @@ void app_config_changed(App *app, StringView key) {
         app->restart_main_pending = true;
     } else if (sv_eq(key, SV("rules"))) {
         app->main.synced_node = NULL;   // resync sends kata-set-rules
-    } else if (sv_eq(key, SV("ai.human_profile")) || sv_eq(key, SV("ai.human_white_rank"))) {   // switched in place (kata-set-param)
+    } else if (sv_eq(key, SV("ai.human_profile")) || sv_eq(key, SV("ai.human_white_rank"))) {   // the opponent engine's strength
+        if (app->opponent.engine) engine_set_human_profile(app->opponent.engine, app_ai_human_profile(app));
+    } else if (sv_eq(key, SV("analysis.human_profile"))) {   // switched in place (kata-set-param)
         if (!app->rank_job) {   // a running rank job restores the new value when it ends
             if (app->main.engine) engine_set_human_profile(app->main.engine, app_human_profile(app));
             if (app->second.engine) engine_set_human_profile(app->second.engine, app_human_profile(app));
@@ -1333,7 +1343,7 @@ static void cmd_new(void *c) {
     // The engine's name goes into PB/PW when that player has none.
     char engine_name[64] = "";
     if (engine_color != STONE_EMPTY) {
-        StringView profile = sv_starts_with(app_human_profile(app), SV("rank_")) ? sv_drop(app_human_profile(app), 5) : app_human_profile(app);
+        StringView profile = sv_starts_with(app_ai_human_profile(app), SV("rank_")) ? sv_drop(app_ai_human_profile(app), 5) : app_ai_human_profile(app);
         AiStyle style = ai_style_from(string_sv(&app->config.ai_style));
         if (style == AI_STYLE_HUMAN) snprintf(engine_name, sizeof(engine_name), "KataGo (human " SV_FMT ")", SV_ARG(profile));
         else if (style != AI_STYLE_STRONGEST) snprintf(engine_name, sizeof(engine_name), "KataGo (%s)", string_cstr(&app->config.ai_style));

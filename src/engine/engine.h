@@ -51,6 +51,7 @@ typedef struct MoveRequest {
     f32 seconds;              // thinking time per move; 0 = no clock (the engine's own limits, e.g. KataGo's maxVisits)
     bool human_style;         // play like a human of the current humanSLProfile (engines with a human model)
     i32 max_visits;           // search limit for this move; 0 = the engine's own (KataGo: maxVisits)
+    char human_profile[48];   // human_style: the humanSLProfile for this move only ("" = the current one)
 } MoveRequest;
 
 typedef enum EngineEventKind {

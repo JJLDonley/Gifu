@@ -54,28 +54,26 @@
     (number katago.analysis_threads :step 1 :format "%.0f" :label settings.analysis_threads :fallback "Game analysis: positions in parallel")
     (number katago.analysis_search_threads :step 1 :format "%.0f" :label settings.analysis_search_threads :fallback "Game analysis: threads per position")
     (text katago.overrides :placeholder "key=value, key=value" :label settings.overrides :fallback "More (KataGo keys)"))
+  ;; AI play: which engine plays against you, how, and how long it thinks.
+  ;; (:when "key=value" shows a field only while that setting has that value.)
   (section settings.ai :fallback "AI play"
-    (choice ai.engine :source opponents :columns 1 :label settings.opponent :fallback "Opponent (Engine plays Black / White)")
-    (number ai.seconds_per_move :max 60 :step 0.5 :format "%.1f s" :label settings.ai_time :fallback "Engine time per move")
-    ;; Human: KataGo's human network at the strength below. The others choose, among KataGo's
-    ;; moves that lose at most a point, the one that fits the style (app/ai_style.h).
-    (choice ai.style :columns 3 :label settings.ai_style :fallback "Style (main engine)"
-      (option strongest "Strongest")
-      (option human "Human (strength below)")
+    (choice ai.engine :source opponents :columns 1 :label settings.opponent :fallback "AI opponent")
+    ;; Styles need KataGo's analysis, so they are for the engine that analyses.
+    ;; Human-like: KataGo's human network at the strength below. The others choose, among
+    ;; KataGo's moves that lose at most a point, the one that fits the style (app/ai_style.h).
+    (choice ai.style :when "ai.engine=" :columns 3 :label settings.ai_style :fallback "How it plays"
+      (option strongest "Full strength")
+      (option human "Human-like")
       (option territorial "Territorial")
       (option influence "Influence")
       (option fighting "Fighting")
       (option calm "Calm"))
-    (choice ai.human_profile :columns 5 :label settings.human_profile :fallback "Human strength (moves overlay, AI play)"
-      (option rank_20k 20k) (option rank_15k 15k) (option rank_10k 10k) (option rank_5k 5k) (option rank_1k 1k)
-      (option rank_1d 1d) (option rank_3d 3d) (option rank_5d 5d) (option rank_9d 9d) (option proyear_2023 "Pro 2023")
-      ; Pre-AlphaZero style (human play before 2016) and professionals of a given year.
-      (option preaz_15k "Pre-AZ 15k") (option preaz_5k "Pre-AZ 5k") (option preaz_1d "Pre-AZ 1d") (option preaz_5d "Pre-AZ 5d") (option preaz_9d "Pre-AZ 9d")
-      (option proyear_1800 "Pro 1800") (option proyear_1900 "Pro 1900") (option proyear_1950 "Pro 1950") (option proyear_1990 "Pro 1990") (option proyear_2015 "Pro 2015"))
-    ;; KataGo rank_{B}_{W} / preaz_{B}_{W}: White imitated at another rank (rank and pre-AZ strengths only).
-    (choice ai.human_white_rank :columns 7 :label settings.human_white_rank :fallback "White plays like (empty: same as above)"
-      (option "" Same) (option 20k 20k) (option 15k 15k) (option 10k 10k) (option 7k 7k) (option 5k 5k) (option 3k 3k)
-      (option 1k 1k) (option 1d 1d) (option 3d 3d) (option 5d 5d) (option 7d 7d) (option 9d 9d)))
+    (choice ai.human_profile :when "ai.engine=,ai.style=human|ai.engine=katago-human" :columns 5 :label settings.ai_human_rank :fallback "Human-like: plays like"
+      (option rank_20k 20k) (option rank_15k 15k) (option rank_10k 10k) (option rank_7k 7k) (option rank_5k 5k)
+      (option rank_3k 3k) (option rank_1k 1k) (option rank_1d 1d) (option rank_3d 3d) (option rank_5d 5d)
+      (option rank_7d 7d) (option rank_9d 9d) (option proyear_2023 "Pro 2023"))
+    (number ai.seconds_per_move :max 60 :step 1 :format "%.0f s" :zero settings.no_clock :label settings.ai_time :fallback "Time per move")
+    (number ai.max_visits :when "ai.engine=" :step 100 :format "%.0f" :zero settings.cfg_default :label settings.ai_visits :fallback "Visits per move"))
   (section settings.analysis :fallback Analysis
     ;; Human win rate widget: the players' strength on Fox ranks (Rendu 2023).
     (choice human_winrate.level :columns 7 :label settings.human_winrate_level :fallback "Human win rate: players' strength (Fox)"
@@ -84,6 +82,10 @@
     (bool analysis.show_candidates :label command.analysis.candidates :fallback Candidates)
     (bool analysis.show_ownership :label command.analysis.ownership :fallback Territory)
     (bool analysis.show_human_policy :label command.analysis.human_policy :fallback "Human moves")
+    (choice analysis.human_profile :columns 5 :label settings.overlay_rank :fallback "Human moves: strength shown"
+      (option rank_20k 20k) (option rank_15k 15k) (option rank_10k 10k) (option rank_7k 7k) (option rank_5k 5k)
+      (option rank_3k 3k) (option rank_1k 1k) (option rank_1d 1d) (option rank_3d 3d) (option rank_5d 5d)
+      (option rank_7d 7d) (option rank_9d 9d) (option proyear_2023 "Pro 2023"))
     (number analysis.max_candidates :step 1 :format "%.0f" :label settings.max_candidates :fallback "Candidates shown")
     (number analysis.interval_cs :step 5 :format "%.0f cs" :label settings.interval :fallback "Update interval")
     (number analysis.game_visits :min 50 :max 5000 :step 50 :format "%.0f" :label settings.game_visits :fallback "Game analysis visits")
@@ -156,14 +158,14 @@
       (option black "Black"))
     ;; Human: KataGo's human network at the strength below. The others choose, among KataGo's
     ;; moves that lose at most a point, the one that fits the style (app/ai_style.h).
-    (choice ai.style :columns 3 :label settings.ai_style :fallback "Style (main engine)"
-      (option strongest "Strongest")
-      (option human "Human (strength below)")
+    (choice ai.style :when "ai.engine=" :columns 3 :label settings.ai_style :fallback "How it plays"
+      (option strongest "Full strength")
+      (option human "Human-like")
       (option territorial "Territorial")
       (option influence "Influence")
       (option fighting "Fighting")
       (option calm "Calm"))
-    (choice ai.human_profile :columns 5 :label new_game.opponent_rank :fallback "Opponent strength (human style)"
+    (choice ai.human_profile :when "ai.engine=,ai.style=human|ai.engine=katago-human" :columns 5 :label settings.ai_human_rank :fallback "Human-like: plays like"
       (option rank_20k 20k) (option rank_15k 15k) (option rank_10k 10k) (option rank_7k 7k) (option rank_5k 5k)
       (option rank_3k 3k) (option rank_1k 1k) (option rank_1d 1d) (option rank_3d 3d) (option rank_5d 5d)
       (option rank_7d 7d) (option rank_9d 9d) (option proyear_2023 "Pro 2023"))))
