@@ -6,6 +6,8 @@
 typedef enum LogLevel { LOG_LEVEL_DEBUG, LOG_LEVEL_INFO, LOG_LEVEL_WARN, LOG_LEVEL_ERROR } LogLevel;
 
 void log_set_level(LogLevel level);
+// Also writes every message to `path` (truncated first). False if it cannot be opened.
+bool log_open_file(const char *path);
 void log_message(LogLevel level, const char *fmt, ...) PRINTF_LIKE(2, 3);
 
 #define log_debug(...) log_message(LOG_LEVEL_DEBUG, __VA_ARGS__)

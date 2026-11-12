@@ -531,9 +531,11 @@ void ui_frame(Ui *ui) {
     SetMouseCursor(MOUSE_CURSOR_DEFAULT);
     ui->focus_claimed = false;
 
+    f64 T0 = os_time_seconds();   // section times, logged when the frame is slow (see the end)
     handle_drops(ui);
     handle_keys(ui);
     sync_window(ui);
+    f64 T1 = os_time_seconds();
 
     Clay_SetLayoutDimensions((Clay_Dimensions){ (f32)GetScreenWidth(), (f32)GetScreenHeight() });
     Clay_SetPointerState((Clay_Vector2){ ui->mouse.x, ui->mouse.y }, ui->mouse_down);
@@ -543,9 +545,11 @@ void ui_frame(Ui *ui) {
     smooth_scroll(ui);
 
     background_poll(&ui->background);   // paper generated in the background (board layer key includes its texture)
+    f64 T2 = os_time_seconds();
     Clay_BeginLayout();
     layout_build(ui);
     Clay_RenderCommandArray commands = Clay_EndLayout();
+    f64 T3 = os_time_seconds();
     if (!ui->focus_claimed) ui->focus_id = 0;   // focused input disappeared
     board_view_handle_input(ui);
     if (ui->mouse_released) ui->active_id = 0;
@@ -553,9 +557,18 @@ void ui_frame(Ui *ui) {
     engine_setup_poll(ui);
     update_dialog_poll(ui);
 
+    f64 T4 = os_time_seconds();
     BeginDrawing();
     background_draw(&ui->background, ui->theme, (Rectangle){ 0, 0, (f32)GetScreenWidth(), (f32)GetScreenHeight() });
     clay_render(commands, ui->fonts);
+    f64 T5 = os_time_seconds();
     EndDrawing();
     update_title(ui);
+    f64 T6 = os_time_seconds();
+    static f64 last_report;
+    if (T6 - T0 > 0.25 && T6 - last_report > 1.0) {   // a freeze: where the time went (at most once a second)
+        last_report = T6;
+        log_warn("slow frame %.2f s: keys/commands %.2f, scroll %.2f, layout %.2f, input+board %.2f, render %.2f, present %.2f", T6 - T0, T1 - T0,
+                 T2 - T1, T3 - T2, T4 - T3, T5 - T4, T6 - T5);
+    }
 }

@@ -1752,6 +1752,12 @@ bool app_init(App *app, const AppOptions *options) {
     }
     app->config_dir = options->portable ? string_from(string_sv(&app->exe_dir)) : os_config_dir();
     if (!options->portable && !options->screenshot.len) migrate_old_dir(string_sv(&app->config_dir));   // test screenshots leave user folders alone
+    if (!options->screenshot.len) {   // <config_dir>/gifu.log: the Windows build has no console (test screenshots keep the user's)
+        os_make_dirs(string_sv(&app->config_dir));
+        String log_path = path_join(string_sv(&app->config_dir), SV("gifu.log"));
+        if (!log_open_file(string_cstr(&log_path))) log_warn("cannot write %s", string_cstr(&log_path));
+        string_free(&log_path);
+    }
     updater_cleanup(string_sv(&app->exe_dir), options->updated_from);   // what a previous update left behind
     log_info("root %s, assets %s, config %s", string_cstr(&app->root_dir), string_cstr(&app->assets_dir),
              string_cstr(&app->config_dir));

@@ -59,7 +59,10 @@ static i32 stdout_main(void *arg) { return reader_main(arg, LINE_STDOUT); }
 static i32 stderr_main(void *arg) { return reader_main(arg, LINE_STDERR); }
 
 LineChannel *line_channel_start(const ProcessSpec *spec, String *error) {
+    f64 spawn_start = os_time_seconds();
     Process *process = process_spawn(spec, error);
+    f64 spawn_time = os_time_seconds() - spawn_start;
+    if (spawn_time > 0.1) log_warn("starting %.*s took %.2f s", (int)spec->program.len, spec->program.data, spawn_time);
     if (!process) return NULL;
     LineChannel *c = calloc(1, sizeof(LineChannel));
     if (!c) abort();
@@ -76,7 +79,10 @@ bool line_channel_send(LineChannel *c, StringView line) {
     if (!c->alive) return false;
     String buffer = string_from(line);
     string_push_char(&buffer, '\n');
-    bool ok = process_write(c->process, string_sv(&buffer));
+    f64 write_start = os_time_seconds();
+    bool ok = process_write(c->process, string_sv(&buffer));   // blocks while the engine's input pipe is full
+    f64 write_time = os_time_seconds() - write_start;
+    if (write_time > 0.1) log_warn("engine input blocked %.2f s (" SV_FMT "...)", write_time, SV_ARG(sv_take(line, 40)));
     string_free(&buffer);
     if (!ok) c->alive = false;
     return ok;

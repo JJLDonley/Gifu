@@ -182,7 +182,11 @@ int main(int argc, char **argv) {
 
     f64 start = GetTime();
     while (!WindowShouldClose() && !app->quit_requested) {
+        // Freezes leave a trace in the log (ui_frame logs its own sections).
+        f64 update_start = os_time_seconds();
         app_update(app);
+        f64 update_time = os_time_seconds() - update_start;
+        if (update_time > 0.25) log_warn("slow frame: app_update took %.2f s", update_time);
         ui_frame(ui);
         if (options.screenshot.len && GetTime() - start >= options.screenshot_delay) {
             Image shot = LoadImageFromScreen();
