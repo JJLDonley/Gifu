@@ -1,4 +1,5 @@
 #include "config.h"
+#include <algorithm>
 #include <cassert>
 
 #include "MCOTable.h"

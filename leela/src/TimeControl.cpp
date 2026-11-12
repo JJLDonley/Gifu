@@ -1,4 +1,5 @@
 #include <cassert>
+#include <algorithm>
 #include "TimeControl.h"
 #include "Utils.h"
 #include "GTP.h"

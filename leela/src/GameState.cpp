@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <algorithm>
 #include <cctype>
 #include <string>
 #include <sstream>

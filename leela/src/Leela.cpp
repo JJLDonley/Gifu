@@ -1,4 +1,5 @@
 #include "config.h"
+#include <algorithm>
 
 #include <cstdio>
 #include <cstdlib>

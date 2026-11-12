@@ -1,6 +1,7 @@
 #include "config.h"
 #ifdef USE_OPENCL
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
