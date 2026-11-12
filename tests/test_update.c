@@ -160,11 +160,122 @@ static void test_appimage_download(void) {
     os_remove_tree(string_sv(&dir));
     string_free(&dir);
 }
+
+// The .tar.xz install: the archive is unpacked in <install>/.update, its items replace
+// the installed ones (katago/ stays), the old ones wait in .update/old, the new
+// program starts with --updated-from, and the next start removes .update.
+static void test_archive_update(void) {
+    String dir = path_join(SV(GIFU_TEST_OUTPUT_DIR), SV("archive-update"));
+    os_remove_tree(string_sv(&dir));
+    String install = path_join(string_sv(&dir), SV("install")), src = path_join(string_sv(&dir), SV("src"));
+    String pkg = path_join(string_sv(&src), SV("Gifu-99.0.0-linux-x64"));
+    String marker = path_join(string_sv(&dir), SV("started.txt"));
+    // Installed: the old program, its assets and the user's engine.
+    String old_assets = path_join(string_sv(&install), SV("assets")), engine = path_join(string_sv(&install), SV("katago"));
+    CHECK(os_make_dirs(string_sv(&old_assets)) && os_make_dirs(string_sv(&engine)));
+    String f = path_join(string_sv(&install), SV("gifu"));
+    CHECK(os_write_file(string_sv(&f), SV("#!/bin/sh\nexit 1\n")));
+    string_free(&f);
+    f = path_join(string_sv(&install), SV("THIRD_PARTY_NOTICES.md"));   // what marks a packaged install
+    CHECK(os_write_file(string_sv(&f), SV("notices")));
+    string_free(&f);
+    f = path_join(string_sv(&old_assets), SV("old.txt"));
+    CHECK(os_write_file(string_sv(&f), SV("old")));
+    string_free(&f);
+    f = path_join(string_sv(&engine), SV("net.bin.gz"));
+    CHECK(os_write_file(string_sv(&f), SV("my network")));
+    string_free(&f);
+    // The release archive: one top folder, as package.py makes it. Its program says it started.
+    String new_assets = path_join(string_sv(&pkg), SV("assets")), new_engine = path_join(string_sv(&pkg), SV("katago"));
+    CHECK(os_make_dirs(string_sv(&new_assets)) && os_make_dirs(string_sv(&new_engine)));
+    f = path_join(string_sv(&pkg), SV("gifu"));
+    String script = string_format("#!/bin/sh\necho \"$@\" > '%s'\n", string_cstr(&marker));
+    CHECK(os_write_file(string_sv(&f), string_sv(&script)));
+    string_free(&script), string_free(&f);
+    f = path_join(string_sv(&pkg), SV("THIRD_PARTY_NOTICES.md"));
+    CHECK(os_write_file(string_sv(&f), SV("notices")));
+    string_free(&f);
+    f = path_join(string_sv(&new_assets), SV("new.txt"));
+    CHECK(os_write_file(string_sv(&f), SV("new")));
+    string_free(&f);
+    f = path_join(string_sv(&new_engine), SV("PUT_KATAGO_HERE.txt"));
+    CHECK(os_write_file(string_sv(&f), SV("placeholder")));
+    string_free(&f);
+    String archive = path_join(string_sv(&dir), SV("Gifu-99.0.0-linux-x64.tar.xz"));
+    String cmd = string_format("tar -cJf '%s' -C '%s' Gifu-99.0.0-linux-x64", string_cstr(&archive), string_cstr(&src));
+    CHECK(system(string_cstr(&cmd)) == 0);
+    string_free(&cmd);
+    String bytes = { 0 };
+    CHECK(os_read_file(string_sv(&archive), &bytes));
+    char hex[65];
+    sha256_hex(string_sv(&bytes), hex);
+    string_free(&bytes);
+    String sums = path_join(string_sv(&dir), SV("SHA256SUMS")), api = path_join(string_sv(&dir), SV("releases.json"));
+    String text = string_format("%s  Gifu-99.0.0-linux-x64.tar.xz\n", hex);
+    CHECK(os_write_file(string_sv(&sums), string_sv(&text)));
+    string_free(&text);
+    text = string_format("[{\"tag_name\":\"v99.0.0\",\"prerelease\":false,\"assets\":["
+                         "{\"name\":\"Gifu-99.0.0-linux-x64.tar.xz\",\"browser_download_url\":\"file://%s\"},"
+                         "{\"name\":\"SHA256SUMS\",\"browser_download_url\":\"file://%s\"}]}]",
+                         string_cstr(&archive), string_cstr(&sums));
+    CHECK(os_write_file(string_sv(&api), string_sv(&text)));
+    string_free(&text);
+    String api_url = string_format("file://%s", string_cstr(&api));
+
+    Updater *u = updater_create(string_sv(&install), SV(""), string_sv(&api_url));
+    UpdaterStatus st;
+    updater_check(u, UPDATE_CHANNEL_STABLE);
+    CHECK(wait_phase(u, &st) == UPDATER_AVAILABLE);
+    updater_status_free(&st);
+    updater_install(u, SV("99.0.0"));
+    UpdaterPhase phase = wait_phase(u, &st);
+    if (phase != UPDATER_READY) fprintf(stderr, "    updater: %s\n", string_cstr(&st.error));
+    CHECK(phase == UPDATER_READY);
+    updater_status_free(&st);
+    String err = { 0 };
+    StringView restart[] = { SV("game.sgf") };
+    CHECK(updater_apply(u, restart, 1, &err));
+    if (err.len) fprintf(stderr, "    apply: %s\n", string_cstr(&err));
+    string_free(&err);
+    updater_destroy(u);
+
+    // The new program started, with the file to open and --updated-from <this process>.
+    String got = { 0 };
+    for (i32 i = 0; i < 300 && !os_read_file(string_sv(&marker), &got); ++i) os_sleep_ms(10);
+    String want = string_format("game.sgf --updated-from %lld\n", (long long)os_process_id());
+    CHECK_SV(string_sv(&got), string_sv(&want));
+    string_free(&got), string_free(&want);
+    String path = path_join(string_sv(&install), SV("assets/new.txt"));
+    CHECK(os_file_exists(string_sv(&path)));   // new files in place
+    string_free(&path);
+    path = path_join(string_sv(&install), SV("assets/old.txt"));
+    CHECK(!os_file_exists(string_sv(&path)));   // the old assets folder was replaced as a whole
+    string_free(&path);
+    path = path_join(string_sv(&install), SV("katago/net.bin.gz"));
+    CHECK(os_read_file(string_sv(&path), &got) && sv_eq(string_sv(&got), SV("my network")));   // the engine stays
+    string_free(&got), string_free(&path);
+    path = path_join(string_sv(&install), SV(".update/old/assets/old.txt"));
+    CHECK(os_file_exists(string_sv(&path)));   // the previous version, until the next start
+    string_free(&path);
+    // The new version's first start removes what the update left behind.
+    updater_cleanup(string_sv(&install), 0);
+    path = path_join(string_sv(&install), SV(".update"));
+    for (i32 i = 0; i < 300 && os_dir_exists(string_sv(&path)); ++i) os_sleep_ms(10);
+    CHECK(!os_dir_exists(string_sv(&path)));
+    string_free(&path);
+
+    string_free(&api_url), string_free(&api), string_free(&sums), string_free(&archive);
+    string_free(&new_assets), string_free(&new_engine), string_free(&old_assets), string_free(&engine);
+    string_free(&marker), string_free(&pkg), string_free(&src), string_free(&install);
+    os_remove_tree(string_sv(&dir));
+    string_free(&dir);
+}
 #endif
 
 void register_update_tests(void) {
 #ifdef __linux__
     test_register("update/appimage_download", test_appimage_download);
+    test_register("update/archive_update", test_archive_update);
 #endif
     test_register("update/install_dir", test_install_dir);
     test_register("update/sha256", test_sha256);
