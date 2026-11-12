@@ -3,8 +3,48 @@
 #include <math.h>
 #include <string.h>
 
-const f32 SCORE_LOSS_BUCKETS[LOSS_BUCKETS - 1] = { 0.5f, 2.0f, 5.0f, 10.0f };
-const f32 WINRATE_LOSS_BUCKETS[LOSS_BUCKETS - 1] = { 0.02f, 0.05f, 0.10f, 0.20f };
+static LossLimits g_limits = { { 0.5f, 2.0f, 5.0f, 10.0f }, { 0.02f, 0.05f, 0.10f, 0.20f } };
+
+LossLimits loss_limits_default(void) { return (LossLimits){ { 0.5f, 2.0f, 5.0f, 10.0f }, { 0.02f, 0.05f, 0.10f, 0.20f } }; }
+const LossLimits *loss_limits(void) { return &g_limits; }
+
+static bool increasing(const f32 *v) {
+    for (i32 i = 0; i < LOSS_BUCKETS - 1; ++i) {
+        if (!(v[i] > 0.0f) || (i > 0 && v[i] <= v[i - 1])) return false;
+    }
+    return true;
+}
+
+void loss_limits_set(const LossLimits *limits) {
+    if (increasing(limits->score)) memcpy(g_limits.score, limits->score, sizeof(g_limits.score));
+    if (increasing(limits->winrate)) memcpy(g_limits.winrate, limits->winrate, sizeof(g_limits.winrate));
+}
+
+static void parse_list(StringView text, f32 scale, f32 *out) {
+    f32 v[LOSS_BUCKETS - 1];
+    i32 n = 0;
+    while (text.len && n < LOSS_BUCKETS - 1) {
+        f64 x = 0;
+        if (!sv_parse_f64(sv_trim(sv_chop_char(&text, ',')), &x)) return;
+        v[n++] = (f32)(x * scale);
+    }
+    if (n == LOSS_BUCKETS - 1 && increasing(v)) memcpy(out, v, sizeof(v));
+}
+
+void loss_limits_parse(StringView winrate_percent, StringView score, LossLimits *out) {
+    *out = loss_limits_default();
+    parse_list(winrate_percent, 0.01f, out->winrate);
+    parse_list(score, 1.0f, out->score);
+}
+
+String loss_limits_format(const f32 *limits, f32 scale) {
+    String s = { 0 };
+    for (i32 i = 0; i < LOSS_BUCKETS - 1; ++i) string_pushf(&s, "%s%g", i ? "," : "", (f64)(limits[i] * scale));
+    return s;
+}
+
+bool loss_is_mistake(f32 winrate_loss) { return winrate_loss >= g_limits.winrate[1] && winrate_loss < g_limits.winrate[2]; }
+bool loss_is_blunder(f32 winrate_loss) { return winrate_loss >= g_limits.winrate[2]; }
 
 i32 game_phase_start(i32 phase, i32 board_points) {
     f64 scale = (f64)(board_points > 0 ? board_points : 361) / 361.0;
@@ -79,10 +119,10 @@ void game_report_compute(GameNode *const *line, isize count, GameReport *out) {
         stage_wr[phase][c] += MAX(wr_loss, 0.0f);
         stage_score[phase][c] += MAX(score_loss, 0.0f);
         stage_acc[phase][c] += acc;
-        p->score_hist[bucket(SCORE_LOSS_BUCKETS, score_loss)]++;
-        p->winrate_hist[bucket(WINRATE_LOSS_BUCKETS, wr_loss)]++;
-        if (wr_loss > 0.10f) p->blunders++, st->blunders++;
-        else if (wr_loss > 0.05f) p->mistakes++, st->mistakes++;
+        p->score_hist[bucket(g_limits.score, score_loss)]++;
+        p->winrate_hist[bucket(g_limits.winrate, wr_loss)]++;
+        if (loss_is_blunder(wr_loss)) p->blunders++, st->blunders++;
+        else if (loss_is_mistake(wr_loss)) p->mistakes++, st->mistakes++;
         f32 share = 0;
         if (node_played_share(n, &share)) {
             agree_sum[c] += share * 100.0f, p->agreement_moves++;

@@ -187,7 +187,7 @@ static void panel_move_list(Ui *ui) {
                 f32 loss = 0;
                 bool hide_eval = app_eval_hidden(app);
                 bool has_loss = !hide_eval && game_node_winrate_loss(n, &loss);
-                Color tint = has_loss && loss > 0.10f ? c->candidate_bad : has_loss && loss > 0.05f ? color_lerp(c->candidate_bad, c->candidate_good, 0.5f) : (Color){ 0 };
+                Color tint = has_loss && loss_is_blunder(loss) ? c->candidate_bad : has_loss && loss_is_mistake(loss) ? color_lerp(c->candidate_bad, c->candidate_good, 0.5f) : (Color){ 0 };
                 Color bg = current ? color_with_alpha(c->accent, 0.18f) : hovered ? c->hover : tint.a ? color_with_alpha(tint, 0.14f) : (Color){ 0 };
                 CLAY({ .id = id,
                        .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(row_h) }, .childGap = ui_u16(ui, 8),
@@ -363,7 +363,7 @@ static void report_player(Ui *ui, const PlayerReport *p, Stone color, StringView
                        .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 3)) }) {
                     CLAY_TEXT(ui_fmt(ui, "%d %s", n->move_number, coord), ui_text_style(ui, FONT_MONO, 11, c->text));
                     CLAY_TEXT(ui_fmt(ui, "-%.0f%%", p->worst_loss[i] * 100.0f),
-                              ui_text_style(ui, FONT_MONO, 11, p->worst_loss[i] > 0.10f ? c->candidate_bad : c->text_muted));
+                              ui_text_style(ui, FONT_MONO, 11, loss_is_blunder(p->worst_loss[i]) ? c->candidate_bad : c->text_muted));
                 }
                 if (over && ui->mouse_pressed && !ui->pointer_over_menu) app_goto(ui->app, n);
             }

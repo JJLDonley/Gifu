@@ -194,10 +194,10 @@ static i32 move_stepper(Ui *ui, u32 index, i32 value, i32 lo, i32 hi) {
     i32 step = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT) ? 10 : 1;
     Clay_ElementId id = CLAY_IDI("DeepRangeValue", index);
     CLAY({ .layout = { .childGap = ui_u16(ui, 4), .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
-        if (ui_button(ui, CLAY_IDI("DeepRangeMinus", index), SV("−"), BUTTON_NORMAL, false, value > lo)) value -= step;
-        CLAY({ .id = id, .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 44)), CLAY_SIZING_FIT(0) }, .childAlignment = { .x = CLAY_ALIGN_X_CENTER } } }) {
+        CLAY({ .id = id, .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 44)), CLAY_SIZING_FIT(0) }, .childAlignment = { .x = CLAY_ALIGN_X_RIGHT } } }) {
             ui_label(ui, arena_format(&ui->frame, "%d", value), FONT_MONO, 14, ui->theme->colors.text);
         }
+        if (ui_button(ui, CLAY_IDI("DeepRangeMinus", index), SV("−"), BUTTON_NORMAL, false, value > lo)) value -= step;
         if (ui_button(ui, CLAY_IDI("DeepRangePlus", index), SV("+"), BUTTON_NORMAL, false, value < hi)) value += step;
     }
     if (Clay_PointerOver(id) && ui->wheel != 0) value += (ui->wheel > 0 ? 1 : -1) * step;
@@ -253,27 +253,24 @@ static void overview(DeepReport *d) {
     StageReport st[3];
     range_stats(d, range, from, to, st);
     butterfly_header(d, st);
-    enum { ROWS = 8 };
+    enum { ROWS = 5 };
     f32 row_px = fmaxf((d->page_h - ui_px(ui, 110)) / (f32)ROWS, ui_px(ui, 28));
     f32 font = font_for_row(ui, row_px, 13.0f, 18.0f);
     ButterflyRow rows[ROWS] = {
         { tr(ui, "report.accuracy_score_title", "Accuracy"), { 0 }, { 0 }, "%.1f", 100.0f, false },
         { tr(ui, "report.accuracy", "Best move"), { 0 }, { 0 }, "%.0f%%", 100.0f, false },
         { tr(ui, "report.top3", "Top 3"), { 0 }, { 0 }, "%.0f%%", 100.0f, false },
-        { tr(ui, "report.agreement", "Engine agreement"), { 0 }, { 0 }, "%.0f%%", 100.0f, false },
         { tr(ui, "report.avg_loss", "Avg loss"), { 0 }, { 0 }, "%.1f%%", 0, true },
         { tr(ui, "report.avg_score_loss", "Avg points lost"), { 0 }, { 0 }, "%.2f", 0, true },
-        { tr(ui, "report.mistakes", "Mistakes"), { 0 }, { 0 }, "%.0f", 0, true },
-        { tr(ui, "report.blunders", "Blunders"), { 0 }, { 0 }, "%.0f", 0, true },
     };
     for (Stone color = STONE_BLACK; color <= STONE_WHITE; ++color) {
         const StageReport *s = &st[color];
         bool has = s->moves > 0;
-        f32 v[ROWS] = { s->accuracy, has ? 100.0f * (f32)s->top1 / (f32)s->moves : 0, has ? 100.0f * (f32)s->top3 / (f32)s->moves : 0, s->agreement,
-                        s->avg_winrate_loss * 100.0f, s->avg_score_loss, (f32)s->mistakes, (f32)s->blunders };
+        f32 v[ROWS] = { s->accuracy, has ? 100.0f * (f32)s->top1 / (f32)s->moves : 0, has ? 100.0f * (f32)s->top3 / (f32)s->moves : 0,
+                        s->avg_winrate_loss * 100.0f, s->avg_score_loss };
         for (i32 r = 0; r < ROWS; ++r) {
             rows[r].value[color] = v[r];
-            rows[r].known[color] = has && (r != 3 || s->agreement_moves > 0);
+            rows[r].known[color] = has;
         }
     }
     CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM } }) {
@@ -426,12 +423,35 @@ static void legend_dot(Ui *ui, Color color, StringView text) {
 
 // ---- Distribution ------------------------------------------------------------------------------------
 
+// The bucket's range ("5–10%", "< 2", "≥ 20%") from the current limits.
+static StringView bucket_label(Ui *ui, const f32 *lim, i32 b, bool winrate) {
+    f32 s = winrate ? 100.0f : 1.0f;
+    const char *unit = winrate ? "%" : "";
+    if (b == 0) return arena_format(&ui->frame, "< %g%s", (f64)(lim[0] * s), unit);
+    if (b == LOSS_BUCKETS - 1) return arena_format(&ui->frame, "≥ %g%s", (f64)(lim[b - 1] * s), unit);
+    return arena_format(&ui->frame, "%g–%g%s", (f64)(lim[b - 1] * s), (f64)(lim[b] * s), unit);
+}
+
+// Moves the start of bucket b (limit b-1) by `delta` (in % or points), keeping the
+// limits increasing; saved to the settings (report.*_limits) and applied at once.
+static void nudge_limit(Ui *ui, bool winrate, i32 b, f32 delta) {
+    LossLimits l = *loss_limits();
+    f32 *lim = winrate ? l.winrate : l.score;
+    f32 scale = winrate ? 0.01f : 1.0f, step = (winrate ? 0.5f : 0.5f) * scale;
+    i32 i = b - 1;
+    f32 lo = i > 0 ? lim[i - 1] + step : step, hi = i < LOSS_BUCKETS - 2 ? lim[i + 1] - step : 100.0f * scale;
+    lim[i] = CLAMP(roundf((lim[i] + delta * scale) / step) * step, lo, hi);
+    loss_limits_set(&l);
+    Config *cfg = &ui->app->config;
+    String *field = winrate ? &cfg->report_winrate_limits : &cfg->report_score_limits;
+    string_free(field);
+    *field = loss_limits_format(lim, winrate ? 100.0f : 1.0f);
+}
+
 static void distribution(DeepReport *d, bool winrate, f32 row_px) {
     Ui *ui = d->ui;
     const ThemeColors *c = &ui->theme->colors;
-    static const char *const SCORE_LABELS[LOSS_BUCKETS] = { "< 0.5", "0.5–2", "2–5", "5–10", "≥ 10" };
-    static const char *const WR_LABELS[LOSS_BUCKETS] = { "< 2%", "2–5%", "5–10%", "10–20%", "≥ 20%" };
-    const char *const *LABELS = winrate ? WR_LABELS : SCORE_LABELS;
+    const f32 *lim = winrate ? loss_limits()->winrate : loss_limits()->score;
     f32 font = font_for_row(ui, row_px, 12.0f, 18.0f);
     f32 bar_px = row_px * 0.62f;
     // Butterfly chart: the buckets down the middle, Black's bars growing to the left,
@@ -446,10 +466,20 @@ static void distribution(DeepReport *d, bool winrate, f32 row_px) {
                     f32 share = p->moves ? (f32)hist[b] / (f32)p->moves : 0.0f;
                     Color col = b >= 3 ? c->candidate_bad : b == 2 ? mid_loss_color(c) : player_bar_color(c, color);
                     bool left = color == STONE_BLACK;
-                    if (!left) {   // the bucket label, centred between the two halves
-                        CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, font * 6.0f)), CLAY_SIZING_FIT(0) },
-                                           .childAlignment = { .x = CLAY_ALIGN_X_CENTER } } }) {
-                            ui_label(ui, sv(LABELS[b]), FONT_MONO, font, c->text);
+                    if (!left) {   // the bucket's range, centred between the halves; - / + move where it starts
+                        u32 idx = (winrate ? 100u : 0u) + (u32)b;
+                        CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, font * 10.0f)), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 4),
+                                           .childAlignment = { .x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER } } }) {
+                            bool editable = b > 0;
+                            f32 step = (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) ? 5.0f : (winrate ? 1.0f : 0.5f);
+                            Clay_ElementId lid = CLAY_IDI("DistLabel", idx);
+                            CLAY({ .id = lid, .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childAlignment = { .x = CLAY_ALIGN_X_CENTER } } }) {
+                                ui_label(ui, bucket_label(ui, lim, b, winrate), FONT_MONO, font, c->text);
+                            }
+                            // The first bucket follows the second one's start; its buttons keep the column aligned.
+                            if (ui_button(ui, CLAY_IDI("DistMinus", idx), SV("−"), BUTTON_GHOST, false, editable) && editable) nudge_limit(ui, winrate, b, -step);
+                            if (ui_button(ui, CLAY_IDI("DistPlus", idx), SV("+"), BUTTON_GHOST, false, editable) && editable) nudge_limit(ui, winrate, b, step);
+                            if (editable && ui->wheel != 0 && Clay_PointerOver(lid)) nudge_limit(ui, winrate, b, ui->wheel > 0 ? step : -step);
                         }
                     }
                     Clay_String count = ui_fmt(ui, "%d · %.0f%%", hist[b], share * 100.0f);
@@ -493,88 +523,123 @@ static i32 by_move_number(const void *a, const void *b) {
     return (*(GameNode *const *)a)->move_number - (*(GameNode *const *)b)->move_number;
 }
 
+// A number with - / + (Shift: 10 steps; the mouse wheel over the value works too).
+static f32 value_stepper(Ui *ui, u32 index, f32 value, f32 step, f32 lo, f32 hi, const char *fmt) {
+    if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) step *= 10.0f;
+    Clay_ElementId id = CLAY_IDI("DeepStepValue", index);
+    CLAY({ .layout = { .childGap = ui_u16(ui, 4), .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
+        CLAY({ .id = id, .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 56)), CLAY_SIZING_FIT(0) }, .childAlignment = { .x = CLAY_ALIGN_X_RIGHT } } }) {
+            ui_label(ui, arena_format(&ui->frame, fmt, (f64)value), FONT_MONO, 14, ui->theme->colors.text);
+        }
+        if (ui_button(ui, CLAY_IDI("DeepStepMinus", index), SV("−"), BUTTON_NORMAL, false, value > lo + 1e-4f)) value -= step;
+        if (ui_button(ui, CLAY_IDI("DeepStepPlus", index), SV("+"), BUTTON_NORMAL, false, value < hi - 1e-4f)) value += step;
+    }
+    if (Clay_PointerOver(id) && ui->wheel != 0) value += (ui->wheel > 0 ? 1.0f : -1.0f) * step;
+    return CLAMP(roundf(value / step * 10.0f) / 10.0f * step, lo, hi);
+}
+
+// The moves the list shows: a win-rate loss of at least report.filter_winrate %
+// and a points loss of at least report.filter_points (both, like LizzieYzy's
+// List Filter; moves without a points estimate pass on the win rate alone).
+static bool listed(const Config *cfg, const GameNode *node, f32 *wr, f32 *points, bool *has_points) {
+    if (!node->has_move || !node->parent || !game_node_winrate_loss(node, wr)) return false;
+    *has_points = game_node_score_loss(node, points);
+    if (*wr * 100.0f < cfg->report_filter_winrate - 1e-4f) return false;
+    if (*has_points && *points < cfg->report_filter_points - 1e-4f) return false;
+    return true;
+}
+
 static void mistakes(DeepReport *d) {
     Ui *ui = d->ui;
     const ThemeColors *c = &ui->theme->colors;
     Config *cfg = &ui->app->config;
+    // Filters: which moves are listed.
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 8),
+                       .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
+        ui_label(ui, tr(ui, "report.filter_winrate", "Win rate lost ≥"), FONT_UI, 13, c->text_muted);
+        cfg->report_filter_winrate = value_stepper(ui, 0, cfg->report_filter_winrate, 1.0f, 0.0f, 100.0f, "%.0f%%");
+        CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 10)), CLAY_SIZING_FIT(0) } } }) {}
+        ui_label(ui, tr(ui, "report.filter_points", "Points lost ≥"), FONT_UI, 13, c->text_muted);
+        cfg->report_filter_points = value_stepper(ui, 1, cfg->report_filter_points, 0.5f, 0.0f, 100.0f, "%.1f");
+    }
     // Sorted by win rate lost, points lost or move number (a click on the column
-    // title; remembered). By move number, the rows are the biggest losses by the
-    // last loss column chosen, in game order.
+    // title; remembered).
     StringView sort = string_sv(&cfg->report_mistakes_sort);
-    bool by_move = sv_eq(sort, SV("move"));
-    if (!by_move && !sv_eq(sort, string_sv(&cfg->report_mistakes_by))) {   // the loss column last chosen
-        string_free(&cfg->report_mistakes_by);
-        cfg->report_mistakes_by = string_from(sort);
-    }
-    bool by_points = by_move ? sv_eq(string_sv(&cfg->report_mistakes_by), SV("points")) : sv_eq(sort, SV("points"));
-    // Merge both players' worst lists by that loss.
-    GameNode *rows[REPORT_WORST * 2];
-    f32 key[REPORT_WORST * 2];
+    bool by_move = sv_eq(sort, SV("move")), by_points = sv_eq(sort, SV("points"));
+    GameNode **rows = arena_new_array(&ui->frame, GameNode *, d->count + 1);
+    f32 *key = arena_new_array(&ui->frame, f32, d->count + 1);
     i32 n = 0;
-    for (Stone color = STONE_BLACK; color <= STONE_WHITE; ++color) {
-        const PlayerReport *p = &d->report.player[color];
-        i32 count = by_points ? p->worst_points_count : p->worst_count;
-        for (i32 i = 0; i < count; ++i) {
-            f32 k = by_points ? p->worst_points_loss[i] : p->worst_loss[i];
-            i32 at = n++;
-            while (at > 0 && key[at - 1] < k) {
-                rows[at] = rows[at - 1];
-                key[at] = key[at - 1];
-                --at;
-            }
-            rows[at] = by_points ? p->worst_points[i] : p->worst[i];
-            key[at] = k;
+    for (isize i = 0; i < d->count; ++i) {
+        f32 wr = 0, points = 0;
+        bool has_points = false;
+        if (!listed(cfg, d->line[i], &wr, &points, &has_points)) continue;
+        f32 k = by_points ? (has_points ? points : -1e9f) : wr;
+        i32 at = n++;
+        while (!by_move && at > 0 && key[at - 1] < k) {   // insertion sort, biggest loss first
+            rows[at] = rows[at - 1];
+            key[at] = key[at - 1];
+            --at;
         }
+        rows[at] = d->line[i];
+        key[at] = k;
     }
-    n = MIN(n, REPORT_WORST);
     if (by_move) qsort(rows, (size_t)n, sizeof(rows[0]), by_move_number);
-    if (n == 0) {
+    if (d->report.analysed_nodes == 0) {
         ui_label(ui, tr(ui, "report.no_mistakes", "No analysed moves yet: run Analyze game."), FONT_UI, 15, c->text_muted);
         return;
     }
-    f32 row_px = (d->page_h - ui_px(ui, 72)) / (f32)REPORT_WORST;
-    g_cell_size = font_for_row(ui, row_px, 13.0f, 17.0f);
-    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM } }) {   // no gap between rows
+    f32 row_px = ui_px(ui, 34);
+    g_cell_size = font_for_row(ui, row_px, 13.0f, 16.0f);
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM } }) {   // no gap between rows
     CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 10),
-                       .padding = { ui_u16(ui, 6), ui_u16(ui, 6), 0, ui_u16(ui, 4) } },
+                       .padding = { ui_u16(ui, 6), ui_u16(ui, 18), 0, ui_u16(ui, 4) } },
            .border = { .color = color_to_clay(c->border), .width = { .bottom = 1 } } }) {
         sort_header(ui, tr(ui, "label.move", "Move"), 0, by_move, 70, false, &cfg->report_mistakes_sort, "move");
         cell(ui, SV(""), FONT_UI, c->text_muted, 20, false);
         cell(ui, tr(ui, "report.played", "Played"), FONT_UI, c->text_muted, 80, false);
         cell(ui, tr(ui, "report.best", "Best"), FONT_UI, c->text_muted, 80, false);
-        cell(ui, SV(""), FONT_UI, c->text_muted, 0, false);
+        cell(ui, arena_format(&ui->frame, "%d %s", n, n == 1 ? "move" : "moves"), FONT_UI, c->text_muted, 0, false);
         sort_header(ui, tr(ui, "report.win_loss", "Win rate lost"), 1, !by_move && !by_points, 140, true, &cfg->report_mistakes_sort, "winrate");
         sort_header(ui, tr(ui, "report.points_lost", "Points lost"), 2, !by_move && by_points, 130, true, &cfg->report_mistakes_sort, "points");
     }
-    for (i32 i = 0; i < n; ++i) {
-        GameNode *node = rows[i];
-        char played[8], best[8] = "—";
-        point_to_gtp(node->move.point, node->board.width, node->board.height, played);
-        const NodeEval *before = &node->parent->eval;
-        if (before->top_count > 0) point_to_gtp(before->top[0], node->board.width, node->board.height, best);
-        f32 points = 0, wr = 0;
-        bool has_points = game_node_score_loss(node, &points);
-        game_node_winrate_loss(node, &wr);
-        Clay_ElementId id = CLAY_IDI("DeepMistake", (u32)i);
-        bool over = Clay_PointerOver(id);
-        f32 h = anim_towards(&ui->anim, id.id, over ? 1.0f : 0.0f, 18.0f, 0.0f);
-        CLAY({ .id = id,
-               .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(row_px) }, .childGap = ui_u16(ui, 10),
-                           .padding = { ui_u16(ui, 6), ui_u16(ui, 6), 0, 0 },
-                           .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } },
-               .backgroundColor = color_to_clay(color_with_alpha(c->hover, h * c->hover.a / 255.0f)),
-               .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 3)) }) {
-            cell(ui, arena_format(&ui->frame, "%d", node->move_number), FONT_MONO, c->text, 70, false);
-            CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 20)), CLAY_SIZING_FIT(0) } } }) { ui_stone_dot(ui, node->move.color); }
-            cell(ui, arena_format(&ui->frame, "%s", played), FONT_MONO, c->candidate_bad, 80, false);
-            cell(ui, arena_format(&ui->frame, "%s", best), FONT_MONO, c->candidate_good, 80, false);
-            cell(ui, SV(""), FONT_UI, c->text, 0, false);
-            // Losses with a minus; a move that gained (by the other measure) gets a plus.
-            cell(ui, arena_format(&ui->frame, "%+.1f%%", -wr * 100.0f), FONT_MONO, wr > 0.10f ? c->candidate_bad : c->text, 140, true);
-            cell(ui, has_points ? arena_format(&ui->frame, "%+.1f", -points) : SV("—"), FONT_MONO, points > 5.0f ? c->candidate_bad : c->text, 130, true);
+    // Every listed move, in a fixed box that scrolls.
+    Clay_ElementId list_id = CLAY_ID("DeepMistakeList");
+    CLAY({ .id = list_id,
+           .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                       .padding = { 0, ui_u16(ui, 12), 0, 0 } },
+           .clip = { .vertical = true, .childOffset = Clay_GetScrollOffset() } }) {
+        if (n == 0) ui_label(ui, tr(ui, "report.no_listed", "No move passes these filters."), FONT_UI, 14, c->text_muted);
+        for (i32 i = 0; i < n; ++i) {
+            GameNode *node = rows[i];
+            char played[8], best[8] = "—";
+            point_to_gtp(node->move.point, node->board.width, node->board.height, played);
+            const NodeEval *before = &node->parent->eval;
+            if (before->top_count > 0) point_to_gtp(before->top[0], node->board.width, node->board.height, best);
+            f32 points = 0, wr = 0;
+            bool has_points = game_node_score_loss(node, &points);
+            game_node_winrate_loss(node, &wr);
+            Clay_ElementId id = CLAY_IDI("DeepMistake", (u32)i);
+            bool over = Clay_PointerOver(id);
+            f32 h = anim_towards(&ui->anim, id.id, over ? 1.0f : 0.0f, 18.0f, 0.0f);
+            CLAY({ .id = id,
+                   .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(row_px) }, .childGap = ui_u16(ui, 10),
+                               .padding = { ui_u16(ui, 6), ui_u16(ui, 6), 0, 0 },
+                               .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } },
+                   .backgroundColor = color_to_clay(color_with_alpha(c->hover, h * c->hover.a / 255.0f)),
+                   .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 3)) }) {
+                cell(ui, arena_format(&ui->frame, "%d", node->move_number), FONT_MONO, c->text, 70, false);
+                CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 20)), CLAY_SIZING_FIT(0) } } }) { ui_stone_dot(ui, node->move.color); }
+                cell(ui, arena_format(&ui->frame, "%s", played), FONT_MONO, c->candidate_bad, 80, false);
+                cell(ui, arena_format(&ui->frame, "%s", best), FONT_MONO, c->candidate_good, 80, false);
+                cell(ui, SV(""), FONT_UI, c->text, 0, false);
+                // Losses with a minus; a move that gained (by the other measure) gets a plus.
+                cell(ui, arena_format(&ui->frame, "%+.1f%%", -wr * 100.0f), FONT_MONO, wr > 0.10f ? c->candidate_bad : c->text, 140, true);
+                cell(ui, has_points ? arena_format(&ui->frame, "%+.1f", -points) : SV("—"), FONT_MONO, points > 5.0f ? c->candidate_bad : c->text, 130, true);
+            }
+            if (over && ui->mouse_pressed) app_goto(ui->app, node);
         }
-        if (over && ui->mouse_pressed) app_goto(ui->app, node);
     }
+    ui_scrollbar(ui, list_id, 0);
     }
     g_cell_size = 15.0f;
 }
@@ -930,7 +995,7 @@ static void body(Ui *ui, void *user) {
             }
                 break;
             default:
-                block(ui, tr(ui, "report.biggest", "BIGGEST MISTAKES"), SV(""));
+                block(ui, tr(ui, "report.biggest", "MISTAKES"), SV(""));
                 mistakes(d);
                 break;
         }

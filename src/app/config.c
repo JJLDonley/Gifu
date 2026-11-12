@@ -91,6 +91,12 @@ static const ConfigField FIELDS[] = {
     INT("report.range_from", report_range_from, 1, 1, 9999),
     INT("report.range_to", report_range_to, 0, 0, 9999),
     STR("report.mistakes_by", report_mistakes_by, "winrate"),
+    // Mistakes list filter: moves losing at least this much win rate (%) and points.
+    FLOAT("report.filter_winrate", report_filter_winrate, 5.0, 0.0, 100.0),
+    FLOAT("report.filter_points", report_filter_points, 0.0, 0.0, 100.0),
+    // Distribution buckets (edited on the chart): win rate lost in %, points lost.
+    STR("report.winrate_limits", report_winrate_limits, "2,5,10,20"),
+    STR("report.score_limits", report_score_limits, "0.5,2,5,10"),
     INT("engine.max_processes", engine_max_processes, 1, 1, 4),
     INT("new_game.size", new_game_size, 19, 5, 25),
     FLOAT("new_game.komi", new_game_komi, 7.5, -150.0, 150.0),

@@ -1045,8 +1045,17 @@ void app_apply_engine_settings(App *app) {
 
 bool app_engine_settings_pending(const App *app) { return app->restart_main_pending || app->restart_second_pending; }
 
+// The Distribution buckets (and the mistake / blunder counts) from the settings.
+void app_apply_loss_limits(App *app) {
+    LossLimits l;
+    loss_limits_parse(string_sv(&app->config.report_winrate_limits), string_sv(&app->config.report_score_limits), &l);
+    loss_limits_set(&l);
+}
+
 void app_config_changed(App *app, StringView key) {
-    if (sv_eq(key, SV("language"))) {
+    if (sv_eq(key, SV("report.winrate_limits")) || sv_eq(key, SV("report.score_limits"))) {
+        app_apply_loss_limits(app);
+    } else if (sv_eq(key, SV("language"))) {
         app_reload_language(app);
     } else if (sv_eq(key, SV("engine"))) {
         app->restart_main_pending = true;
@@ -1740,6 +1749,7 @@ bool app_init(App *app, const AppOptions *options) {
     for (i32 i = 0; i < options->start_move; ++i) game_tree_forward(app->tree);
 
     app->analysis_enabled = app->config.analyze_on_start;
+    app_apply_loss_limits(app);
     if (!options->headless) start_engine(app);
     app_updates_init(app);
     return true;

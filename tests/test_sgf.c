@@ -5,6 +5,8 @@
 #include "engine/engine.h"
 
 #include <stdlib.h>
+#include <math.h>
+#include <string.h>
 
 static const char SAMPLE[] =
     "(;GM[1]FF[4]SZ[19]KM[6.5]PB[黑棋]PW[White \\] Player]C[root comment\\\nsoft break]"
@@ -297,10 +299,28 @@ static void test_tree_revision(void) {
     game_tree_free(t);
 }
 
+// The Distribution limits are user-editable; they also define mistakes and blunders.
+static void test_loss_limits(void) {
+    LossLimits l;
+    loss_limits_parse(SV("3, 6, 12, 24"), SV("1,2,4,8"), &l);
+    CHECK(fabsf(l.winrate[0] - 0.03f) < 1e-6f && fabsf(l.winrate[3] - 0.24f) < 1e-6f && l.score[2] == 4.0f);
+    loss_limits_parse(SV("5,3,10,20"), SV("1,2"), &l);   // not increasing / too short: the defaults
+    LossLimits d = loss_limits_default();
+    CHECK(memcmp(&l, &d, sizeof(l)) == 0);
+    loss_limits_parse(SV("3,6,12,24"), SV(""), &l);
+    loss_limits_set(&l);
+    CHECK(!loss_is_mistake(0.05f) && loss_is_mistake(0.06f) && !loss_is_mistake(0.12f) && loss_is_blunder(0.12f));
+    String text = loss_limits_format(loss_limits()->winrate, 100.0f);
+    CHECK_SV(string_sv(&text), SV("3,6,12,24"));
+    string_free(&text);
+    loss_limits_set(&d);   // other tests use the defaults
+}
+
 void register_sgf_tests(void) {
     test_register("tree/revision", test_tree_revision);
     test_register("tree/eval_shares", test_eval_shares);
     test_register("report/phases_accuracy", test_phases_accuracy);
+    test_register("report/loss_limits", test_loss_limits);
     test_register("sgf/fox_komi", test_fox_komi);
     test_register("tree/eval_report", test_eval_persistence_and_report);
     test_register("sgf/legacy_encoding", test_legacy_encoding);

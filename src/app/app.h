@@ -217,6 +217,7 @@ void app_mark_edited(App *app);
 // True if app->human_policy is the policy of `node` at the current human profile.
 bool app_human_policy_for(const App *app, const GameNode *node);
 // Effective humanSLProfile (ai.human_profile + ai.human_white_rank).
+void app_apply_loss_limits(App *app);   // report.winrate_limits / score_limits -> core/game_report
 StringView app_human_profile(App *app);
 StringView app_ai_human_profile(App *app);   // the AI's human-like play (ai.human_profile + White rank)
 // The user's KataGo settings (Settings -> KataGo) for engine_create / batch_analyzer_create.

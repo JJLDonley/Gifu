@@ -17,10 +17,23 @@ f32 move_accuracy(f32 score_loss);
 // false when the parent has no shares (older analysis). 0 if it was not a candidate.
 bool node_played_share(const GameNode *node, f32 *share);
 
-// Loss histogram buckets (upper bounds; the last bucket is open-ended).
+// Loss histogram buckets (upper bounds, increasing; the last bucket is open-ended).
+// The user edits them on the Distribution chart. They also define the counts: a
+// mistake loses at least winrate[1] (5%), a blunder at least winrate[2] (10%).
 enum { LOSS_BUCKETS = 5 };
-extern const f32 SCORE_LOSS_BUCKETS[LOSS_BUCKETS - 1];     // points: 0.5 2 5 10
-extern const f32 WINRATE_LOSS_BUCKETS[LOSS_BUCKETS - 1];   // 0.02 0.05 0.10 0.20
+typedef struct LossLimits {
+    f32 score[LOSS_BUCKETS - 1];     // points: 0.5 2 5 10
+    f32 winrate[LOSS_BUCKETS - 1];   // 0..1: 0.02 0.05 0.10 0.20
+} LossLimits;
+const LossLimits *loss_limits(void);
+void loss_limits_set(const LossLimits *limits);   // kept increasing
+LossLimits loss_limits_default(void);
+// "2,5,10,20" (percent for win rate, points for score) <-> limits; parse keeps the
+// defaults for anything missing or not increasing.
+void loss_limits_parse(StringView winrate_percent, StringView score, LossLimits *out);
+String loss_limits_format(const f32 *limits, f32 scale);
+bool loss_is_mistake(f32 winrate_loss);   // [winrate[1], winrate[2])
+bool loss_is_blunder(f32 winrate_loss);   // >= winrate[2]
 
 typedef struct StageReport {
     i32 moves, top1, top3;
