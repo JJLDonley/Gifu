@@ -150,8 +150,17 @@ static void cmd_setup(void *c) {
 }
 static void cmd_branches(void *c) { UI(c)->app->config.show_branches = !UI(c)->app->config.show_branches; }
 static bool shows_branches(const void *c) { return ((const Ui *)c)->app->config.show_branches; }
-static void cmd_move_numbers(void *c) { UI(c)->app->config.show_move_numbers = !UI(c)->app->config.show_move_numbers; }
-static bool shows_move_numbers(const void *c) { return ((const Ui *)c)->app->config.show_move_numbers; }
+// Cycles none -> last move -> last 5 -> last 10 -> all.
+static void cmd_move_numbers(void *c) {
+    static const i32 STEPS[] = { 0, 1, 5, 10, -1 };
+    i32 *mode = &UI(c)->app->config.move_numbers, next = 0;
+    for (i32 i = 0; i < countof(STEPS); ++i) {
+        if (STEPS[i] == *mode) next = STEPS[(i + 1) % countof(STEPS)];
+    }
+    *mode = next;
+    app_set_status(UI(c)->app, next == 0 ? "Move numbers: none" : next < 0 ? "Move numbers: all" : "Move numbers: last %d", next);
+}
+static bool shows_move_numbers(const void *c) { return ((const Ui *)c)->app->config.move_numbers != 0; }
 // R: start selecting a region, or clear the current one.
 static void cmd_region(void *c) {
     Ui *ui = UI(c);

@@ -26,7 +26,8 @@
     (command view.layout_editor))
   (section settings.board :fallback Board
     (bool board.show_coordinates :label command.view.coordinates :fallback Coordinates)
-    (bool board.show_move_numbers :label command.view.move_numbers :fallback "Move numbers")
+    (choice board.move_numbers :columns 5 :label command.view.move_numbers :fallback "Move numbers"
+      (option -1 All) (option 1 "1") (option 5 "5") (option 10 "10") (option 0 None))
     (bool board.show_branches :label command.view.branches :fallback "Branch moves")
     (bool board.drag_stones :label settings.drag_stones :fallback "Drag stones to move them (edits the game)")
     (choice rules :columns 3 :label label.rules :fallback Rules

@@ -43,7 +43,7 @@ static const ConfigField FIELDS[] = {
     BOOL("analysis.show_human_policy", show_human_policy, 0),
     BOOL("analysis.show_candidates", show_candidates, 1),
     BOOL("board.show_coordinates", show_coordinates, 1),
-    BOOL("board.show_move_numbers", show_move_numbers, 0),
+    INT("board.move_numbers", move_numbers, 0, -1, 999),   // -1 all, 0 none, N the last N moves
     BOOL("board.show_branches", show_branches, 0),
     BOOL("board.drag_stones", drag_stones, 1),
     FLOAT("ai.seconds_per_move", ai_seconds_per_move, 2.0, 0.1, 120.0),
@@ -201,6 +201,11 @@ bool config_load(Config *config, String *error) {
     vec_foreach(KvEntry, e, &kv.entries) {
         const ConfigField *f = config_field(e->key);
         if (!f && sv_eq(e->key, SV("updates.channel"))) continue;   // retired: saved by 0.1.0-alpha.1 without the user choosing
+        if (!f && sv_eq(e->key, SV("board.show_move_numbers"))) {   // retired: on/off is now all / last N / none
+            bool on = false;
+            if (kv_parse_bool(e->value, &on) && on) config->move_numbers = -1;
+            continue;
+        }
         if (!f || f->transient) {
             log_warn("%s:%d: unknown setting '" SV_FMT "'", string_cstr(&config->path), e->line, SV_ARG(e->key));
             continue;

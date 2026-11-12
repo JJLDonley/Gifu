@@ -31,7 +31,7 @@ typedef struct Config {
     bool show_human_policy;   // human SL network moves on the board (needs a human_model engine)
     bool show_coordinates;
     bool show_candidates;
-    bool show_move_numbers;
+    i32 move_numbers;         // numbers on the stones: -1 all, 0 none, N the last N moves
     bool drag_stones;         // drag a stone to move it (the game is replayed from that move)
     bool show_branches;       // dots where the following moves (and variations) were played
     f32 ai_seconds_per_move;

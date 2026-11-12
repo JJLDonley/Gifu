@@ -567,10 +567,13 @@ static void draw_board(void *user, Rectangle bounds) {
         StoneLook look = stone_anim_placed(sa, i, now);
         draw_stone(ui->theme, point_center(&g, board_point(board, i)), r * look.scale, (Stone)board->cells[i], look.alpha);
     }
-    // Move numbers (stones still on the board, latest number wins), else last-move marker.
-    if (app->config.show_move_numbers) {
+    // Move numbers (stones still on the board, latest number wins; all of them or the
+    // last N moves), else last-move marker.
+    i32 numbers_mode = app->config.move_numbers;
+    if (numbers_mode != 0) {
         i32 *numbers = arena_new_array(&ui->frame, i32, BOARD_MAX_POINTS);
         for (const GameNode *n = node; n; n = n->parent) {
+            if (numbers_mode > 0 && n->move_number <= node->move_number - numbers_mode) break;
             if (!n->has_move || point_is_pass(n->move.point)) continue;
             i32 i = board_index(board, n->move.point);
             if (numbers[i] == 0 && board->cells[i] == n->move.color) numbers[i] = n->move_number;
@@ -587,7 +590,7 @@ static void draw_board(void *user, Rectangle bounds) {
     }
     Markup *markup = arena_new(&ui->frame, Markup);
     markup_read(node, board->width, board->height, markup);
-    if (!app->config.show_move_numbers && node->has_move && !point_is_pass(node->move.point)) {
+    if (numbers_mode == 0 && node->has_move && !point_is_pass(node->move.point)) {
         i32 i = board_index(board, node->move.point);
         if (!markup->shape[i] && !markup->label[i].text[0]) {   // a mark on the last move replaces the marker
             DrawCircleV(point_center(&g, node->move.point), g.cell * 0.16f * stone_anim_marker(&ui->stone_anim, i, now), ui->theme->colors.last_move);
