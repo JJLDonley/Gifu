@@ -389,18 +389,38 @@ static void draw_human_policy(Ui *ui, const BoardGeometry *g, const HumanPolicy 
 
 static Vector2 board_xy(const BoardGeometry *g, f32 x, f32 y) { return (Vector2){ g->origin.x + g->cell * x, g->origin.y + g->cell * y }; }
 
-// Ink that reads on whatever is under the point.
+// Ink that reads on whatever is under the point: the other stone colour on a
+// stone, the grid's colour on the board (it always stands out from its own board,
+// dark boards included).
 static Color mark_ink(const Theme *t, Stone under) {
     if (under == STONE_BLACK) return t->colors.white_stone;
     if (under == STONE_WHITE) return t->colors.black_stone;
-    return color_with_alpha(t->colors.black_stone, 0.9f);
+    return color_with_alpha(t->colors.board_line, 1.0f);
+}
+
+// A piece of the board's own surface (texture and tint, or its colour) over `r`:
+// clears the grid under a label without leaving a blob of a different colour.
+static void draw_board_patch(Ui *ui, const BoardGeometry *g, Rectangle r) {
+    const Theme *t = ui->theme;
+    Texture2D tex = { 0 };
+    if ((t->board.style == BOARD_STYLE_WOOD || t->board.style == BOARD_STYLE_IMAGE) && ui->board_texture.id) tex = ui->board_texture;
+    if (t->board.style == BOARD_STYLE_PAPER && ui->background.paper.id) tex = ui->background.paper;
+    if (!tex.id || g->board.width <= 0 || g->board.height <= 0) {
+        DrawRectangleRec(r, color_with_alpha(t->colors.board, 1.0f));
+        return;
+    }
+    // The same part of the texture the board shows there (it is stretched over the board).
+    f32 sx = (f32)tex.width / g->board.width, sy = (f32)tex.height / g->board.height;
+    Rectangle src = { (r.x - g->board.x) * sx, (r.y - g->board.y) * sy, r.width * sx, r.height * sy };
+    DrawTexturePro(tex, src, r, (Vector2){ 0, 0 }, 0, WHITE);
+    if (t->board.style != BOARD_STYLE_PAPER) DrawRectangleRec(r, color_with_alpha(t->colors.board, CLAMP(t->board.tint, 0.0f, 1.0f)));
 }
 
 static void draw_arrow(const BoardGeometry *g, Point a, Point b, Color c, bool head) {
     Vector2 p = point_center(g, a), q = point_center(g, b);
     f32 dx = q.x - p.x, dy = q.y - p.y, len = sqrtf(dx * dx + dy * dy);
     if (len < 1.0f) return;
-    f32 ux = dx / len, uy = dy / len, w = g->cell * 0.08f, hl = g->cell * 0.36f;
+    f32 ux = dx / len, uy = dy / len, w = fmaxf(3.0f, g->cell * 0.16f), hl = g->cell * 0.48f;
     Vector2 end = head ? (Vector2){ q.x - ux * hl * 0.7f, q.y - uy * hl * 0.7f } : q;
     DrawLineEx(p, end, w, c);
     DrawCircleV(p, w * 0.5f, c);
@@ -408,8 +428,8 @@ static void draw_arrow(const BoardGeometry *g, Point a, Point b, Color c, bool h
         DrawCircleV(q, w * 0.5f, c);
         return;
     }
-    Vector2 left = { q.x - ux * hl - uy * hl * 0.45f, q.y - uy * hl + ux * hl * 0.45f };
-    Vector2 right = { q.x - ux * hl + uy * hl * 0.45f, q.y - uy * hl - ux * hl * 0.45f };
+    Vector2 left = { q.x - ux * hl - uy * hl * 0.5f, q.y - uy * hl + ux * hl * 0.5f };
+    Vector2 right = { q.x - ux * hl + uy * hl * 0.5f, q.y - uy * hl - ux * hl * 0.5f };
     DrawTriangle(q, left, right, c);
     DrawTriangle(q, right, left, c);   // either winding
 }
@@ -492,19 +512,21 @@ static void board_draw_markup(Ui *ui, const BoardGeometry *g, const Markup *m, c
                 DrawLineEx(a, b, w, ink), DrawLineEx(b, c, w, ink), DrawLineEx(c, a, w, ink);
                 break;
             }
-            case MARK_SQUARE: DrawRectangleLinesEx((Rectangle){ p.x - r * 0.8f, p.y - r * 0.8f, r * 1.6f, r * 1.6f }, w, ink); break;
+            case MARK_SQUARE: DrawRectangleLinesEx((Rectangle){ p.x - r * 0.96f, p.y - r * 0.96f, r * 1.92f, r * 1.92f }, w, ink); break;
             case MARK_CIRCLE: DrawRing(p, r * 0.85f - w * 0.5f, r * 0.85f + w * 0.5f, 0, 360, 40, ink); break;
             case MARK_CROSS:
-                DrawLineEx((Vector2){ p.x - r * 0.75f, p.y - r * 0.75f }, (Vector2){ p.x + r * 0.75f, p.y + r * 0.75f }, w, ink);
-                DrawLineEx((Vector2){ p.x - r * 0.75f, p.y + r * 0.75f }, (Vector2){ p.x + r * 0.75f, p.y - r * 0.75f }, w, ink);
+                DrawLineEx((Vector2){ p.x - r * 0.9f, p.y - r * 0.9f }, (Vector2){ p.x + r * 0.9f, p.y + r * 0.9f }, w, ink);
+                DrawLineEx((Vector2){ p.x - r * 0.9f, p.y + r * 0.9f }, (Vector2){ p.x + r * 0.9f, p.y - r * 0.9f }, w, ink);
                 break;
             default: break;
         }
         if (m->label[i].text[0]) {
             StringView text = sv(m->label[i].text);
-            if (under == STONE_EMPTY) {   // clear the grid under the text
-                Color bg = m->shaded[i] ? (Color){ (u8)(m->shade[i] >> 16), (u8)(m->shade[i] >> 8), (u8)m->shade[i], 255 } : t->colors.board;
-                DrawCircleV(p, g->cell * 0.36f, m->shaded[i] ? color_lerp(t->colors.board, bg, 0.41f) : bg);
+            if (under == STONE_EMPTY) {   // clear the grid under the text with the board itself
+                f32 half = g->cell * 0.34f;
+                Rectangle patch = { p.x - half, p.y - half, half * 2.0f, half * 2.0f };
+                draw_board_patch(ui, g, patch);
+                if (m->shaded[i]) DrawRectangleRec(patch, (Color){ (u8)(m->shade[i] >> 16), (u8)(m->shade[i] >> 8), (u8)m->shade[i], 105 });
             }
             font_draw_centered(ui->fonts, FONT_UI_BOLD, g->cell * (text.len >= 3 ? 0.36f : text.len == 2 ? 0.44f : 0.52f), text, p, ink);
         }
