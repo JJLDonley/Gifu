@@ -724,11 +724,40 @@ static void render_children(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
 
 // ---- Loading ---------------------------------------------------------------------------------------------
 
+// A preset by name: the user's <config>/layouts/NAME.lisp, else the built-in one.
+static String preset_path(const Ui *ui, StringView name, bool user_only) {
+    String rel = string_format("layouts/" SV_FMT ".lisp", SV_ARG(name));
+    String user = path_join(string_sv(&ui->app->config_dir), string_sv(&rel));
+    if (user_only || os_file_exists(string_sv(&user))) {
+        string_free(&rel);
+        return user;
+    }
+    string_free(&user);
+    String data = string_format("data/" SV_FMT, SV_ARG(string_sv(&rel)));
+    String builtin = path_join(string_sv(&ui->app->assets_dir), string_sv(&data));
+    string_free(&data);
+    string_free(&rel);
+    return builtin;
+}
+
 static String layout_path(const Ui *ui) {
+    if (ui->layout_preset.len) return preset_path(ui, string_sv(&ui->layout_preset), false);
     String user = path_join(string_sv(&ui->app->config_dir), SV("layout.lisp"));
     if (os_file_exists(string_sv(&user))) return user;
     string_free(&user);
     return path_join(string_sv(&ui->app->assets_dir), SV("data/layout.lisp"));
+}
+
+bool ui_show_coordinates(const Ui *ui) { return ui->layout_coordinates >= 0 ? ui->layout_coordinates == 1 : ui->app->config.show_coordinates; }
+
+void layout_use_preset(Ui *ui, StringView name) {
+    if (sv_eq(name, string_sv(&ui->layout_preset))) return;
+    string_free(&ui->layout_preset);
+    ui->layout_preset = string_from(name);
+    if (!layout_load(ui) && name.len) {   // no such preset: back to the usual layout
+        string_free(&ui->layout_preset);
+        layout_load(ui);
+    }
 }
 
 static Sexpr *find_child_list(Sexpr *list, const char *head, Sexpr **prev) {
@@ -850,6 +879,8 @@ bool layout_load(Ui *ui) {
         arena_free(&ui->layout_arena);
         ui->layout_arena = arena;
         ui->layout_root = root->first;
+        StringView coords = sexpr_prop_text(ui->layout_root, "coordinates", SV(""));
+        ui->layout_coordinates = sv_eq(coords, SV("on")) ? 1 : sv_eq(coords, SV("off")) ? 0 : -1;
         ui->board_menus[0] = ui->board_menus[1] = NULL;
         ui->board_menu = -1;
         for (const Sexpr *c = sexpr_next_child(ui->layout_root, NULL); c; c = sexpr_next_child(ui->layout_root, c)) {
@@ -869,8 +900,15 @@ bool layout_load(Ui *ui) {
 }
 
 void layout_write_user(Ui *ui, StringView text) {
-    String path = path_join(string_sv(&ui->app->config_dir), SV("layout.lisp"));
+    // While a preset is in use (the game layout), changes go to the user's copy of it.
+    String path = ui->layout_preset.len ? preset_path(ui, string_sv(&ui->layout_preset), true)
+                                        : path_join(string_sv(&ui->app->config_dir), SV("layout.lisp"));
     os_make_dirs(string_sv(&ui->app->config_dir));
+    if (ui->layout_preset.len) {
+        String dir = path_join(string_sv(&ui->app->config_dir), SV("layouts"));
+        os_make_dirs(string_sv(&dir));
+        string_free(&dir);
+    }
     if (!os_write_file(string_sv(&path), text)) app_set_status(ui->app, "Could not write %s", string_cstr(&path));
     string_free(&path);
     layout_load(ui);
@@ -880,6 +918,7 @@ void layout_free(Ui *ui) {
     arena_free(&ui->layout_arena);
     ui->layout_root = NULL;
     string_free(&ui->layout_file);
+    string_free(&ui->layout_preset);
 }
 
 void layout_build(Ui *ui) {

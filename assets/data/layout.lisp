@@ -3,6 +3,9 @@
 ;;
 ;;   (component positional... :prop value :flag (child ...) ...)
 ;;
+;; (app :coordinates on|off ...) makes this layout show or hide the board
+;; coordinates whatever the setting says (the play preset hides them).
+;;
 ;; Positional args come first: after the first :keyword, an atom is that
 ;; keyword's value.
 ;;

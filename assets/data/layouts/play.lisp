@@ -1,7 +1,7 @@
 ;; Layout preset (Customize layout -> Presets). Same format as data/layout.lisp.
 ;; Play: a quiet board for games against the engine (no analysis panels).
 
-(app
+(app :coordinates off
   (menubar
     (menu menu.file
       file.new file.open file.save file.save_as :fallback "File")

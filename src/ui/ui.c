@@ -102,8 +102,12 @@ void ui_apply_theme(Ui *ui, isize index) {
 // ---- UI commands ----------------------------------------------------------------------------
 
 #define UI(ctx) ((Ui *)(ctx))
-static void cmd_coordinates(void *c) { UI(c)->app->config.show_coordinates = !UI(c)->app->config.show_coordinates; }
-static bool shows_coordinates(const void *c) { return ((const Ui *)c)->app->config.show_coordinates; }
+static void cmd_coordinates(void *c) {
+    Ui *ui = UI(c);
+    if (ui->layout_coordinates >= 0) ui->layout_coordinates = !ui->layout_coordinates;   // this layout's choice, until it reloads
+    else ui->app->config.show_coordinates = !ui->app->config.show_coordinates;
+}
+static bool shows_coordinates(const void *c) { return ui_show_coordinates((const Ui *)c); }
 static void cmd_next_theme(void *c) { ui_apply_theme(UI(c), (UI(c)->theme_index + 1) % UI(c)->themes.len); }
 static void cmd_zoom_in(void *c) {
     UI(c)->app->config.ui_scale = MIN(UI(c)->app->config.ui_scale + 0.1f, 3.0f);
@@ -475,8 +479,16 @@ static void sync_window(Ui *ui) {
     app->desktop = (ScreenRect){ x0, y0, x1 - x0, y1 - y0 };
 }
 
+// The game layout (ai.layout) while either AI button is on; the usual layout otherwise.
+static void follow_game_layout(Ui *ui) {
+    bool playing = app_hints_hidden(ui->app) && ui->app->config.ai_layout.len;
+    StringView want = playing ? string_sv(&ui->app->config.ai_layout) : SV("");
+    if (!sv_eq(want, string_sv(&ui->layout_preset))) layout_use_preset(ui, want);
+}
+
 void ui_frame(Ui *ui) {
     arena_reset(&ui->frame);
+    follow_game_layout(ui);
     anim_begin_frame(&ui->anim, GetFrameTime());
     // Effective scale = user preference x monitor content scale (150% / 200%
     // displays). Glyphs are rasterized at the final pixel size, so text stays

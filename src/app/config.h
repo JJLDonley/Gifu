@@ -17,9 +17,10 @@ typedef struct Config {
     bool ui_scale_with_window;   // shrink / grow the interface with the window (around 1400x900)
     String engine;         // engine profile id
     String engine2;
-    String ai_engine;
-    String ai_style;    // the main engine's playing style (app/ai_style.h)
-    String profile_names, profile_folder;   // Profile: who the user is, where their games are   // opponent engine profile id ("" = the main engine plays)
+    String ai_engine;   // opponent engine profile id ("" = the analysis engine plays)
+    String ai_style;    // the analysis engine's playing style (app/ai_style.h)
+    String ai_layout;   // layout preset while the AI plays ("" = keep the current one)
+    String profile_names, profile_folder;   // Profile: who the user is, where their games are
     String install_backend;
     String human_profile;     // humanSLProfile for engines with a human network (rank_5k, preaz_1d, proyear_1990...)   // KataGo build the installer downloads (opencl, eigenavx2, ...)        // second engine (comparison / engine-vs-engine); "" = same as main
     String human_white_rank;  // "" = same as Black; else White imitates this rank ("1d") -> rank_{B}_{W}

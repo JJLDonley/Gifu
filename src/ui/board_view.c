@@ -295,7 +295,7 @@ static void draw_region(Ui *ui, const BoardGeometry *g, Point a, Point b, bool f
 static u64 layer_key(Ui *ui, Rectangle bounds, const Board *board) {
     u64 h = 1469598103934665603ull;
     u64 parts[] = { (u64)bounds.width, (u64)bounds.height, (u64)board->width, (u64)board->height,
-                    ui->app->config.show_coordinates, (u64)(uintptr_t)ui->theme, (u64)(ui->scale * 1000.0f),
+                    ui_show_coordinates(ui), (u64)(uintptr_t)ui->theme, (u64)(ui->scale * 1000.0f),
                     ui->board_texture.id, ui->background.paper.id, ui->language_version, ui->theme_editor.version };
     for (i32 i = 0; i < (i32)countof(parts); ++i) h = (h ^ parts[i]) * 1099511628211ull;
     return h;
@@ -313,7 +313,7 @@ static void rebuild_layer(Ui *ui, Rectangle bounds, const Board *board) {
     }
     // Geometry in layer-local coordinates.
     BoardGeometry g = compute_geometry((Rectangle){ 0, 0, bounds.width, bounds.height }, board->width, board->height,
-                                       ui->app->config.show_coordinates);
+                                       ui_show_coordinates(ui));
     BeginTextureMode(ui->board_layer);
     ClearBackground(BLANK);
     // Colour: normal "over"; alpha: accumulate (a + d*(1-a)). The texture then
@@ -323,7 +323,7 @@ static void rebuild_layer(Ui *ui, Rectangle bounds, const Board *board) {
     BeginBlendMode(BLEND_CUSTOM_SEPARATE);
     if (g.valid) {
         draw_surface(ui, &g);
-        draw_grid(ui, &g, ui->app->config.show_coordinates);
+        draw_grid(ui, &g, ui_show_coordinates(ui));
     }
     EndBlendMode();
     EndTextureMode();
@@ -583,7 +583,7 @@ static void draw_board(void *user, Rectangle bounds) {
     App *app = ui->app;
     const GameNode *node = app->tree->current;
     const Board *board = &node->board;
-    BoardGeometry g = compute_geometry(bounds, board->width, board->height, app->config.show_coordinates);
+    BoardGeometry g = compute_geometry(bounds, board->width, board->height, ui_show_coordinates(ui));
     if (!g.valid) return;
     ui->board_geo = g;
     f64 now = GetTime();
@@ -596,7 +596,7 @@ static void draw_board(void *user, Rectangle bounds) {
         EndBlendMode();
     } else {
         draw_surface(ui, &g);   // first frame / resize: draw directly
-        draw_grid(ui, &g, app->config.show_coordinates);
+        draw_grid(ui, &g, ui_show_coordinates(ui));
     }
 
     // Playing the engine with the evaluation hidden: no candidates, territory or previews.
@@ -785,7 +785,7 @@ void board_view_handle_input(Ui *ui) {
     if (!data.found || ui->pointer_over_menu || ui->dialog != UI_DIALOG_NONE) return;
     const Board *board = &app->tree->current->board;
     Rectangle bounds = { data.boundingBox.x, data.boundingBox.y, data.boundingBox.width, data.boundingBox.height };
-    BoardGeometry g = compute_geometry(bounds, board->width, board->height, app->config.show_coordinates);
+    BoardGeometry g = compute_geometry(bounds, board->width, board->height, ui_show_coordinates(ui));
     if (!g.valid) return;
     // Region selection: drag a rectangle (may leave the board; clamped).
     if (ui->region_select) {

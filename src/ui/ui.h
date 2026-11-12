@@ -114,6 +114,8 @@ typedef struct Ui {
     Arena layout_arena;
     const Sexpr *layout_root;
     String layout_file;
+    String layout_preset;
+    i8 layout_coordinates;  // the layout's (app :coordinates on|off): 1 / 0, or -1 = the setting   // a preset in use instead of layout.lisp (the game layout), or empty
     i64 layout_mtime;
     f64 layout_checked;
     const Sexpr *panel_node;   // props of the (panel ...) being rendered
@@ -328,7 +330,11 @@ void panels_render(Ui *ui, StringView name);
 bool layout_load(Ui *ui);    // (re)reads the layout file; keeps the old tree on errors
 void layout_free(Ui *ui);
 void layout_build(Ui *ui);   // hot-reloads, renders the tree and open dialogs
-void layout_write_user(Ui *ui, StringView text);   // saves <config_dir>/layout.lisp and reloads it
+void layout_write_user(Ui *ui, StringView text);
+// Uses a layout preset (layouts/NAME.lisp: the user's copy, else the built-in one)
+// instead of layout.lisp until called with "" (no file is overwritten).
+void layout_use_preset(Ui *ui, StringView name);
+bool ui_show_coordinates(const Ui *ui);   // the layout's choice, else board.show_coordinates   // saves <config_dir>/layout.lisp and reloads it
 void toolbar_switch(Ui *ui, StringView mode);      // slide to that toolbar mode
 void toolbar_next(Ui *ui);
 void markup_tools_register(Ui *ui);
