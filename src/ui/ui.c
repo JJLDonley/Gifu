@@ -412,6 +412,15 @@ static void smooth_scroll(Ui *ui) {
                 ui->scroll_target = CLAMP(ui->scroll_target + ui->wheel * NOTCH, min_y, 0.0f);
             }
         }
+        // A row that does not fit (the toolbar): the wheel moves it sideways.
+        for (i32 i = over.length - 1; i >= 0 && !found; --i) {
+            Clay_ScrollContainerData data = Clay_GetScrollContainerData(over.internalArray[i]);
+            if (!data.found || data.config.vertical || !data.config.horizontal) continue;
+            f32 overflow = data.contentDimensions.width - data.scrollContainerDimensions.width;
+            if (overflow <= 1.0f) continue;
+            data.scrollPosition->x = CLAMP(data.scrollPosition->x + ui->wheel * NOTCH, -overflow, 0.0f);
+            found = 1;
+        }
     }
     if (!ui->scroll_id) return;
     Clay_ElementId target = { .id = ui->scroll_id };

@@ -11,6 +11,19 @@ Clay_Dimensions clay_measure_text(Clay_StringSlice text, Clay_TextElementConfig 
     return (Clay_Dimensions){ size.x, size.y };
 }
 
+// The longest prefix of `text` (at a UTF-8 boundary) that fits in `width` with "…".
+static isize ellipsis_prefix(FontCache *fonts, FontRole role, f32 size, StringView text, f32 width) {
+    f32 dots = font_measure(fonts, role, size, SV("…")).x;
+    isize fit = 0;
+    for (isize i = 1; i <= text.len; ++i) {
+        if (i < text.len && ((u8)text.data[i] & 0xC0) == 0x80) continue;   // inside a character
+        if (font_measure(fonts, role, size, sv_take(text, i)).x + dots > width) break;
+        fit = i;
+    }
+    while (fit > 0 && text.data[fit - 1] == ' ') --fit;   // no space before the dots
+    return fit;
+}
+
 enum { SCISSOR_STACK_MAX = 32 };
 static Rectangle g_scissor[SCISSOR_STACK_MAX];
 static i32 g_scissor_depth;
@@ -57,8 +70,22 @@ void clay_render(Clay_RenderCommandArray commands, FontCache *fonts) {
         switch (cmd->commandType) {
             case CLAY_RENDER_COMMAND_TYPE_TEXT: {
                 Clay_TextRenderData *t = &cmd->renderData.text;
-                font_draw(fonts, (FontRole)t->fontId, (f32)t->fontSize, sv_from_parts(t->stringContents.chars, t->stringContents.length),
-                          (Vector2){ r.x, r.y }, clay_to_color(t->textColor));
+                StringView text = sv_from_parts(t->stringContents.chars, t->stringContents.length);
+                FontRole role = (FontRole)t->fontId;
+                f32 size = (f32)t->fontSize;
+                // Text running past the edge of its clipping container (a card, a cell)
+                // is shortened with an ellipsis instead of being cut mid-letter.
+                if (g_scissor_depth > 0) {
+                    Rectangle clip = g_scissor[g_scissor_depth - 1];
+                    f32 room = clip.x + clip.width - r.x;
+                    if (room > 0 && r.x >= clip.x && font_measure(fonts, role, size, text).x > room + 1.0f) {
+                        String cut = string_format(SV_FMT "…", SV_ARG(sv_take(text, ellipsis_prefix(fonts, role, size, text, room))));
+                        font_draw(fonts, role, size, string_sv(&cut), (Vector2){ r.x, r.y }, clay_to_color(t->textColor));
+                        string_free(&cut);
+                        break;
+                    }
+                }
+                font_draw(fonts, role, size, text, (Vector2){ r.x, r.y }, clay_to_color(t->textColor));
                 break;
             }
             case CLAY_RENDER_COMMAND_TYPE_IMAGE: {

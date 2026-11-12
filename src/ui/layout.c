@@ -403,10 +403,14 @@ static void bar(Ui *ui, const Sexpr *node, LayoutCtx *ctx, bool top, bool ghost)
     LayoutCtx child = *ctx;
     child.horizontal = true;
     child.ghost = ghost;
-    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) },
+    // Too many items for the window: the bar clips them and scrolls sideways with the
+    // wheel (it never pushes the window wider, and buttons keep their labels).
+    CLAY({ .id = CLAY_IDI("Bar", (u32)(top ? 0 : 1) + 2u * (u32)ctx->counter),
+           .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) },
                        .padding = { ui_u16(ui, 12), ui_u16(ui, 12), ui_u16(ui, 8), ui_u16(ui, 8) },
                        .childGap = ui_u16(ui, 6), .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } },
            .backgroundColor = color_to_clay(t->colors.surface),
+           .clip = { .horizontal = true, .childOffset = Clay_GetScrollOffset() },
            .border = { .color = color_to_clay(t->colors.border), .width = border } }) {
         render_children(ui, node, &child);
     }
