@@ -29,6 +29,7 @@ struct ScreenCapture {
     bool rootless;           // CAPTURE_X11: the root window cannot be read
     void *dbus;              // CAPTURE_KWIN / CAPTURE_PORTAL: the capture thread's D-Bus link (DbusLink *)
     const volatile bool *cancel;   // set by the owner to abandon a capture that waits (screen_capture_set_cancel)
+    f32 area_scale;          // CAPTURE_KWIN: Gifu's (XWayland) pixels per KWin logical pixel; 0 = not measured yet
     u32 serial;
 };
 

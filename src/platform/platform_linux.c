@@ -11,6 +11,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include <math.h>
 #include <fcntl.h>
 #include <poll.h>
 #include <unistd.h>
@@ -227,13 +228,49 @@ static bool read_pipe(int fd, u8 *dst, isize want, const ScreenCapture *c) {
     return got == want;
 }
 
-static bool capture_grab_kwin(ScreenCapture *c, const ScreenRect *rect, RgbaImage *out, String *error) {
+// Gifu's window runs through XWayland, and the area is picked in its pixels. With
+// "apply scaling themselves" (XWayland at the full resolution) those are not
+// KWin's logical pixels: compare the X screen with KWin's workspace once.
+static f32 kwin_area_scale(ScreenCapture *c, DbusLink *link) {
+    if (c->area_scale > 0) return c->area_scale;
+    c->area_scale = 1.0f;
+    Display *d = XOpenDisplay(NULL);
+    if (!d) return c->area_scale;
+    i32 xw = DisplayWidth(d, DefaultScreen(d)), xh = DisplayHeight(d, DefaultScreen(d));
+    XCloseDisplay(d);
+    int fds[2];
+    if (pipe2(fds, O_CLOEXEC) != 0) return c->area_scale;
+    DbusMsg *m = dbus_msg_method(SV("org.kde.KWin.ScreenShot2"), SV("/org/kde/KWin/ScreenShot2"), SV("org.kde.KWin.ScreenShot2"), SV("CaptureWorkspace"));
+    dbus_msg_dict_begin(m);
+    dbus_msg_dict_end(m);
+    dbus_msg_fd(m, fds[1]);
+    DbusValue reply = { 0 };
+    bool ok = dbus_link_call(link, m, 5000, &reply, NULL);
+    close(fds[1]);
+    close(fds[0]);   // only the size is wanted
+    i64 kw = ok ? dbus_value_int(dbus_dict_get(dbus_arg(&reply, 0), SV("width"))) : 0;
+    i64 kh = ok ? dbus_value_int(dbus_dict_get(dbus_arg(&reply, 0), SV("height"))) : 0;
+    dbus_value_free(&reply);
+    if (kw > 0 && kh > 0) {
+        f32 sx = (f32)xw / (f32)kw, sy = (f32)xh / (f32)kh;
+        if (fabsf(sx - sy) < 0.03f * sx && fabsf(sx - 1.0f) > 0.02f) c->area_scale = sx;
+        log_info("screen capture: X screen %dx%d, KWin workspace %lldx%lld -> area scale %.3f%s", xw, xh, (long long)kw, (long long)kh,
+                 (f64)c->area_scale, fabsf(sx - sy) >= 0.03f * sx ? " (screens scaled differently: not adjusted)" : "");
+    }
+    return c->area_scale;
+}
+
+static bool capture_grab_kwin(ScreenCapture *c, const ScreenRect *rect_in, RgbaImage *out, String *error) {
     DbusLink *link = capture_link(c, error);
     if (!link) return false;
-    if (!rect) {
+    if (!rect_in) {
         capture_set_error(error, string_from(SV("KWin capture needs an area")));
         return false;
     }
+    f32 scale = kwin_area_scale(c, link);
+    ScreenRect scaled = { (i32)lroundf((f32)rect_in->x / scale), (i32)lroundf((f32)rect_in->y / scale), (i32)lroundf((f32)rect_in->width / scale),
+                          (i32)lroundf((f32)rect_in->height / scale) };
+    const ScreenRect *rect = &scaled;
     int fds[2];
     if (pipe2(fds, O_CLOEXEC) != 0) {
         capture_set_error(error, string_from(SV("pipe failed")));

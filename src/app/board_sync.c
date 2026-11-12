@@ -79,7 +79,17 @@ static i32 sync_loop(BoardSync *s) {
         } else {
             failures = 0;
             if (grid.size == 0 && !board_grid_detect(&image, s->settings.size, &grid)) {
-                set_state(s, BOARD_SYNC_FAILED, SV("no Go board found in the selected area"));
+                // Keep what was captured: it shows whether the right part of the screen came back.
+                String png = { 0 }, dir = os_config_dir(), file = path_join(string_sv(&dir), SV("sync-capture.png"));
+                png_encode(&image, &png);
+                bool saved = os_make_dirs(string_sv(&dir)) && os_write_file(string_sv(&file), string_sv(&png));
+                const ScreenRect *a = &s->settings.area;
+                log_warn("board sync: no board in the %dx%d capture of the area %d,%d %dx%d%s%s", image.width, image.height, a->x, a->y, a->width,
+                         a->height, saved ? "; saved to " : "", saved ? string_cstr(&file) : "");
+                String msg = saved ? string_format("no Go board found in the selected area (the captured picture: %s)", string_cstr(&file))
+                                   : string_from(SV("no Go board found in the selected area"));
+                set_state(s, BOARD_SYNC_FAILED, string_sv(&msg));
+                string_free(&msg), string_free(&png), string_free(&dir), string_free(&file);
                 rgba_image_free(&image);
                 break;
             }

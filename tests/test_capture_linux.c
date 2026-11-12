@@ -6,6 +6,8 @@
 #include "platform/dbus_link.h"
 #include "platform/platform.h"
 
+#include <X11/Xlib.h>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,6 +27,8 @@ typedef enum FakeMode { FAKE_OK, FAKE_REFUSE, FAKE_SILENT } FakeMode;
 typedef struct Fake {
     DbusLink *link;
     FakeMode kwin, portal;
+    i32 workspace_w, workspace_h;   // CaptureWorkspace answers this size (0: refuse)
+    i32 asked_w, asked_h;           // the last CaptureArea size requested
     volatile bool stop;
     String png_path;
 } Fake;
@@ -62,8 +66,15 @@ static void answer_kwin(Fake *f, DbusCall *call) {
         dbus_link_send(f->link, dbus_msg_error(call, SV("org.kde.KWin.ScreenShot2.Error.NoAuthorized"), SV("The process is not authorized")));
         return;
     }
-    u32 w = (u32)dbus_value_int(dbus_arg(&call->args, 2)), h = (u32)dbus_value_int(dbus_arg(&call->args, 3));
-    const DbusValue *pipe = dbus_arg(&call->args, 5);
+    bool workspace = sv_eq(string_sv(&call->member), SV("CaptureWorkspace"));
+    if (workspace && f->workspace_w <= 0) {
+        dbus_link_send(f->link, dbus_msg_error(call, SV("org.freedesktop.DBus.Error.Failed"), SV("no")));
+        return;
+    }
+    u32 w = workspace ? (u32)f->workspace_w : (u32)dbus_value_int(dbus_arg(&call->args, 2));
+    u32 h = workspace ? (u32)f->workspace_h : (u32)dbus_value_int(dbus_arg(&call->args, 3));
+    if (!workspace) f->asked_w = (i32)w, f->asked_h = (i32)h;
+    const DbusValue *pipe = dbus_arg(&call->args, workspace ? 1 : 5);
     DbusMsg *r = dbus_msg_reply(call);
     dbus_msg_dict_begin(r);
     dbus_msg_dict_string(r, SV("type"), SV("raw"));
@@ -117,7 +128,7 @@ static i32 fake_main(void *arg) {
     while (!f->stop) {
         DbusCall call;
         if (!dbus_link_next_call(f->link, 100, &call)) continue;
-        if (sv_eq(string_sv(&call.member), SV("CaptureArea"))) answer_kwin(f, &call);
+        if (sv_eq(string_sv(&call.member), SV("CaptureArea")) || sv_eq(string_sv(&call.member), SV("CaptureWorkspace"))) answer_kwin(f, &call);
         else if (sv_eq(string_sv(&call.member), SV("Screenshot"))) answer_portal(f, &call);
         else dbus_link_send(f->link, dbus_msg_error(&call, SV("org.freedesktop.DBus.Error.UnknownMethod"), SV("no")));
         dbus_call_free(&call);
@@ -201,4 +212,28 @@ static void test_kwin_and_portal(void) {
     fake_stop(&f, &t);
 }
 
-void register_capture_linux_tests(void) { test_register("capture/linux_dbus", test_kwin_and_portal); }
+// XWayland at the full resolution ("apply scaling themselves"): the area picked in
+// Gifu's pixels is converted to KWin's logical pixels (here 200%).
+static void test_kwin_scale(void) {
+    if (!dbus_link_available() || !start_bus()) return;
+    Display *d = XOpenDisplay(NULL);
+    i32 xw = d ? DisplayWidth(d, DefaultScreen(d)) : 0, xh = d ? DisplayHeight(d, DefaultScreen(d)) : 0;
+    if (d) XCloseDisplay(d);
+    Fake f = { .kwin = FAKE_OK, .portal = FAKE_OK, .workspace_w = xw / 2, .workspace_h = xh / 2 };
+    Thread t;
+    if (!fake_start(&f, &t)) return;
+    String err = { 0 };
+    ScreenCapture *c = screen_capture_open(SV("kwin"), SV(""), &err);
+    ScreenRect rect = { 100, 60, 400, 300 };
+    RgbaImage img = { 0 };
+    CHECK(screen_capture_grab(c, &rect, &img, &err));
+    if (xw > 0) CHECK(f.asked_w == 200 && f.asked_h == 150);   // halved
+    else CHECK(f.asked_w == 400 && f.asked_h == 300);          // no X screen: unchanged
+    rgba_image_free(&img);
+    screen_capture_close(c);
+    string_free(&err);
+    fake_stop(&f, &t);
+}
+
+void register_capture_linux_tests(void) {
+    test_register("capture/kwin_scale", test_kwin_scale); test_register("capture/linux_dbus", test_kwin_and_portal); }
