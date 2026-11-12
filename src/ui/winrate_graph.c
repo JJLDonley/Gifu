@@ -22,25 +22,25 @@ static void draw_graph(void *user, Rectangle r) {
     if (st->count < 2) return;
 
     f32 step = r.width / (f32)(st->count - 1);
-    f32 max_score = 12.0f;   // the 10-point guides always fit
+    // The points scale grows with the game's biggest lead, in steps of 10 points
+    // (the win rate always spans the full height).
+    f32 max_lead = 0.0f;
     for (isize i = 0; i < st->count; ++i) {
-        if (st->line[i]->eval.valid) max_score = fmaxf(max_score, fabsf(st->line[i]->eval.black_score));
+        if (st->line[i]->eval.valid) max_lead = fmaxf(max_lead, fabsf(st->line[i]->eval.black_score));
     }
-    // Dashed guides where the score lead is 10 points (Black above the middle, White
-    // below), labelled on a backing so they read over the graph in every theme.
+    f32 guide = fmaxf(10.0f, floorf(max_lead / 10.0f) * 10.0f);   // see the guides below
+    f32 max_score = fmaxf(ceilf(max_lead / 10.0f) * 10.0f, guide * 1.25f);   // the guides never sit on the edge
+    f32 half = r.height * 0.45f;
+    // One pair of dashed guides (Black above the middle, White below) at the largest
+    // multiple of 10 the lead has reached: 10, then 20 once a lead passes 20... They
+    // move when that threshold changes. Labelled on a backing on the middle's side
+    // of their lines, so they stay inside the graph and read in every theme.
     f32 label_size = 11.0f * ui->scale;
     for (i32 side = -1; side <= 1; side += 2) {
-        f32 y = mid - (f32)side * (10.0f / max_score) * r.height * 0.45f;
+        f32 y = mid - (f32)side * (guide / max_score) * half;
         for (f32 x = r.x; x < r.x + r.width; x += 7.0f * ui->scale) {
             DrawLineEx((Vector2){ x, y }, (Vector2){ fminf(x + 4.0f * ui->scale, r.x + r.width), y }, 1.0f, color_with_alpha(c->score_line, 0.55f));
         }
-        const char *text = side > 0 ? "B+10" : "W+10";
-        Vector2 m = font_measure(ui->fonts, FONT_UI_BOLD, label_size, sv(text));
-        f32 pad = 3.0f * ui->scale;
-        // B+10 sits above its line and W+10 below, so they never overlap.
-        Rectangle box = { r.x + r.width - m.x - pad * 3.0f, side > 0 ? y - m.y - 3.0f : y + 1.0f, m.x + pad * 2.0f, m.y + 2.0f };
-        DrawRectangleRounded(box, 0.4f, 6, color_with_alpha(c->surface, 0.9f));
-        font_draw(ui->fonts, FONT_UI_BOLD, label_size, sv(text), (Vector2){ box.x + pad, box.y + 1.0f }, c->score_line);
     }
 
     // Black win-rate area + line, score line.
@@ -54,7 +54,7 @@ static void draw_graph(void *user, Rectangle r) {
         }
         f32 x = r.x + step * (f32)i;
         Vector2 p = { x, r.y + r.height * (1.0f - e->black_winrate) };
-        Vector2 s = { x, mid - (e->black_score / max_score) * r.height * 0.45f };
+        Vector2 s = { x, mid - (e->black_score / max_score) * half };
         if (has_prev) {
             DrawTriangle(prev, (Vector2){ prev.x, r.y + r.height }, (Vector2){ p.x, r.y + r.height }, color_with_alpha(c->winrate_black, 0.12f));
             DrawTriangle(prev, (Vector2){ p.x, r.y + r.height }, p, color_with_alpha(c->winrate_black, 0.12f));
@@ -64,6 +64,18 @@ static void draw_graph(void *user, Rectangle r) {
         prev = p;
         prev_score = s;
         has_prev = true;
+    }
+
+    // The guides' labels, over the lines.
+    for (i32 side = -1; side <= 1; side += 2) {
+        f32 y = mid - (f32)side * (guide / max_score) * half;
+        char text[16];
+        snprintf(text, sizeof(text), "%c+%.0f", side > 0 ? 'B' : 'W', guide);
+        Vector2 m = font_measure(ui->fonts, FONT_UI_BOLD, label_size, sv(text));
+        f32 pad = 3.0f * ui->scale;
+        Rectangle box = { r.x + r.width - m.x - pad * 3.0f, side > 0 ? y + 1.0f : y - m.y - 3.0f, m.x + pad * 2.0f, m.y + 2.0f };
+        DrawRectangleRounded(box, 0.4f, 6, color_with_alpha(c->surface, 0.9f));
+        font_draw(ui->fonts, FONT_UI_BOLD, label_size, sv(text), (Vector2){ box.x + pad, box.y + 1.0f }, c->score_line);
     }
 
     // Current node marker.
