@@ -479,10 +479,15 @@ static void sync_window(Ui *ui) {
     app->desktop = (ScreenRect){ x0, y0, x1 - x0, y1 - y0 };
 }
 
-// The game layout (ai.layout) while either AI button is on; the usual layout otherwise.
+// The layout follows what you are doing: the play preset (ai.layout) while an AI
+// plays, the analysis preset (analysis.layout) while analysing (live, or a whole
+// game), your usual layout otherwise.
 static void follow_game_layout(Ui *ui) {
-    bool playing = app_hints_hidden(ui->app) && ui->app->config.ai_layout.len;
-    StringView want = playing ? string_sv(&ui->app->config.ai_layout) : SV("");
+    const App *app = ui->app;
+    bool analysing = app->analysis_enabled || app->flash_running || app->batch_running;
+    StringView want = app_hints_hidden(app) ? string_sv(&app->config.ai_layout)
+                      : analysing          ? string_sv(&app->config.analysis_layout)
+                                           : SV("");
     if (!sv_eq(want, string_sv(&ui->layout_preset))) layout_use_preset(ui, want);
 }
 

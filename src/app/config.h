@@ -20,6 +20,7 @@ typedef struct Config {
     String ai_engine;   // opponent engine profile id ("" = the analysis engine plays)
     String ai_style;    // the analysis engine's playing style (app/ai_style.h)
     String ai_layout;   // layout preset while the AI plays ("" = keep the current one)
+    String analysis_layout;   // layout preset while analysing (live or a whole game)
     String profile_names, profile_folder;   // Profile: who the user is, where their games are
     String install_backend;
     String human_profile;     // humanSLProfile for engines with a human network (rank_5k, preaz_1d, proyear_1990...)   // KataGo build the installer downloads (opencl, eigenavx2, ...)        // second engine (comparison / engine-vs-engine); "" = same as main
