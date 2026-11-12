@@ -20,6 +20,13 @@ typedef struct KataGoEngine {
 
     // What the engine currently has loaded.
     bool synced;
+    // Board commands awaiting their reply (FIFO of ids): KataGo refusing one
+    // (e.g. "? illegal move") means its board differs from ours, so it is rebuilt
+    // from scratch from the last position (Sabaki does the same).
+    i32 sync_ids[256];
+    i32 sync_head, sync_count;
+    PositionSpec *last_pos;
+    i32 rebuilds;   // consecutive rebuilds that failed again (gives up after a few)
     i32 width, height;
     f32 komi;
     String rules;
@@ -69,10 +76,33 @@ static i32 send(KataGoEngine *k, const char *fmt, ...) {
     return gtp_client_send(k->gtp, sv(buffer));
 }
 
+static void track_sync(KataGoEngine *k, i32 id) {
+    if (id <= 0) return;
+    if (k->sync_count == (i32)countof(k->sync_ids)) {   // full: forget the oldest
+        k->sync_head = (k->sync_head + 1) % (i32)countof(k->sync_ids);
+        k->sync_count--;
+    }
+    k->sync_ids[(k->sync_head + k->sync_count) % (i32)countof(k->sync_ids)] = id;
+    k->sync_count++;
+}
+
+// A command that changes KataGo's board; its reply is checked.
+static i32 send_sync(KataGoEngine *k, const char *fmt, ...) PRINTF_LIKE(2, 3);
+static i32 send_sync(KataGoEngine *k, const char *fmt, ...) {
+    char buffer[8192];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(buffer, sizeof(buffer), fmt, args);
+    va_end(args);
+    i32 id = gtp_client_send(k->gtp, sv(buffer));
+    track_sync(k, id);
+    return id;
+}
+
 static void send_play(KataGoEngine *k, Move m) {
     char coord[8];
     point_to_gtp(m.point, k->width, k->height, coord);
-    send(k, "play %s %s", m.color == STONE_BLACK ? "B" : "W", coord);
+    send_sync(k, "play %s %s", m.color == STONE_BLACK ? "B" : "W", coord);
 }
 
 // " allow B C3,D3,... 60 allow W C3,D3,... 60": KataGo searches only these
@@ -146,7 +176,11 @@ static void kg_request_move(Engine *e, const MoveRequest *request) {
     KataGoEngine *k = as_katago(e);
     if (!k->gtp || k->genmove_id > 0) return;
     k->analysis_id = -1;   // genmove interrupts any running kata-analyze
-    send(k, "time_settings 0 %.2f 1", MAX(request->seconds, 0.1f));
+    // A byo-yomi of `seconds` per move, or none: "time_settings 0 1 0" is GTP's
+    // "no time limit", so KataGo searches its configured maxVisits (full strength).
+    // Not "0 0 0": KataGo takes that as no time at all (measured: ~0.05 s, 100 visits).
+    if (request->seconds > 0) send(k, "time_settings 0 %.2f 1", MAX(request->seconds, 0.1f));
+    else send(k, "time_settings 0 1 0");
     k->genmove = *request;
     // Human style: pick the move from the human policy (KataGo's gtp_human*_example.cfg
     // settings, switched in for this move only).
@@ -168,6 +202,11 @@ static void kg_set_position(Engine *e, const PositionSpec *pos) {
     KataGoEngine *k = as_katago(e);
     if (!k->gtp) return;
     if (k->synced && pos->id == k->position_id) return;
+    if (pos != k->last_pos) {   // kept for rebuilding the board if KataGo refuses a command
+        if (!k->last_pos) k->last_pos = malloc(sizeof(PositionSpec));
+        if (!k->last_pos) abort();
+        memcpy(k->last_pos, pos, sizeof(PositionSpec));
+    }
     k->analysis_id = -1;   // ignore output from the previous analysis
 
     bool full_reset = !k->synced || pos->width != k->width || pos->height != k->height || pos->komi != k->komi ||
@@ -176,9 +215,9 @@ static void kg_set_position(Engine *e, const PositionSpec *pos) {
     if (full_reset) {
         k->width = pos->width;
         k->height = pos->height;
-        if (pos->width == pos->height) send(k, "boardsize %d", pos->width);
-        else send(k, "rectangular_boardsize %d %d", pos->width, pos->height);
-        send(k, "clear_board");
+        if (pos->width == pos->height) send_sync(k, "boardsize %d", pos->width);
+        else send_sync(k, "rectangular_boardsize %d %d", pos->width, pos->height);
+        send_sync(k, "clear_board");
         k->komi = pos->komi;
         send(k, "komi %g", pos->komi);
         string_clear(&k->rules);
@@ -197,7 +236,7 @@ static void kg_set_position(Engine *e, const PositionSpec *pos) {
                 else string_pushf(&cmd, " %s %s", pos->setup[i].color == STONE_BLACK ? "B" : "W", coord);
                 vec_push(&k->setup, pos->setup[i]);
             }
-            gtp_client_send(k->gtp, string_sv(&cmd));
+            track_sync(k, gtp_client_send(k->gtp, string_sv(&cmd)));
             string_free(&cmd);
         }
     }
@@ -206,7 +245,7 @@ static void kg_set_position(Engine *e, const PositionSpec *pos) {
     i32 common = 0;
     i32 limit = MIN((i32)k->moves.len, pos->move_count);
     while (common < limit && same_moves(&k->moves.items[common], &pos->moves[common], 1)) ++common;
-    for (i32 i = (i32)k->moves.len; i > common; --i) send(k, "undo");
+    for (i32 i = (i32)k->moves.len; i > common; --i) send_sync(k, "undo");
     k->moves.len = common;
     for (i32 i = common; i < pos->move_count; ++i) {
         send_play(k, pos->moves[i]);
@@ -238,6 +277,22 @@ static void kg_stop_analysis(Engine *e) {
     send(k, "stop");
 }
 
+static void kg_set_position(Engine *e, const PositionSpec *pos);
+
+// KataGo refused a board command: its board is not ours any more. Rebuild it from
+// scratch (clear_board, handicap, every move) from the last position we sent.
+static void resync(KataGoEngine *k, StringView reply) {
+    log_warn("KataGo refused a board command (" SV_FMT "): rebuilding its board", SV_ARG(reply));
+    k->sync_count = 0;
+    k->synced = false;
+    k->position_id = 0;
+    if (!k->last_pos || ++k->rebuilds > 3) {   // the same position keeps failing: stop trying
+        log_warn("KataGo: giving up rebuilding the board");
+        return;
+    }
+    kg_set_position(&k->base, k->last_pos);   // also restarts kata-analyze if it was running
+}
+
 static bool kg_poll(Engine *e, EngineEvent *out) {
     KataGoEngine *k = as_katago(e);
     gtp_event_free(&k->last_event);
@@ -247,6 +302,23 @@ static bool kg_poll(Engine *e, EngineEvent *out) {
         k->last_event = ev;
         switch (ev.kind) {
             case GTP_EVENT_RESPONSE:
+                // Board commands are answered in order: drop those already answered.
+                while (k->sync_count > 0 && k->sync_ids[k->sync_head] < ev.id) {
+                    k->sync_head = (k->sync_head + 1) % (i32)countof(k->sync_ids);
+                    k->sync_count--;
+                }
+                if (k->sync_count > 0 && k->sync_ids[k->sync_head] == ev.id) {
+                    k->sync_head = (k->sync_head + 1) % (i32)countof(k->sync_ids);
+                    k->sync_count--;
+                    if (!ev.success) {
+                        resync(k, sv_trim(string_sv(&ev.text)));
+                        *out = (EngineEvent){ .kind = ENGINE_EVENT_LOG, .status = k->status,
+                                              .text = SV("KataGo refused a board command: rebuilding its board") };
+                        return true;
+                    }
+                    if (k->rebuilds > 0 && k->sync_count == 0) k->rebuilds = 0;   // the rebuild went through
+                    break;
+                }
                 if (ev.id == k->score_id && k->score_id > 0) {
                     k->score_id = 0;
                     *out = (EngineEvent){ .kind = ev.success ? ENGINE_EVENT_SCORE : ENGINE_EVENT_ERROR, .status = k->status,
@@ -345,6 +417,7 @@ static void kg_destroy(Engine *e) {
     string_free(&k->rules);
     vec_free(&k->setup);
     vec_free(&k->moves);
+    free(k->last_pos);
     free(k);
 }
 

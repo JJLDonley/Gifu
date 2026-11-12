@@ -116,7 +116,9 @@ static void ge_request_move(Engine *e, const MoveRequest *request) {
     GtpEngine *g = as_gtp(e);
     if (!g->gtp || g->genmove_id > 0) return;
     // Byo-yomi of one move in `seconds`: engines without time controls ignore it.
-    send(g, "time_settings 0 %d 1", (i32)MAX(request->seconds + 0.5f, 1.0f));
+    // No clock asked (0): 5 s, since a plain GTP engine may have no limit of its own.
+    f32 seconds = request->seconds > 0 ? request->seconds : 5.0f;
+    send(g, "time_settings 0 %d 1", (i32)MAX(seconds + 0.5f, 1.0f));
     g->genmove = *request;
     g->genmove_id = send(g, "genmove %s", request->color == STONE_WHITE ? "W" : "B");
 }

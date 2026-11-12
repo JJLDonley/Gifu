@@ -640,6 +640,34 @@ static void rank_update(App *app) {
     rank_sync(app);
 }
 
+// An engine resigned: the game is over. Every engine stops playing and the result
+// (B+R / W+R) goes into the game unless it already has one.
+static void engine_resigned(App *app, Stone loser, StringView who) {
+    app->ai_plays[STONE_BLACK] = app->ai_plays[STONE_WHITE] = false;
+    app->ai_move_once = false;
+    app->match_mode = false;
+    if (!game_tree_info(app->tree, SV("RE")).len) {
+        game_node_set_prop(app->tree, app->tree->root, SV("RE"), loser == STONE_WHITE ? SV("B+R") : SV("W+R"));
+        app_mark_edited(app);
+    }
+    app_set_status(app, SV_FMT " resigns: %s wins", SV_ARG(who), loser == STONE_WHITE ? "Black" : "White");
+}
+
+// Plays an engine's move. A move for the side that is not to move, or one our
+// board refuses, means the engine's board differs: it is resynced (the next
+// set_position rebuilds it if it refuses a command).
+static void play_engine_move(App *app, EngineSlot *s, const EngineEvent *ev, const char *what) {
+    Stone to_play = app->tree->current->to_play;
+    MoveError err = ev->move.color == to_play ? app_play(app, ev->move.point) : MOVE_ERR_OCCUPIED;
+    if (err == MOVE_OK) return;
+    char coord[8];
+    point_to_gtp(ev->move.point, game_tree_width(app->tree), game_tree_height(app->tree), coord);
+    log_warn("%s %s %s refused (%s to play, %s): resyncing the engine", what, ev->move.color == STONE_BLACK ? "B" : "W", coord,
+             to_play == STONE_BLACK ? "Black" : "White", ev->move.color == to_play ? move_error_name(err) : "wrong colour");
+    app_set_status(app, "%s move %s refused (%s): resyncing the engine", what, coord, ev->move.color == to_play ? move_error_name(err) : "wrong colour");
+    s->synced_node = NULL;
+}
+
 static void second_update(App *app) {
     EngineSlot *s = &app->second;
     if (!s->engine || app->rank_slot == s) return;   // lent to the rank job
@@ -662,13 +690,8 @@ static void second_update(App *app) {
                     s->synced_node = NULL;
                     break;
                 }
-                if (ev.resigned) {
-                    app->match_mode = false;
-                    app_set_status(app, "%s resigns", ev.move.color == STONE_BLACK ? "Black" : "White");
-                } else if (app_play(app, ev.move.point) != MOVE_OK) {
-                    app_set_status(app, "Second engine move rejected");
-                    s->synced_node = NULL;
-                }
+                if (ev.resigned) engine_resigned(app, ev.move.color, ev.move.color == STONE_BLACK ? SV("Black") : SV("White"));
+                else play_engine_move(app, s, &ev, "Second engine");
                 break;
             case ENGINE_EVENT_LOG: {
                 String line = string_format("[2] " SV_FMT, SV_ARG(ev.text));
@@ -747,13 +770,8 @@ static void opponent_update(App *app) {
                     s->synced_node = NULL;
                     break;
                 }
-                if (ev.resigned) {
-                    app->ai_plays[STONE_BLACK] = app->ai_plays[STONE_WHITE] = false;
-                    app_set_status(app, "%s resigns", string_cstr(&s->profile->name));
-                } else if (app_play(app, ev.move.point) != MOVE_OK) {
-                    app_set_status(app, "Opponent move rejected");
-                    s->synced_node = NULL;
-                }
+                if (ev.resigned) engine_resigned(app, app->tree->current->to_play, string_sv(&s->profile->name));
+                else play_engine_move(app, s, &ev, string_cstr(&s->profile->name));
                 break;
             case ENGINE_EVENT_LOG: {
                 String line = string_format("[opponent] " SV_FMT, SV_ARG(ev.text));
@@ -878,14 +896,10 @@ void app_update(App *app) {
                     break;
                 }
                 if (ev.resigned) {
-                    app->ai_plays[ev.move.color] = false;
-                    app_set_status(app, "%s resigns", ev.move.color == STONE_BLACK ? "Black" : "White");
+                    engine_resigned(app, ev.move.color, string_sv(&app->main.profile->name));
                     break;
                 }
-                if (app_play(app, ev.move.point) != MOVE_OK) {
-                    app_set_status(app, "Engine move rejected");
-                    app->main.synced_node = NULL;
-                }
+                play_engine_move(app, &app->main, &ev, string_cstr(&app->main.profile->name));
                 break;
             case ENGINE_EVENT_SCORE:
                 app->score_requested = false;
@@ -956,7 +970,9 @@ void app_update(App *app) {
     if (style_turn) {
         if (!app->style_node) {
             app->style_node = app->tree->current;
-            app->style_deadline = os_time_seconds() + MAX(app->config.ai_seconds_per_move, 0.2f);
+            // Styles choose among analysed candidates: no clock set means 2 s of analysis.
+            f32 think = app->config.ai_seconds_per_move > 0 ? app->config.ai_seconds_per_move : 2.0f;
+            app->style_deadline = os_time_seconds() + MAX(think, 0.2f);
             if (!app->analysis_enabled) app_set_analysis(app, true);
             return;   // analysing until the deadline
         } else if (os_time_seconds() >= app->style_deadline) {

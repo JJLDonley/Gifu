@@ -47,7 +47,7 @@ static const ConfigField FIELDS[] = {
     INT("board.move_numbers", move_numbers, 0, -1, 999),   // -1 all, 0 none, N the last N moves
     BOOL("board.show_branches", show_branches, 0),
     BOOL("board.drag_stones", drag_stones, 1),
-    FLOAT("ai.seconds_per_move", ai_seconds_per_move, 2.0, 0.1, 120.0),
+    FLOAT("ai.seconds_per_move", ai_seconds_per_move, 0.0, 0.0, 120.0),   // 0 = no clock: the engine's own limits (KataGo's maxVisits)
     FLOAT("human_winrate.level", human_winrate_level, 1.0, -11.0, 9.0),   // Fox rank: -11 = 12k, 0 = 1k, 1 = 1d, 9 = 9d
     BOOL("ai.human_style", ai_human_style, 0),
     BOOL("ai.show_eval", ai_show_eval, 0),

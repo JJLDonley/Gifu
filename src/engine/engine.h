@@ -48,7 +48,7 @@ typedef struct AnalysisRequest {
 typedef struct MoveRequest {
     u64 position_id;          // the position the move is for (from set_position)
     Stone color;
-    f32 seconds;              // thinking time per move
+    f32 seconds;              // thinking time per move; 0 = no clock (the engine's own limits, e.g. KataGo's maxVisits)
     bool human_style;         // play like a human of the current humanSLProfile (engines with a human model)
 } MoveRequest;
 
