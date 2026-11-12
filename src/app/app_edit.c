@@ -116,14 +116,14 @@ static void cmd_komi_down(void *c) { app_set_komi(APP(c), game_tree_komi(APP(c)-
 
 void app_edit_register_commands(App *app) {
     CommandDef defs[] = {
-        { "edit.undo", "Undo edit", "Undo", cmd_undo, can_undo, NULL, app },
-        { "edit.redo", "Redo edit", "Redo", cmd_redo, can_redo, NULL, app },
-        { "edit.insert_black", "Insert black here", "Insert B", cmd_insert_black, can_insert, NULL, app },
-        { "edit.insert_white", "Insert white here", "Insert W", cmd_insert_white, can_insert, NULL, app },
-        { "edit.jump_to_move", "Jump to this move", "Jump", cmd_jump_to_move, can_stone, NULL, app },
-        { "edit.move_stone", "Move this stone", "Move", cmd_move_stone, can_stone, NULL, app },
-        { "edit.swap_color", "Change its colour", "Swap", cmd_swap_color, can_stone, NULL, app },
-        { "edit.delete_move", "Delete this move (keep the rest)", "Delete", cmd_delete_move, can_stone, NULL, app },
+        { "edit.undo", "Undo", "Undo", cmd_undo, can_undo, NULL, app },
+        { "edit.redo", "Redo", "Redo", cmd_redo, can_redo, NULL, app },
+        { "edit.insert_black", "Insert Black", "Insert B", cmd_insert_black, can_insert, NULL, app },
+        { "edit.insert_white", "Insert White", "Insert W", cmd_insert_white, can_insert, NULL, app },
+        { "edit.jump_to_move", "Jump To", "Jump", cmd_jump_to_move, can_stone, NULL, app },
+        { "edit.move_stone", "Move", "Move", cmd_move_stone, can_stone, NULL, app },
+        { "edit.swap_color", "Swap Color", "Swap", cmd_swap_color, can_stone, NULL, app },
+        { "edit.delete_move", "Delete", "Delete", cmd_delete_move, can_stone, NULL, app },
         { "game.komi_up", "Komi +0.5", "K+", cmd_komi_up, NULL, NULL, app },
         { "game.komi_down", "Komi -0.5", "K-", cmd_komi_down, NULL, NULL, app },
     };
