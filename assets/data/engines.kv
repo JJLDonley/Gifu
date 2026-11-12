@@ -32,18 +32,18 @@ katago-human.human_model = ${root}/katago/networks/human
 katago-human.human_required = true
 katago-human.config = ${root}/katago/${platform}-opencl/gtp_human5k_example.cfg
 
-# The original Leela (Gian-Carlo Pascutto, 2017), an opponent to play against
-# (Engine -> Download engines installs it; Settings -> AI play picks it). It
-# plays Chinese rules and thinks for the AI time per move; it does not analyse.
-leela.name = Leela 0.11
+# Leela 0.11 (Gian-Carlo Pascutto, 2017; MIT), rebuilt and shipped with Gifu (leela/):
+# an opponent to play against (Settings -> AI play picks it). Its network learned from
+# human games. It plays Chinese rules and thinks for the AI time per move.
+leela.name = Leela · CPU
 leela.kind = gtp
-leela.program = ${root}/katago/leela/leela${exe}
+leela.program = ${exe_dir}/leela/leela${exe}
 leela.arg = --gtp
 leela.arg = --noponder
 
-leela-opencl.name = Leela 0.11 · OpenCL
+leela-opencl.name = Leela · OpenCL
 leela-opencl.kind = gtp
-leela-opencl.program = ${root}/katago/leela/leela-opencl${exe}
+leela-opencl.program = ${exe_dir}/leela/leela-opencl${exe}
 leela-opencl.arg = --gtp
 leela-opencl.arg = --noponder
 

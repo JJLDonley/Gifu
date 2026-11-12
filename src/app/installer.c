@@ -238,9 +238,6 @@ InstallStatus installer_detect(StringView katago_dir, const KataGoBackend *backe
     String human = path_join(string_sv(&networks), SV("human"));
     s.network = dir_has_network(string_sv(&networks));
     s.families = dir_families(string_sv(&networks));
-    String leela = string_format(SV_FMT "/leela/leela%s", SV_ARG(katago_dir), sv_eq(sv(os_platform_name()), SV("windows")) ? ".exe" : "");
-    s.leela = os_file_exists(string_sv(&leela));
-    string_free(&leela);
     s.human = dir_has_network(string_sv(&human));
     string_free(&engine_dir);
     string_free(&exe);
@@ -315,54 +312,6 @@ static bool install_engine(Installer *in, StringView releases) {
     return ok;
 }
 
-// Leela 0.11 GTP: one zip with every platform's binaries. This platform's CPU and
-// OpenCL builds are kept as leela[.exe] / leela-opencl[.exe] (+ OpenCL.dll on Windows).
-static bool install_leela(Installer *in) {
-    const InstallRequest *rq = &in->request;
-    String dir = path_join(string_sv(&rq->katago_dir), SV("leela"));
-    String zip = path_join(string_sv(&dir), SV("Leela0110GTP.zip"));
-    String err = { 0 };
-    bool ok = os_make_dirs(string_sv(&dir));
-    set_label(in, "Downloading Leela 0.11 (sjeng.org)");
-    if (ok && !http_download(SV(LEELA_ZIP_URL), string_sv(&zip), LEELA_ZIP_SIZE, on_progress, on_cancel, in, &err)) ok = fail(in, &err, "Leela download");
-    char hex[65];
-    if (ok && (!sha256_file_hex(string_sv(&zip), hex) || strcmp(hex, LEELA_ZIP_SHA256) != 0)) {
-        String e = string_from(SV("the download does not match Leela 0.11's checksum"));
-        ok = fail(in, &e, "Leela");
-    }
-    ZipStats stats;
-    if (ok && !zip_extract(string_sv(&zip), string_sv(&dir), &stats, &err)) ok = fail(in, &err, "Leela extract");
-    os_remove(string_sv(&zip));
-    if (ok) {
-        bool windows = sv_eq(sv(os_platform_name()), SV("windows")), mac = sv_eq(sv(os_platform_name()), SV("macos"));
-        const char *cpu = windows ? "Leela0110GTP.exe" : mac ? "leela_0110_macOS" : "leela_0110_linux_x64";
-        const char *gpu = windows ? "Leela0110GTP_OpenCL.exe" : mac ? "leela_0110_macOS_opencl" : "leela_0110_linux_x64_opencl";
-        const char *all[] = { "Leela0110GTP.exe", "Leela0110GTP_OpenCL.exe", "leela_0110_macOS", "leela_0110_macOS_opencl",
-                              "leela_0110_linux_x64", "leela_0110_linux_x64_opencl" };
-        const char *ext = windows ? ".exe" : "";
-        for (i32 i = 0; i < countof(all); ++i) {
-            String from = path_join(string_sv(&dir), sv(all[i]));
-            String to = string_format(SV_FMT "/leela%s%s", SV_ARG(string_sv(&dir)), strcmp(all[i], gpu) == 0 ? "-opencl" : "", ext);
-            if (strcmp(all[i], cpu) == 0 || strcmp(all[i], gpu) == 0) {
-                os_remove(string_sv(&to));
-                if (os_rename(string_sv(&from), string_sv(&to))) os_set_executable(string_sv(&to));
-            } else {
-                os_remove(string_sv(&from));   // other platforms' builds
-            }
-            string_free(&from), string_free(&to);
-        }
-        if (!windows) {   // OpenCL.dll is the Windows loader
-            String dll = path_join(string_sv(&dir), SV("OpenCL.dll"));
-            os_remove(string_sv(&dll));
-            string_free(&dll);
-        }
-        log_info("installer: Leela in %s", string_cstr(&dir));
-    }
-    string_free(&zip);
-    string_free(&dir);
-    return ok;
-}
-
 static bool download_network(Installer *in, StringView url, StringView dest, i64 size, const char *label) {
     if (os_file_exists(dest)) return true;
     set_label(in, "Downloading %s", label);
@@ -408,7 +357,6 @@ static i32 worker_main(void *arg) {
         }
         string_free(&html);
     }
-    if (ok && rq->leela && !in->cancel) ok = install_leela(in);
     if (ok && rq->human && !in->cancel) {
         DownloadAsset human = { 0 };
         if (!katago_pick_human_asset(string_sv(&releases), &human)) {
@@ -434,12 +382,12 @@ static i32 worker_main(void *arg) {
     return 0;
 }
 
-void installer_start(Installer *in, StringView katago_dir, const KataGoBackend *backend, bool engine, u32 networks, bool human, bool leela) {
+void installer_start(Installer *in, StringView katago_dir, const KataGoBackend *backend, bool engine, u32 networks, bool human) {
     if (in->started && in->state.running) return;
     if (in->started) installer_finish(in);
     *in = (Installer){ 0 };
     mutex_init(&in->lock);
-    in->request = (InstallRequest){ string_from(katago_dir), backend, engine, human, networks, leela };
+    in->request = (InstallRequest){ string_from(katago_dir), backend, engine, human, networks };
     in->state.running = true;
     in->state.total = -1;
     snprintf(in->state.label, sizeof(in->state.label), "Starting");

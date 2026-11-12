@@ -16,6 +16,7 @@ else()
     set(GIFU_VERSION_STRING "${PROJECT_VERSION}")
 endif()
 option(GIFU_BUILD_TESTS "Build unit tests" ON)
+option(GIFU_BUILD_LEELA "Build the bundled Leela engine (leela/, C++)" ON)
 
 # Toolchains: GCC/Clang only (Linux gcc, MSYS2 UCRT64 gcc/clang, llvm-mingw cross).
 if(MSVC)
@@ -29,6 +30,9 @@ endif()
 # libGL / opengl32 at runtime).
 # ---------------------------------------------------------------------------
 include(cmake/Dependencies.cmake)
+if(GIFU_BUILD_LEELA)
+    add_subdirectory(leela leela-build)   # programs in <build>/leela, CMake files apart
+endif()
 set(RAYLIB_SRC ${CMAKE_SOURCE_DIR}/third_party/raylib/src)
 add_library(raylib STATIC
     ${RAYLIB_SRC}/rcore.c

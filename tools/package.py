@@ -7,7 +7,7 @@ Usage (from the repository root, on Linux/WSL):
 Builds the `linux-release` and/or `windows-release` (llvm-mingw cross) presets
 (`msys2`: the Windows package from the native `msys2-release` preset, as CI does),
 installs each into dist/Gifu-<version>-<platform>/ and archives it
-(.tar.xz for Linux, .zip for Windows). KataGo is not bundled.
+(.tar.xz for Linux, .zip for Windows). KataGo is not bundled; Leela (leela/) is.
 
 `appimage` builds dist/Gifu-<version>-x86_64.AppImage with appimagetool
 (from PATH, $APPIMAGETOOL, or downloaded once into build/tools/). Inside the
@@ -38,7 +38,7 @@ def run(*args):
 def package(platform, preset=None):
     preset = preset or f"{platform}-release"
     configure(preset)
-    run(CMAKE, "--build", os.path.join(ROOT, "build", preset), "--target", "gifu")
+    run(CMAKE, "--build", os.path.join(ROOT, "build", preset), "--target", "gifu", "leela", "leela-opencl")
     name = f"Gifu-{version()}-{platform}-x64"
     stage = os.path.join(DIST, name)
     shutil.rmtree(stage, ignore_errors=True)
@@ -88,7 +88,7 @@ INFO_PLIST = """<?xml version="1.0" encoding="UTF-8"?>
 def package_macos(preset="macos-release"):
     """Gifu.app (the program, its assets and notices in Contents/MacOS), zipped with ditto."""
     configure(preset)
-    run(CMAKE, "--build", os.path.join(ROOT, "build", preset), "--target", "gifu")
+    run(CMAKE, "--build", os.path.join(ROOT, "build", preset), "--target", "gifu", "leela", "leela-opencl")
     stage = os.path.join(DIST, "macos")
     shutil.rmtree(stage, ignore_errors=True)
     app = os.path.join(stage, "Gifu.app")
@@ -137,7 +137,7 @@ def appimagetool():
 def package_appimage(pack=True):
     preset = "linux-release"
     configure(preset)
-    run(CMAKE, "--build", os.path.join(ROOT, "build", preset), "--target", "gifu")
+    run(CMAKE, "--build", os.path.join(ROOT, "build", preset), "--target", "gifu", "leela", "leela-opencl")
     appdir = os.path.join(DIST, "Gifu.AppDir")
     shutil.rmtree(appdir, ignore_errors=True)
     app = os.path.join(appdir, "usr", "lib", "gifu")   # the program finds assets/ next to itself

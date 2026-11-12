@@ -17,6 +17,8 @@ include their license texts in `licenses/`.
 | Open Sans | (from LizzieYzy) | SIL OFL 1.1 (current releases; earlier releases Apache-2.0) | `assets/fonts/licenses/OpenSans-LICENSE.txt` |
 | Source Code Pro | (from LizzieYzy) | SIL OFL 1.1, Reserved Font Name "Source" | `assets/fonts/licenses/SourceCodePro-LICENSE.txt` |
 | Board texture `assets/textures/board-wood.png` | | from LizzieYzy (GPL-3.0) | |
+| Leela (engine and network), by Gian-Carlo Pascutto | 0.11.0 (commit afe9099), modified | MIT | https://github.com/gcp/Leela, in `leela/` (`leela/LICENSE`) |
+| OpenCL headers and C++ bindings (Khronos) | v2026.05.29 | Apache-2.0 | https://github.com/KhronosGroup/OpenCL-Headers, OpenCL-CLHPP, in `leela/opencl/` |
 
 The screen board reader (`src/core/board_reader.c`) adapts the stone recognition of
 readboard (https://github.com/yzyray/readboard_java, GPL-3.0), the board sync tool
