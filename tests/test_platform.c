@@ -8,9 +8,44 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifndef _WIN32
+#include <errno.h>
+#include <signal.h>
+#include <unistd.h>
+#endif
+
+static String self_program(void);
+
+// Reads one line from `p`'s stdout (without the newline).
+static String read_line(Process *p) {
+    String line = { 0 };
+    char c;
+    while (process_read_stdout(p, &c, 1) == 1 && c != '\n') string_push(&line, sv_from_parts(&c, 1));
+    return line;
+}
+
 // The test program run as a child process (tests/test_main.c: --platform-child MODE).
 int platform_child_main(const char *mode);
 int platform_child_main(const char *mode) {
+    if (strcmp(mode, "report-sleep") == 0) {   // its pid on stdout, then until killed
+        printf("%lld\n", (long long)os_process_id());
+        fflush(stdout);
+        for (;;) os_sleep_ms(100);
+    }
+#ifndef _WIN32
+    if (strcmp(mode, "terminated") == 0) {   // starts a report-sleep child, passes its pid on, then gets SIGTERM
+        String exe = self_program();
+        StringView args[] = { SV("--platform-child"), SV("report-sleep") };
+        ProcessSpec spec = { string_sv(&exe), args, countof(args), SV(""), NULL, 0 };
+        Process *p = process_spawn(&spec, NULL);
+        if (!p) return 1;
+        String pid = read_line(p);
+        printf("%s\n", string_cstr(&pid));
+        fflush(stdout);
+        raise(SIGTERM);
+        return 4;   // not reached: SIGTERM ends the process
+    }
+#endif
     if (strcmp(mode, "echo") == 0) {   // one line from stdin back to stdout, upper-cased; exit code 3
         char line[256];
         if (!fgets(line, sizeof(line), stdin)) return 1;
@@ -110,6 +145,62 @@ static void test_processes(void) {
     string_free(&err), string_free(&exe);
 }
 
+#ifndef _WIN32
+// Gone, or a zombie its new parent has not reaped yet.
+static bool process_gone(long long pid) {
+    if (kill((pid_t)pid, 0) != 0) return errno == ESRCH;
+    char path[64], stat[256] = { 0 };
+    snprintf(path, sizeof(path), "/proc/%lld/stat", pid);
+    FILE *f = fopen(path, "r");
+    if (!f) return false;
+    size_t n = fread(stat, 1, sizeof(stat) - 1, f);
+    fclose(f);
+    const char *close_paren = n ? strrchr(stat, ')') : NULL;
+    return close_paren && close_paren[1] == ' ' && close_paren[2] == 'Z';
+}
+
+// A child must not hold another child's pipes: closing one engine's stdin is EOF for it
+// even while a later child runs (else an engine outlives a Gifu that crashed).
+static void test_children_share_no_pipes(void) {
+    String exe = self_program();
+    StringView echo_args[] = { SV("--platform-child"), SV("echo") }, sleep_args[] = { SV("--platform-child"), SV("sleep") };
+    ProcessSpec echo = { string_sv(&exe), echo_args, countof(echo_args), SV(""), NULL, 0 };
+    ProcessSpec sleeper = { string_sv(&exe), sleep_args, countof(sleep_args), SV(""), NULL, 0 };
+    Process *a = process_spawn(&echo, NULL), *b = process_spawn(&sleeper, NULL);
+    CHECK(a != NULL && b != NULL);
+    if (a && b) {
+        process_close_stdin(a);
+        i32 code = 0;
+        CHECK(process_wait(a, 5000, &code) && code == 1);   // EOF: fgets fails
+        CHECK(!process_wait(b, 0, &code));                  // while the other child still runs
+    }
+    process_destroy(a);
+    process_destroy(b);
+    string_free(&exe);
+}
+
+// SIGTERM (and crashes) stop the children before the process ends.
+static void test_termination_stops_children(void) {
+    String exe = self_program();
+    StringView args[] = { SV("--platform-child"), SV("terminated") };
+    ProcessSpec spec = { string_sv(&exe), args, countof(args), SV(""), NULL, 0 };
+    Process *p = process_spawn(&spec, NULL);
+    CHECK(p != NULL);
+    if (!p) return;
+    String line = read_line(p);
+    long long grandchild = atoll(string_cstr(&line));
+    CHECK(grandchild > 0);
+    i32 code = 0;
+    CHECK(process_wait(p, 5000, &code) && code == -1);   // ended by the signal
+    bool gone = false;
+    for (i32 i = 0; i < 300 && grandchild > 0 && !(gone = process_gone(grandchild)); ++i) os_sleep_ms(10);
+    CHECK(gone);
+    if (!gone && grandchild > 0) kill((pid_t)grandchild, SIGKILL);
+    process_destroy(p);
+    string_free(&line), string_free(&exe);
+}
+#endif
+
 typedef struct Counter {
     Mutex lock;
     i32 value;
@@ -151,6 +242,10 @@ void register_platform_tests(void) {
     test_register("platform/paths", test_paths);
     test_register("platform/files", test_files);
     test_register("platform/processes", test_processes);
+#ifndef _WIN32
+    test_register("platform/children_share_no_pipes", test_children_share_no_pipes);
+    test_register("platform/termination_stops_children", test_termination_stops_children);
+#endif
     test_register("platform/threads", test_threads);
     test_register("platform/encoding", test_encoding);
 }

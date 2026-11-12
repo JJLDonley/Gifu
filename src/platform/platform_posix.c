@@ -184,6 +184,37 @@ bool os_wait_process_exit(i64 pid, i32 timeout_ms) {
     }
     return false;
 }
+#include <fcntl.h>
+
+// Children must not inherit Gifu's other descriptors: an engine whose stdin pipe is
+// also held by another child (or by the next Gifu after an update) never sees EOF,
+// so it outlives a Gifu that crashed or was killed.
+static void spawn_close_others(posix_spawn_file_actions_t *actions, short *flags) {
+#if defined(POSIX_SPAWN_CLOEXEC_DEFAULT)
+    *flags |= POSIX_SPAWN_CLOEXEC_DEFAULT;   // macOS: only what the actions set up survives the exec
+    (void)actions;
+#elif defined(__GLIBC__)
+#if __GLIBC_PREREQ(2, 34)
+    posix_spawn_file_actions_addclosefrom_np(actions, STDERR_FILENO + 1);   // last: after the dup2s and closes
+#endif
+    (void)flags;
+#else
+    (void)actions, (void)flags;   // the pipes are close-on-exec at least
+#endif
+}
+
+// A pipe both of whose ends are close-on-exec (the child's end is dup2'd, which clears it).
+static int pipe_cloexec(int fds[2]) {
+#ifdef __linux__
+    return pipe2(fds, O_CLOEXEC);
+#else
+    if (pipe(fds) != 0) return -1;
+    fcntl(fds[0], F_SETFD, FD_CLOEXEC);
+    fcntl(fds[1], F_SETFD, FD_CLOEXEC);
+    return 0;
+#endif
+}
+
 bool os_spawn_detached(StringView program, const StringView *args, isize count) {
     char **argv = calloc((usize)count + 2, sizeof(char *));
     if (!argv) abort();
@@ -194,11 +225,17 @@ bool os_spawn_detached(StringView program, const StringView *args, isize count) 
     for (isize i = 0; i < count; ++i) copies[i] = string_from(args[i]), argv[i + 1] = (char *)string_cstr(&copies[i]);
     posix_spawnattr_t attr;
     posix_spawnattr_init(&attr);
+    posix_spawn_file_actions_t actions;
+    posix_spawn_file_actions_init(&actions);
+    short flags = 0;
 #ifdef POSIX_SPAWN_SETSID
-    posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETSID);
+    flags |= POSIX_SPAWN_SETSID;
 #endif
+    spawn_close_others(&actions, &flags);   // the new Gifu after an update must not hold the old one's engine pipes
+    posix_spawnattr_setflags(&attr, flags);
     pid_t pid;
-    int rc = posix_spawn(&pid, argv[0], NULL, &attr, argv, environ);
+    int rc = posix_spawn(&pid, argv[0], &actions, &attr, argv, environ);
+    posix_spawn_file_actions_destroy(&actions);
     posix_spawnattr_destroy(&attr);
     for (isize i = 0; i < count; ++i) string_free(&copies[i]);
     free(copies);
@@ -300,13 +337,61 @@ static char *dup_cstr(StringView s) {
     return p;
 }
 
+// ---- Children and termination signals ----
+// The children alive now, in slots the signal handler can read (0 = free).
+enum { CHILD_SLOTS = 64 };
+static pid_t g_children[CHILD_SLOTS];
+
+static void children_add(pid_t pid) {
+    for (i32 i = 0; i < CHILD_SLOTS; ++i) {
+        pid_t free_slot = 0;
+        if (__atomic_compare_exchange_n(&g_children[i], &free_slot, pid, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) return;
+    }
+    log_warn("process: more than %d children; pid %d is not stopped on a termination signal", CHILD_SLOTS, (int)pid);
+}
+
+static void children_remove(pid_t pid) {
+    for (i32 i = 0; i < CHILD_SLOTS; ++i) {
+        pid_t mine = pid;
+        if (__atomic_compare_exchange_n(&g_children[i], &mine, 0, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) return;
+    }
+}
+
+// Termination signals and crashes: the engines (and every other child) are told to
+// stop, then the signal does what it would have done (exit, core dump).
+static void on_termination(int sig) {
+    for (i32 i = 0; i < CHILD_SLOTS; ++i) {
+        pid_t pid = __atomic_load_n(&g_children[i], __ATOMIC_SEQ_CST);
+        if (pid > 0) kill(pid, SIGTERM);
+    }
+    raise(sig);   // SA_RESETHAND restored the default action; it runs when this handler returns
+}
+
+static void install_termination_handlers(void) {
+    signal(SIGPIPE, SIG_IGN);   // writes to a dead engine must not kill the GUI
+    const int signals[] = { SIGTERM, SIGINT, SIGHUP, SIGQUIT, SIGABRT, SIGSEGV, SIGBUS, SIGFPE, SIGILL };
+    for (i32 i = 0; i < (i32)countof(signals); ++i) {
+        struct sigaction old;
+        if (sigaction(signals[i], NULL, &old) != 0) continue;
+        // Someone else's choice stays: ignored (nohup), a debugger's or a sanitizer's handler.
+        if ((old.sa_flags & SA_SIGINFO) || old.sa_handler != SIG_DFL) continue;
+        struct sigaction sa = { 0 };
+        sa.sa_handler = on_termination;
+        sigemptyset(&sa.sa_mask);
+        sa.sa_flags = SA_RESETHAND;
+        sigaction(signals[i], &sa, NULL);
+    }
+}
+
+static pthread_once_t g_handlers_once = PTHREAD_ONCE_INIT;
+
 Process *process_spawn(const ProcessSpec *original, String *error) {
     StringView storage[64];
     ProcessSpec flat = platform_apply_launcher(original, storage, countof(storage));
     const ProcessSpec *spec = &flat;
-    signal(SIGPIPE, SIG_IGN);   // writes to a dead engine must not kill the GUI
+    pthread_once(&g_handlers_once, install_termination_handlers);
     int in_pipe[2], out_pipe[2], err_pipe[2];
-    if (pipe(in_pipe) || pipe(out_pipe) || pipe(err_pipe)) {
+    if (pipe_cloexec(in_pipe) || pipe_cloexec(out_pipe) || pipe_cloexec(err_pipe)) {
         if (error) *error = string_format("pipe() failed: %s", strerror(errno));
         return NULL;
     }
@@ -322,6 +407,11 @@ Process *process_spawn(const ProcessSpec *original, String *error) {
         dir = dup_cstr(spec->working_dir);
         posix_spawn_file_actions_addchdir_np(&actions, dir);
     }
+    posix_spawnattr_t attr;
+    posix_spawnattr_init(&attr);
+    short flags = 0;
+    spawn_close_others(&actions, &flags);
+    posix_spawnattr_setflags(&attr, flags);
 
     char **argv = calloc((usize)spec->arg_count + 2, sizeof(char *));
     if (!argv) abort();
@@ -329,8 +419,9 @@ Process *process_spawn(const ProcessSpec *original, String *error) {
     for (isize i = 0; i < spec->arg_count; ++i) argv[i + 1] = dup_cstr(spec->args[i]);
 
     pid_t pid = 0;
-    int rc = posix_spawnp(&pid, argv[0], &actions, NULL, argv, environ);   // PATH lookup (ssh, env, ...)
+    int rc = posix_spawnp(&pid, argv[0], &actions, &attr, argv, environ);   // PATH lookup (ssh, env, ...)
     posix_spawn_file_actions_destroy(&actions);
+    posix_spawnattr_destroy(&attr);
     for (isize i = 0; i <= spec->arg_count; ++i) free(argv[i]);
     free(argv);
     free(dir);
@@ -347,6 +438,7 @@ Process *process_spawn(const ProcessSpec *original, String *error) {
     Process *proc = calloc(1, sizeof(Process));
     if (!proc) abort();
     proc->pid = pid;
+    children_add(pid);
     proc->stdin_fd = in_pipe[1];
     proc->stdout_fd = out_pipe[0];
     proc->stderr_fd = err_pipe[0];
@@ -394,11 +486,13 @@ bool process_wait(Process *proc, i32 timeout_ms, i32 *exit_code) {
         if (rc == proc->pid) {
             proc->exited = true;
             proc->exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+            children_remove(proc->pid);   // reaped: its pid may be reused
             break;
         }
         if (rc < 0 && errno != EINTR) {
             proc->exited = true;
             proc->exit_code = -1;
+            children_remove(proc->pid);
             break;
         }
         if (timeout_ms >= 0 && os_time_seconds() >= deadline) return false;
@@ -415,6 +509,7 @@ void process_destroy(Process *proc) {
         process_kill(proc);
         process_wait(proc, 2000, NULL);
     }
+    children_remove(proc->pid);   // given up on (not reaped): no longer Gifu's to stop
     close(proc->stdout_fd);
     close(proc->stderr_fd);
     free(proc);
