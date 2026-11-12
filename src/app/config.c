@@ -97,7 +97,7 @@ static const ConfigField FIELDS[] = {
     // Distribution buckets (edited on the chart): win rate lost in %, points lost.
     STR("report.winrate_limits", report_winrate_limits, "2,5,10,20"),
     // Hawk Eye "Match": one of the top N candidates with at least P% of the best's visits.
-    INT("report.match_moves", report_match_moves, 3, 1, 8),
+    INT("report.match_moves", report_match_moves, 3, 1, 361),
     FLOAT("report.match_percent", report_match_percent, 20.0, 0.0, 100.0),
     STR("report.score_limits", report_score_limits, "0.5,2,5,10"),
     INT("engine.max_processes", engine_max_processes, 1, 1, 4),

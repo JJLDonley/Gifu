@@ -86,7 +86,7 @@ bool node_accuracy(const GameNode *node, f32 *accuracy) {
 static MatchRule g_match = { 3, 20.0f };
 const MatchRule *match_rule(void) { return &g_match; }
 void match_rule_set(MatchRule rule) {
-    g_match.moves = CLAMP(rule.moves, 1, NODE_EVAL_TOP);
+    g_match.moves = CLAMP(rule.moves, 1, 361);   // any rank; only the candidates KataGo listed can match
     g_match.percent = CLAMP(rule.percent, 0.0f, 100.0f);
 }
 

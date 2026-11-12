@@ -17,7 +17,7 @@ struct SgfProperty {
 };
 
 // Compact engine evaluation summary kept per node (for graphs / hawk-eye).
-enum { NODE_EVAL_TOP = 8 };   // candidates kept per node ("top 3" stats use the first three)
+enum { NODE_EVAL_TOP = 32 };   // candidates kept per node (Hawk Eye's match may look past the first few)
 
 typedef struct NodeEval {
     bool valid;

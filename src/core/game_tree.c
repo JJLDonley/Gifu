@@ -398,7 +398,7 @@ bool game_node_update_eval(GameTree *tree, GameNode *node, const NodeEval *eval)
 void game_node_store_eval(GameTree *tree, GameNode *node, const NodeEval *eval) {
     tree->revision++;
     node->eval = *eval;
-    char buffer[256];
+    char buffer[40 + NODE_EVAL_TOP * 12];   // header + "pd:0.123 " per candidate
     i32 n = snprintf(buffer, sizeof(buffer), "%.4f,%.2f,%d,", eval->black_winrate, eval->black_score, eval->visits);
     for (i32 i = 0; i < eval->top_count && n < (i32)sizeof(buffer) - 16; ++i) {
         char coord[3];

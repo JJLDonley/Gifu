@@ -297,7 +297,7 @@ static void overview(DeepReport *d) {
             f32 moves = (f32)cfg->report_match_moves, pct = cfg->report_match_percent;
             if (g_editing) {
                 ui_label(ui, tr(ui, "report.match_rule", "Match: one of the top"), FONT_UI, 13, ui->theme->colors.text_muted);
-                moves = value_stepper(ui, 10, moves, 1.0f, 1.0f, (f32)NODE_EVAL_TOP, "%.0f");
+                moves = value_stepper(ui, 10, moves, 1.0f, 1.0f, 361.0f, "%.0f");
                 ui_label(ui, tr(ui, "report.match_rule2", "moves, with at least (%)"), FONT_UI, 13, ui->theme->colors.text_muted);
                 pct = value_stepper(ui, 11, pct, 5.0f, 0.0f, 100.0f, "%g");
                 ui_label(ui, tr(ui, "report.match_rule3", "of the best move's visits"), FONT_UI, 13, ui->theme->colors.text_muted);
