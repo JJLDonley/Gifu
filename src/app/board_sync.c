@@ -8,6 +8,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define STOP_WAIT_SECONDS 0.3   // board_sync_stop waits this long for the thread, then leaves it to finish alone
+
 struct BoardSync {
     BoardSyncSettings settings;
     String backend, command;   // owned copies behind settings' views
@@ -169,7 +171,7 @@ void board_sync_stop(BoardSync *s) {
         return;
     }
     // A deadline, not a count of sleeps: sleeps can oversleep a lot (macOS under load).
-    for (f64 deadline = os_time_seconds() + 0.3; os_time_seconds() < deadline;) {
+    for (f64 deadline = os_time_seconds() + STOP_WAIT_SECONDS; os_time_seconds() < deadline;) {
         mutex_lock(&s->lock);
         bool finished = s->finished;
         mutex_unlock(&s->lock);

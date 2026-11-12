@@ -231,6 +231,21 @@ static bool read_pipe(int fd, u8 *dst, isize want, const ScreenCapture *c) {
 // Gifu's window runs through XWayland, and the area is picked in its pixels. With
 // "apply scaling themselves" (XWayland at the full resolution) those are not
 // KWin's logical pixels: compare the X screen with KWin's workspace once.
+#define SCALE_AXIS_TOLERANCE 0.03f   // x and y ratios this close (relative) are one uniform scale
+#define SCALE_UNITY_TOLERANCE 0.02f  // a ratio this close to 1 is no scaling
+#define SCALE_MIN 0.25f              // ratios outside [SCALE_MIN, SCALE_MAX] are not a desktop scale
+#define SCALE_MAX 4.0f
+
+// Gifu's (XWayland) pixels -> the other side's pixels, from the two screen sizes: 1 when
+// unscaled, unmeasurable, or not one uniform scale (monitors scaled differently).
+static f32 screen_ratio(i32 from_w, i32 from_h, i64 to_w, i64 to_h, bool *uniform) {
+    *uniform = false;
+    if (from_w <= 0 || from_h <= 0 || to_w <= 0 || to_h <= 0) return 1.0f;
+    f32 sx = (f32)to_w / (f32)from_w, sy = (f32)to_h / (f32)from_h;
+    *uniform = fabsf(sx - sy) < SCALE_AXIS_TOLERANCE * sx && sx >= SCALE_MIN && sx <= SCALE_MAX;
+    return *uniform && fabsf(sx - 1.0f) > SCALE_UNITY_TOLERANCE ? sx : 1.0f;
+}
+
 static bool x_screen_size(i32 *w, i32 *h) {
     Display *d = XOpenDisplay(NULL);
     if (!d) return false;
@@ -258,10 +273,10 @@ static f32 kwin_area_scale(ScreenCapture *c, DbusLink *link) {
     i64 kh = ok ? dbus_value_int(dbus_dict_get(dbus_arg(&reply, 0), SV("height"))) : 0;
     dbus_value_free(&reply);
     if (kw > 0 && kh > 0) {
-        f32 sx = (f32)xw / (f32)kw, sy = (f32)xh / (f32)kh;
-        if (fabsf(sx - sy) < 0.03f * sx && fabsf(sx - 1.0f) > 0.02f) c->area_scale = sx;
+        bool uniform;
+        c->area_scale = 1.0f / screen_ratio(xw, xh, kw, kh, &uniform);   // X pixels per KWin pixel
         log_info("screen capture: X screen %dx%d, KWin workspace %lldx%lld -> area scale %.3f%s", xw, xh, (long long)kw, (long long)kh,
-                 (f64)c->area_scale, fabsf(sx - sy) >= 0.03f * sx ? " (screens scaled differently: not adjusted)" : "");
+                 (f64)c->area_scale, uniform ? "" : " (screens scaled differently: not adjusted)");
     }
     return c->area_scale;
 }
@@ -476,11 +491,10 @@ static f32 crop_scale(ScreenCapture *c, const RgbaImage *full) {
     c->crop_scale = 1.0f;
     i32 xw = 0, xh = 0;
     if (!x_screen_size(&xw, &xh)) return c->crop_scale;
-    f32 sx = (f32)full->width / (f32)xw, sy = (f32)full->height / (f32)xh;
-    bool uniform = fabsf(sx - sy) < 0.03f * sx, sane = sx >= 0.25f && sx <= 4.0f;
-    if (uniform && sane && fabsf(sx - 1.0f) > 0.02f) c->crop_scale = sx;
+    bool uniform;
+    c->crop_scale = screen_ratio(xw, xh, full->width, full->height, &uniform);
     log_info("screen capture: X screen %dx%d, screenshot %dx%d -> area scale %.3f%s", xw, xh, full->width, full->height, (f64)c->crop_scale,
-             uniform && sane ? "" : " (screens scaled differently: not adjusted)");
+             uniform ? "" : " (screens scaled differently: not adjusted)");
     return c->crop_scale;
 }
 
