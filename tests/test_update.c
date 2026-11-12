@@ -4,6 +4,9 @@
 #include "app/updater.h"
 #include "base/codec.h"
 #include "base/version_info.h"
+#include "platform/os.h"
+
+#include <stdio.h>
 
 #include <stdlib.h>
 #include <string.h>
@@ -102,7 +105,67 @@ static void test_install_dir(void) {
     CHECK_SV(updater_install_dir(SV("/x/Contents/MacOS")), SV("/x/Contents/MacOS"));   // not inside a .app
 }
 
+#ifdef __linux__
+static UpdaterPhase wait_phase(Updater *u, UpdaterStatus *st) {
+    for (i32 i = 0; i < 1000; ++i) {
+        updater_status(u, st);
+        if (st->phase != UPDATER_CHECKING && st->phase != UPDATER_DOWNLOADING && st->phase != UPDATER_VERIFYING) return st->phase;
+        updater_status_free(st);
+        os_sleep_ms(10);
+    }
+    updater_status(u, st);
+    return st->phase;
+}
+
+// An AppImage runs from a read-only mount (/tmp/.mount_...): the update is downloaded
+// next to the .AppImage file and nothing is written to the program's folder.
+static void test_appimage_download(void) {
+    String dir = path_join(SV(GIFU_TEST_OUTPUT_DIR), SV("appimage-update"));
+    os_remove_tree(string_sv(&dir));
+    CHECK(os_make_dirs(string_sv(&dir)));
+    String image = path_join(string_sv(&dir), SV("Gifu-old-x86_64.AppImage"));
+    String asset = path_join(string_sv(&dir), SV("Gifu-99.0.0-x86_64.AppImage"));
+    String sums = path_join(string_sv(&dir), SV("SHA256SUMS")), api = path_join(string_sv(&dir), SV("releases.json"));
+    CHECK(os_write_file(string_sv(&image), SV("old image")));
+    CHECK(os_write_file(string_sv(&asset), SV("new image")));
+    char hex[65];
+    sha256_hex(SV("new image"), hex);
+    String text = string_format("%s  Gifu-99.0.0-x86_64.AppImage\n", hex);
+    CHECK(os_write_file(string_sv(&sums), string_sv(&text)));
+    string_free(&text);
+    text = string_format("[{\"tag_name\":\"v99.0.0\",\"prerelease\":false,\"assets\":["
+                         "{\"name\":\"Gifu-99.0.0-x86_64.AppImage\",\"browser_download_url\":\"file://%s\"},"
+                         "{\"name\":\"SHA256SUMS\",\"browser_download_url\":\"file://%s\"}]}]",
+                         string_cstr(&asset), string_cstr(&sums));
+    CHECK(os_write_file(string_sv(&api), string_sv(&text)));
+    string_free(&text);
+    String api_url = string_format("file://%s", string_cstr(&api));
+    // /proc refuses new folders, like the AppImage's read-only mount.
+    Updater *u = updater_create(SV("/proc/gifu-appimage-mount/usr/lib/gifu"), string_sv(&image), string_sv(&api_url));
+    UpdaterStatus st;
+    updater_check(u, UPDATE_CHANNEL_STABLE);
+    CHECK(wait_phase(u, &st) == UPDATER_AVAILABLE);
+    updater_status_free(&st);
+    updater_install(u, SV("99.0.0"));
+    UpdaterPhase phase = wait_phase(u, &st);
+    if (phase != UPDATER_READY) fprintf(stderr, "    updater: %s\n", string_cstr(&st.error));
+    CHECK(phase == UPDATER_READY);
+    updater_status_free(&st);
+    String staged = string_format("%s.update", string_cstr(&image)), got = { 0 };
+    CHECK(os_read_file(string_sv(&staged), &got));
+    CHECK_SV(string_sv(&got), SV("new image"));
+    updater_destroy(u);
+    string_free(&got), string_free(&staged), string_free(&api_url);
+    string_free(&image), string_free(&asset), string_free(&sums), string_free(&api);
+    os_remove_tree(string_sv(&dir));
+    string_free(&dir);
+}
+#endif
+
 void register_update_tests(void) {
+#ifdef __linux__
+    test_register("update/appimage_download", test_appimage_download);
+#endif
     test_register("update/install_dir", test_install_dir);
     test_register("update/sha256", test_sha256);
     test_register("update/versions", test_versions);

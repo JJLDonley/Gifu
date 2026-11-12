@@ -160,10 +160,14 @@ static void run_download(Updater *u) {
     mutex_unlock(&u->lock);
     String dir = update_dir(string_sv(&u->install_dir)), err = { 0 }, sums = { 0 };
     String download = { 0 }, unpack = { 0 };
-    os_remove_tree(string_sv(&dir));
-    if (!os_make_dirs(string_sv(&dir))) {
-        fail(u, string_format("cannot write to %s", string_cstr(&u->install_dir)));
-        goto done;
+    // An AppImage's program folder is its read-only mount (/tmp/.mount_...): it needs no
+    // .update folder there, only write access next to the .AppImage file.
+    if (!u->appimage.len) {
+        os_remove_tree(string_sv(&dir));
+        if (!os_make_dirs(string_sv(&dir))) {
+            fail(u, string_format("cannot write to %s", string_cstr(&u->install_dir)));
+            goto done;
+        }
     }
     // An AppImage is downloaded next to itself (same file system: the swap is a rename).
     download = u->appimage.len ? string_format(SV_FMT ".update", SV_ARG(string_sv(&u->appimage)))
