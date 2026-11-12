@@ -1122,20 +1122,43 @@ static void style_page(DeepReport *d, const StyleCounts *black, const StyleCount
         legend_dot(ui, player_bar_color(c, STONE_BLACK), player_name(ui, STONE_BLACK));
         legend_dot(ui, c->winrate_white, player_name(ui, STONE_WHITE));
     }
-    f32 bh = black->moves ? style_height(black) : -1, wh = white->moves ? style_height(white) : -1;
-    f32 bc = black->moves ? style_contact(black) : -1, wc = white->moves ? style_contact(white) : -1;
-    f32 bt = black->answers ? style_tenuki(black) : -1, wt = white->answers ? style_tenuki(white) : -1;
     StringView bn = player_name(ui, STONE_BLACK), wn = player_name(ui, STONE_WHITE);
-    style_row(ui, 0, tr(ui, "style.territory", "Territory"), tr(ui, "style.influence", "Influence"), bh, wh,
-              arena_format(&ui->frame, SV_FMT " %.0f%%  ·  " SV_FMT " %.0f%%  %s", SV_ARG(bn), fmaxf(bh, 0) * 100, SV_ARG(wn), fmaxf(wh, 0) * 100,
-                           tr(ui, "style.height_detail", "of moves on the 4th line or higher").data));
-    style_row(ui, 1, tr(ui, "style.calm", "Calm"), tr(ui, "style.fighting", "Fighting"), bc, wc,
-              arena_format(&ui->frame, SV_FMT " %.0f%%  ·  " SV_FMT " %.0f%%  %s", SV_ARG(bn), fmaxf(bc, 0) * 100, SV_ARG(wn), fmaxf(wc, 0) * 100,
-                           tr(ui, "style.contact_detail", "of moves touch an opponent stone").data));
-    style_row(ui, 2, tr(ui, "style.local", "Local"), tr(ui, "style.tenuki", "Tenuki"), bt, wt,
-              arena_format(&ui->frame, SV_FMT " %.0f%%  ·  " SV_FMT " %.0f%%  %s", SV_ARG(bn), fmaxf(bt, 0) * 100, SV_ARG(wn), fmaxf(wt, 0) * 100,
-                           tr(ui, "style.tenuki_detail", "of answers played elsewhere").data));
-    ui_label(ui, tr(ui, "style.note", "Measured from the moves themselves (no engine needed): where they are played, whether they touch the opponent, and whether they answer the last move. A style, not a grade."),
+    // Against KataGo in the same positions when the game is analysed: the slider's
+    // middle is "as KataGo would play here", each dot how far the player leans (25
+    // points reach the end). Without analysis, the raw shares.
+    typedef bool (*VsFn)(const StyleCounts *, f32 *, f32 *);
+    static const VsFn VS[3] = { style_vs_engine_height, style_vs_engine_contact, style_vs_engine_tenuki };
+    static const char *const LEFT_KEYS[3] = { "style.territory", "style.calm", "style.local" };
+    static const char *const LEFT[3] = { "Territory", "Calm", "Local" };
+    static const char *const RIGHT_KEYS[3] = { "style.influence", "style.fighting", "style.tenuki" };
+    static const char *const RIGHT[3] = { "Influence", "Fighting", "Tenuki" };
+    static const char *const DETAIL_KEYS[3] = { "style.height_detail", "style.contact_detail", "style.tenuki_detail" };
+    static const char *const DETAIL[3] = { "of moves on the 4th line or higher", "of moves touch an opponent stone", "of answers played elsewhere" };
+    bool compared = false;
+    for (i32 k = 0; k < 3; ++k) {
+        f32 bp = 0, be = 0, wp = 0, we = 0;
+        bool bv = VS[k](black, &bp, &be), wv = VS[k](white, &wp, &we);
+        StringView detail;
+        f32 bpos, wpos;
+        if (bv || wv) {
+            compared = true;
+            bpos = bv ? CLAMP(0.5f + (bp - be) * 2.0f, 0.0f, 1.0f) : -1;
+            wpos = wv ? CLAMP(0.5f + (wp - we) * 2.0f, 0.0f, 1.0f) : -1;
+            detail = arena_format(&ui->frame, SV_FMT " %.0f%% (KataGo %.0f%%, %+.0f)  ·  " SV_FMT " %.0f%% (KataGo %.0f%%, %+.0f)  " SV_FMT, SV_ARG(bn),
+                                  bp * 100, be * 100, (bp - be) * 100, SV_ARG(wn), wp * 100, we * 100, (wp - we) * 100,
+                                  SV_ARG(tr(ui, DETAIL_KEYS[k], DETAIL[k])));
+        } else {
+            f32 b = k == 0 ? style_height(black) : k == 1 ? style_contact(black) : style_tenuki(black);
+            f32 w = k == 0 ? style_height(white) : k == 1 ? style_contact(white) : style_tenuki(white);
+            bool bh = k == 2 ? black->answers > 0 : black->moves > 0, wh = k == 2 ? white->answers > 0 : white->moves > 0;
+            bpos = bh ? b : -1, wpos = wh ? w : -1;
+            detail = arena_format(&ui->frame, SV_FMT " %.0f%%  ·  " SV_FMT " %.0f%%  " SV_FMT, SV_ARG(bn), fmaxf(b, 0) * 100, SV_ARG(wn), fmaxf(w, 0) * 100,
+                                  SV_ARG(tr(ui, DETAIL_KEYS[k], DETAIL[k])));
+        }
+        style_row(ui, (u32)k, tr(ui, LEFT_KEYS[k], LEFT[k]), tr(ui, RIGHT_KEYS[k], RIGHT[k]), bpos, wpos, detail);
+    }
+    ui_label(ui, compared ? tr(ui, "style.note_vs", "Compared with KataGo in the same positions: the middle of each line is what KataGo would play there, so the board's shape does not count as style. A style, not a grade.")
+                          : tr(ui, "style.note_raw", "Raw shares of the moves (analyse the game to compare with KataGo in the same positions). A style, not a grade."),
              FONT_UI, 12, c->text_muted);
 }
 

@@ -1,5 +1,7 @@
 #include "test.h"
 
+#include <math.h>
+
 #include "app/ai_style.h"
 #include "core/style.h"
 
@@ -53,7 +55,26 @@ static void test_ai_style(void) {
     CHECK(ai_style_from(SV("fighting")) == AI_STYLE_FIGHTING && ai_style_from(SV("??")) == AI_STYLE_STRONGEST);
 }
 
+// The same measures for KataGo's candidates (weighted by their shares) in the same
+// positions: the style is the difference.
+static void test_style_vs_engine(void) {
+    GameTree *t = game_tree_new(19, 19, 6.5);
+    // Before Black's first move KataGo wants C3 (3rd line, 3/4 of the search) or K10 (high).
+    NodeEval e = { .valid = true, .top_count = 2, .top = { { 2, 16 }, { 9, 9 } }, .top_share = { 0.6f, 0.2f } };
+    game_node_update_eval(t, t->root, &e);
+    CHECK(game_tree_play(t, (Move){ STONE_BLACK, { 9, 9 } }) == MOVE_OK);   // Black plays K10: high
+    GameNode *line[2] = { t->root, t->current };
+    StyleReport r;
+    style_compute(line, 2, &r);
+    f32 player = 0, engine = 0;
+    CHECK(style_vs_engine_height(&r.player[STONE_BLACK], &player, &engine));
+    CHECK(player == 1.0f && fabsf(engine - 0.25f) < 1e-5f);   // KataGo: 0.2 / (0.6 + 0.2) high
+    CHECK(!style_vs_engine_height(&r.player[STONE_WHITE], &player, &engine));   // White has no analysed move
+    game_tree_free(t);
+}
+
 void register_style_tests(void) {
     test_register("style/counts", test_style);
+    test_register("style/vs_engine", test_style_vs_engine);
     test_register("style/ai_pick", test_ai_style);
 }

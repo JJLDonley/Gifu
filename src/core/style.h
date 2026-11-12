@@ -7,6 +7,12 @@
 //            STYLE_LOCAL_DISTANCE points in either direction): playing elsewhere.
 //
 // Passes and moves before the first opponent move are left out where they do not apply.
+//
+// Raw shares mostly reflect the game (half the board is on the 4th line or higher,
+// so everyone looks "influential"). Where the position has KataGo's candidates (their
+// share of the search), the same measures are also taken for KataGo's choice there
+// (the candidates weighted by their shares): the style is the difference, "more
+// influential than KataGo would be in these positions".
 #pragma once
 
 #include "core/game_tree.h"
@@ -19,6 +25,11 @@ typedef struct StyleCounts {
     i32 contact;        // touching an opponent stone
     i32 answers;        // moves played right after an opponent board move
     i32 tenuki;         // ...away from it
+    // Compared with KataGo, over the moves whose position has KataGo's candidates:
+    i32 base_moves, base_high, base_contact;   // the player's own counts there
+    f32 exp_high, exp_contact;                 // KataGo's, as expected counts (shares)
+    i32 base_answers, base_tenuki;
+    f32 exp_tenuki;
 } StyleCounts;
 
 typedef struct StyleReport {
@@ -33,6 +44,11 @@ void style_add(StyleCounts *to, const StyleCounts *from);
 f32 style_height(const StyleCounts *s);    // 0 = all low (territory) .. 1 = all high (influence)
 f32 style_contact(const StyleCounts *s);
 f32 style_tenuki(const StyleCounts *s);
+// Against KataGo in the same positions: the player's share and KataGo's (0..1). False
+// without analysed positions.
+bool style_vs_engine_height(const StyleCounts *s, f32 *player, f32 *engine);
+bool style_vs_engine_contact(const StyleCounts *s, f32 *player, f32 *engine);
+bool style_vs_engine_tenuki(const StyleCounts *s, f32 *player, f32 *engine);
 
 // Line of a point: 1 = the edge.
 i32 style_line(Point p, i32 width, i32 height);
