@@ -1373,7 +1373,6 @@ static void cmd_new(void *c) {
     app_start_game(app, &spec);
     app->ai_plays[STONE_BLACK] = engine_color == STONE_BLACK;
     app->ai_plays[STONE_WHITE] = engine_color == STONE_WHITE;
-    app->analysis_in_game = false;
     app->play_layout = true;   // a new game: the play layout
     if (engine_color != STONE_EMPTY && ai_style_from(string_sv(&app->config.ai_style)) == AI_STYLE_HUMAN && !app->human_available) {
         app_set_status(app, "Human-style play needs the human SL network (Engine -> Download engines...); the engine plays normally");
@@ -1447,29 +1446,21 @@ static void cmd_delete(void *c) {
     app_delete_branch(app, app->tree->current);   // undoable (Ctrl+Z)
 }
 
-// Space / Analyze. During a game against the AI it is the player asking for analysis
-// of the position: shown until pressed again or the next game.
+// Space / Analyze. In the play layout it means "analyse now": the AI stops playing,
+// the analysis layout comes up and analysis starts. Otherwise it switches analysis
+// on and off.
 static void cmd_toggle_analysis(void *c) {
     App *app = APP(c);
-    bool playing = app->ai_plays[STONE_BLACK] || app->ai_plays[STONE_WHITE];
-    if (app->play_layout) {   // Space in the play layout: the analysis layout, analysing
+    if (app->play_layout) {
         app->play_layout = false;
-        if (playing) app->analysis_in_game = true;
+        app->ai_plays[STONE_BLACK] = app->ai_plays[STONE_WHITE] = false;
+        app->ai_move_once = false;
         if (!app->analysis_enabled) app_set_analysis(app, true);
-        return;
-    }
-    if (playing) {
-        app->analysis_in_game = !app->analysis_in_game;
-        if (app->analysis_in_game && !app->analysis_enabled) app_set_analysis(app, true);
         return;
     }
     app_set_analysis(app, !app->analysis_enabled);
 }
-static bool is_analyzing(const void *c) {
-    const App *app = CAPP(c);
-    bool playing = app->ai_plays[STONE_BLACK] || app->ai_plays[STONE_WHITE];
-    return playing ? app->analysis_in_game : app->analysis_enabled;
-}
+static bool is_analyzing(const void *c) { return CAPP(c)->analysis_enabled; }
 static bool has_engine(const void *c) { return CAPP(c)->main.engine != NULL; }
 
 static void cmd_play_best(void *c) {
@@ -1545,14 +1536,9 @@ static void cmd_match(void *c) {
 }
 static bool in_match(const void *c) { return CAPP(c)->match_mode; }
 
-bool app_hints_hidden(const App *app) {
-    if (!app->ai_plays[STONE_BLACK] && !app->ai_plays[STONE_WHITE]) return false;
-    // Playing the AI: only when asked for (Space), and never the AI's own thinking.
-    bool ai_thinking = app->main.waiting_move || app->opponent.waiting_move || app->second.waiting_move || app->style_node != NULL;
-    return !app->analysis_in_game || ai_thinking;
-}
+bool app_hints_hidden(const App *app) { return app->ai_plays[STONE_BLACK] || app->ai_plays[STONE_WHITE]; }
 bool app_eval_hidden(const App *app) {
-    return (app->ai_plays[STONE_BLACK] || app->ai_plays[STONE_WHITE]) && !app->config.ai_show_eval && !app->analysis_in_game;
+    return (app->ai_plays[STONE_BLACK] || app->ai_plays[STONE_WHITE]) && !app->config.ai_show_eval;
 }
 
 static void cmd_show_eval(void *c) {
@@ -1564,10 +1550,7 @@ static bool showing_eval(const void *c) { return CAPP(c)->config.ai_show_eval; }
 // An AI button switched on: the play layout, without analysis shown.
 static void ai_button(App *app, Stone color) {
     app->ai_plays[color] = !app->ai_plays[color];
-    if (app->ai_plays[color]) {
-        app->analysis_in_game = false;
-        app->play_layout = true;
-    }
+    if (app->ai_plays[color]) app->play_layout = true;
 }
 static void cmd_ai_black(void *c) { ai_button(APP(c), STONE_BLACK); }
 static void cmd_ai_white(void *c) { ai_button(APP(c), STONE_WHITE); }

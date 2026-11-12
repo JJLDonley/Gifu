@@ -172,7 +172,6 @@ typedef struct App {
 
     // Play vs AI: which colours the engine plays (indexed by Stone).
     bool ai_plays[3];
-    bool analysis_in_game;   // the player asked for analysis (Space) during a game against the AI
     // Which layout preset: play (after New game or an AI button) or analysis (Space
     // in the play layout, and at startup). ui.c follows it.
     bool play_layout;

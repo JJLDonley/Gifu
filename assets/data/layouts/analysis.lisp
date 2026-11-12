@@ -30,7 +30,10 @@
         (button analysis.candidates)
         (button analysis.ownership)
         (button analysis.human_policy)
-        (button view.coordinates))   ; no AI buttons: analysing needs no AI player (New game or the Game menu starts one)
+        (button view.coordinates)
+        (separator)
+        (button game.ai_black :icon "@stone_black AI")
+        (button game.ai_white :icon "@stone_white AI"))
       (mode markup :label toolbar.markup :fallback "Markup"
         (button markup.tool.play :icon @play_stones)
         (button markup.tool.black :icon @stone_black)
