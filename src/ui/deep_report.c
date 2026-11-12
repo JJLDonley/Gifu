@@ -1114,6 +1114,81 @@ static void style_row(Ui *ui, u32 index, StringView left, StringView right, f32 
     }
 }
 
+// ---- Where they play: heat maps and zones ----------------------------------------------------------
+
+typedef struct HeatMap {
+    Ui *ui;
+    StyleCounts s;   // a copy: the map is drawn after layout, when the caller's counts are gone
+    Color color;
+} HeatMap;
+
+// A 19x19 grid with each point shaded by how often the player played there (the
+// most-played point at full strength), the zone bands outlined.
+static void draw_heat_map(void *user, Rectangle r) {
+    HeatMap *h = user;
+    Ui *ui = h->ui;
+    const ThemeColors *c = &ui->theme->colors;
+    enum { N = STYLE_HEAT_SIZE };
+    f32 side = fminf(r.width, r.height), cell = side / (f32)N;
+    Rectangle b = { r.x + (r.width - side) * 0.5f, r.y + (r.height - side) * 0.5f, side, side };
+    DrawRectangleRec(b, color_with_alpha(c->surface_alt, 0.8f));
+    u16 most = 1;
+    for (i32 i = 0; i < N * N; ++i) most = MAX(most, h->s.heat[i]);
+    for (i32 y = 0; y < N; ++y) {
+        for (i32 x = 0; x < N; ++x) {
+            u16 n = h->s.heat[y * N + x];
+            if (!n) continue;
+            f32 t = sqrtf((f32)n / (f32)most);   // square root: single moves still show
+            DrawRectangleRec((Rectangle){ b.x + cell * (f32)x + 0.5f, b.y + cell * (f32)y + 0.5f, cell - 1.0f, cell - 1.0f },
+                             color_with_alpha(h->color, 0.15f + 0.8f * t));
+        }
+    }
+    // The corner / side bands.
+    f32 band = (f32)style_zone_band(N, N) * cell;
+    Color line = color_with_alpha(c->text_muted, 0.35f);
+    DrawRectangleLinesEx(b, 1.0f, line);
+    DrawRectangleLinesEx((Rectangle){ b.x + band, b.y + band, side - 2 * band, side - 2 * band }, 1.0f, line);
+    for (i32 k = 0; k < 2; ++k) {
+        f32 p = k ? side - band : band;
+        DrawLineEx((Vector2){ b.x + p, b.y }, (Vector2){ b.x + p, b.y + band }, 1.0f, line);
+        DrawLineEx((Vector2){ b.x + p, b.y + side - band }, (Vector2){ b.x + p, b.y + side }, 1.0f, line);
+        DrawLineEx((Vector2){ b.x, b.y + p }, (Vector2){ b.x + band, b.y + p }, 1.0f, line);
+        DrawLineEx((Vector2){ b.x + side - band, b.y + p }, (Vector2){ b.x + side, b.y + p }, 1.0f, line);
+    }
+}
+
+static void where_card(DeepReport *d, Stone color, const StyleCounts *s) {
+    Ui *ui = d->ui;
+    const ThemeColors *c = &ui->theme->colors;
+    static const char *const KEYS[STYLE_ZONES] = { "style.corner", "style.side", "style.center" };
+    static const char *const FALLBACK[STYLE_ZONES] = { "Corners", "Sides", "Centre" };
+    HeatMap *h = arena_new(&ui->frame, HeatMap);
+    *h = (HeatMap){ ui, *s, color == STONE_BLACK ? player_bar_color(c, STONE_BLACK) : c->accent };
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 12), .padding = CLAY_PADDING_ALL(ui_u16(ui, 10)) },
+           .backgroundColor = color_to_clay(c->surface_alt), .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 6)) }) {
+        CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 150)), CLAY_SIZING_FIXED(ui_px(ui, 150)) } },
+               .custom = { .customData = ui_custom(ui, draw_heat_map, h) } }) {}
+        CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM, .childGap = ui_u16(ui, 6) } }) {
+            CLAY({ .layout = { .childGap = ui_u16(ui, 6), .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
+                ui_stone_dot(ui, color);
+                ui_label(ui, player_name(ui, color), FONT_UI_BOLD, 14, c->text);
+            }
+            for (i32 z = 0; z < STYLE_ZONES; ++z) {
+                f32 p = 0, e = 0;
+                StringView text = style_vs_engine_zone(s, (StyleZone)z, &p, &e)
+                                      ? arena_format(&ui->frame, "%.0f%%  (KataGo %.0f%%, %+.0f)", p * 100, e * 100, (p - e) * 100)
+                                      : arena_format(&ui->frame, "%.0f%%", style_zone_share(s, (StyleZone)z) * 100);
+                CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 8) } }) {
+                    CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 64)), CLAY_SIZING_FIT(0) } } }) {
+                        ui_label(ui, tr(ui, KEYS[z], FALLBACK[z]), FONT_UI, 13, c->text_muted);
+                    }
+                    ui_label(ui, text, FONT_MONO, 13, c->text);
+                }
+            }
+        }
+    }
+}
+
 // The three style sliders for two players' counts.
 static void style_page(DeepReport *d, const StyleCounts *black, const StyleCounts *white) {
     Ui *ui = d->ui;
@@ -1156,6 +1231,12 @@ static void style_page(DeepReport *d, const StyleCounts *black, const StyleCount
                                   SV_ARG(tr(ui, DETAIL_KEYS[k], DETAIL[k])));
         }
         style_row(ui, (u32)k, tr(ui, LEFT_KEYS[k], LEFT[k]), tr(ui, RIGHT_KEYS[k], RIGHT[k]), bpos, wpos, detail);
+    }
+    // Where they play.
+    section_title(ui, tr(ui, "style.where", "WHERE THEY PLAY"));
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 12) } }) {
+        where_card(d, STONE_BLACK, black);
+        where_card(d, STONE_WHITE, white);
     }
     ui_label(ui, compared ? tr(ui, "style.note_vs", "Compared with KataGo in the same positions: the middle of each line is what KataGo would play there, so the board's shape does not count as style. A style, not a grade.")
                           : tr(ui, "style.note_raw", "Raw shares of the moves (analyse the game to compare with KataGo in the same positions). A style, not a grade."),
