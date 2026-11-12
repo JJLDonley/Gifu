@@ -168,7 +168,8 @@ void board_sync_stop(BoardSync *s) {
         board_sync_free(s);
         return;
     }
-    for (i32 waited = 0; waited < 300; waited += 10) {
+    // A deadline, not a count of sleeps: sleeps can oversleep a lot (macOS under load).
+    for (f64 deadline = os_time_seconds() + 0.3; os_time_seconds() < deadline;) {
         mutex_lock(&s->lock);
         bool finished = s->finished;
         mutex_unlock(&s->lock);
