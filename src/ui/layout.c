@@ -81,30 +81,53 @@ static void engine_status_widget(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
     UNUSED(node), UNUSED(ctx);
     App *app = ui->app;
     const ThemeColors *c = &ui->theme->colors;
-    Color dot = c->text_muted;
+    // While an AI plays: the engine playing its moves, and whether it is loading,
+    // thinking or failed (no analysis numbers), so nobody waits on a dead engine.
+    const EngineSlot *playing = app_playing_slot(app);
+    const EngineSlot *s = playing ? playing : &app->main;
+    Color dot = c->text_muted, text_color = c->text_muted;
+    StringView name = s->profile ? string_sv(&s->profile->name) : SV("");
     StringView text = app_tr(app, "label.no_engine", "No engine");
-    switch (app->main.engine ? app->main.status : ENGINE_STATUS_STOPPED) {
+    bool pulse = false;
+    // A failed engine may already be gone (its slot keeps the status and the error).
+    EngineStatus status = s->engine ? s->status : s->status == ENGINE_STATUS_FAILED ? ENGINE_STATUS_FAILED : ENGINE_STATUS_STOPPED;
+    switch (status) {
         case ENGINE_STATUS_STARTING:
             dot = (Color){ 230, 160, 40, 255 };
-            text = app_tr(app, "label.engine_starting", "Engine starting…");
+            pulse = true;
+            text = name.len ? arena_format(&ui->frame, SV_FMT " " SV_FMT, SV_ARG(name), SV_ARG(app_tr(app, "label.engine_loading", "loading…")))
+                            : app_tr(app, "label.engine_starting", "Engine starting…");
             break;
-        case ENGINE_STATUS_READY:
+        case ENGINE_STATUS_READY: {
             dot = (Color){ 67, 160, 71, 255 };
-            text = string_sv(&app->main.profile->name);
-            break;
+            text = name;
+            bool thinking = playing && (s->waiting_move || app->style_node != NULL);
+            if (thinking) {
+                pulse = true;
+                text = arena_format(&ui->frame, SV_FMT " " SV_FMT, SV_ARG(name), SV_ARG(app_tr(app, "label.engine_thinking", "thinking…")));
+            }
+        } break;
         case ENGINE_STATUS_FAILED:
             dot = c->danger;
-            text = app_tr(app, "label.engine_failed", "Engine failed");
+            text_color = c->danger;
+            text = s->error.len ? arena_format(&ui->frame, SV_FMT " " SV_FMT ": %s", SV_ARG(name), SV_ARG(app_tr(app, "label.engine_failed_short", "failed")), string_cstr(&s->error))
+                                : arena_format(&ui->frame, SV_FMT " " SV_FMT, SV_ARG(name), SV_ARG(app_tr(app, "label.engine_failed_short", "failed")));
             break;
         case ENGINE_STATUS_STOPPED:
+            if (playing) {   // an AI is on but nothing can play its moves
+                dot = c->danger;
+                text_color = c->danger;
+                text = app_tr(app, "label.no_engine_play", "No engine to play");
+            }
             break;
     }
+    if (pulse) dot = color_with_alpha(dot, 0.45f + 0.55f * (0.5f + 0.5f * sinf((f32)GetTime() * 6.0f)));
     CLAY({ .id = CLAY_ID("EngineStatus"),
            .layout = { .childGap = ui_u16(ui, 6), .childAlignment = { .y = CLAY_ALIGN_Y_CENTER },
                        .padding = { ui_u16(ui, 8), ui_u16(ui, 8), 0, 0 } } }) {
         CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 8)), CLAY_SIZING_FIXED(ui_px(ui, 8)) } },
                .backgroundColor = color_to_clay(dot), .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 4)) }) {}
-        ui_label(ui, text, FONT_UI, 13, c->text_muted);
+        ui_label(ui, text, FONT_UI, 13, text_color);
         if (app_game_analysis_running(app)) {
             isize done = 0, total = 0;
             app_game_analysis_progress(app, &done, &total);

@@ -735,6 +735,13 @@ static const EngineProfile *opponent_profile(const App *app) {
     return engine_profiles_find(&app->engine_profiles, id);
 }
 
+// The engine that plays the AI's moves: the opponent engine (ai.engine) when one is
+// chosen, else the main one. NULL when no AI plays.
+const EngineSlot *app_playing_slot(const App *app) {
+    if (!app->ai_plays[STONE_BLACK] && !app->ai_plays[STONE_WHITE]) return NULL;
+    return opponent_profile(app) ? &app->opponent : &app->main;
+}
+
 static void opponent_start(App *app) {
     EngineSlot *s = &app->opponent;
     const EngineProfile *p = opponent_profile(app);

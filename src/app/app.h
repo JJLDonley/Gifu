@@ -234,6 +234,7 @@ String app_katago_dir(const App *app);
 // True when a running engine (main or second) has a human SL network.
 bool app_has_human_engine(const App *app);
 // Playing the engine without "Show evaluation": no win rate, score, graph, candidates, territory...
+const EngineSlot *app_playing_slot(const App *app);   // the engine playing the AI's moves, or NULL
 bool app_eval_hidden(const App *app);
 // Playing against the AI: no move suggestions at all (board candidates, their
 // variations, human-policy rings, the candidates list), whatever "Show evaluation"
