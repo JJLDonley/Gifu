@@ -22,9 +22,25 @@ static void draw_graph(void *user, Rectangle r) {
     if (st->count < 2) return;
 
     f32 step = r.width / (f32)(st->count - 1);
-    f32 max_score = 10.0f;
+    f32 max_score = 12.0f;   // the 10-point guides always fit
     for (isize i = 0; i < st->count; ++i) {
         if (st->line[i]->eval.valid) max_score = fmaxf(max_score, fabsf(st->line[i]->eval.black_score));
+    }
+    // Dashed guides where the score lead is 10 points (Black above the middle, White
+    // below), labelled on a backing so they read over the graph in every theme.
+    f32 label_size = 11.0f * ui->scale;
+    for (i32 side = -1; side <= 1; side += 2) {
+        f32 y = mid - (f32)side * (10.0f / max_score) * r.height * 0.45f;
+        for (f32 x = r.x; x < r.x + r.width; x += 7.0f * ui->scale) {
+            DrawLineEx((Vector2){ x, y }, (Vector2){ fminf(x + 4.0f * ui->scale, r.x + r.width), y }, 1.0f, color_with_alpha(c->score_line, 0.55f));
+        }
+        const char *text = side > 0 ? "B+10" : "W+10";
+        Vector2 m = font_measure(ui->fonts, FONT_UI_BOLD, label_size, sv(text));
+        f32 pad = 3.0f * ui->scale;
+        // B+10 sits above its line and W+10 below, so they never overlap.
+        Rectangle box = { r.x + r.width - m.x - pad * 3.0f, side > 0 ? y - m.y - 3.0f : y + 1.0f, m.x + pad * 2.0f, m.y + 2.0f };
+        DrawRectangleRounded(box, 0.4f, 6, color_with_alpha(c->surface, 0.9f));
+        font_draw(ui->fonts, FONT_UI_BOLD, label_size, sv(text), (Vector2){ box.x + pad, box.y + 1.0f }, c->score_line);
     }
 
     // Black win-rate area + line, score line.

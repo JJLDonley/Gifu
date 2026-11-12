@@ -148,7 +148,19 @@ static void panel_winrate_summary(Ui *ui) {
 static void panel_winrate_graph(Ui *ui) {
     CLAY(ui_card(ui, CLAY_ID("PanelGraph"))) {
         ui_card_title_help(ui, tr(ui, "panel.winrate_graph", "Win rate"), SV("winrate_graph"));
-        winrate_graph_element(ui, ui_panel_height(ui, 150));
+        // Legend: each name in its line's colour.
+        const ThemeColors *c = &ui->theme->colors;
+        CLAY({ .layout = { .childGap = ui_u16(ui, 14), .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
+            for (i32 k = 0; k < 2; ++k) {
+                Color col = k == 0 ? c->graph_line : c->score_line;
+                CLAY({ .layout = { .childGap = ui_u16(ui, 5), .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
+                    CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 14)), CLAY_SIZING_FIXED(ui_px(ui, k == 0 ? 3 : 2)) } },
+                           .backgroundColor = color_to_clay(col) }) {}
+                    ui_label(ui, k == 0 ? tr(ui, "graph.legend_winrate", "AI win rate") : tr(ui, "graph.legend_points", "Points"), FONT_UI_BOLD, 12, col);
+                }
+            }
+        }
+        winrate_graph_element(ui, ui_panel_height(ui, 150) - ui_px(ui, 20));
     }
 }
 

@@ -22,7 +22,7 @@ colors.black_stone_edge = #18120D
 colors.white_stone_edge = #3B2A1C
 colors.last_move        = #A4282A
 colors.graph_line       = #33251A
-colors.score_line       = #9B6B3A
+colors.score_line       = #845B31
 
 background.kind              = paper
 background.paper.grain       = 0.07

@@ -111,7 +111,7 @@ Theme theme_fallback(void) {
     c->winrate_black = (Color){ 17, 17, 17, 255 };
     c->winrate_white = (Color){ 255, 255, 255, 255 };
     c->graph_line = (Color){ 17, 17, 17, 255 };
-    c->score_line = (Color){ 158, 158, 158, 255 };
+    c->score_line = (Color){ 112, 112, 112, 255 };   // readable as text on surface_alt too
     c->candidate_best = (Color){ 30, 136, 229, 255 };
     c->candidate_good = (Color){ 67, 160, 71, 255 };
     c->candidate_bad = (Color){ 229, 57, 53, 255 };
