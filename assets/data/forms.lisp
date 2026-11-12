@@ -9,6 +9,7 @@
 ;;   (form NAME :tabs ...) shows one section at a time, with the section titles as tabs
 ;;   (choice KEY :columns N [:source themes|engines] (option VALUE "Label") ...)
 ;;   (text KEY :placeholder "Text" ...)
+;;   (keymap)      the key bindings editor (Settings -> Keys)
 ;; Changes apply immediately (settings) or when the dialog's action runs.
 
 (form settings :tabs :title command.view.settings :fallback Settings
@@ -90,6 +91,7 @@
     (number analysis.max_candidates :step 1 :format "%.0f" :label settings.max_candidates :fallback "Candidates shown")
     (number analysis.interval_cs :step 5 :format "%.0f cs" :label settings.interval :fallback "Update interval")
     (number analysis.game_visits :min 50 :max 5000 :step 50 :format "%.0f" :label settings.game_visits :fallback "Game analysis visits")
+    (number analysis.max_visits :min 0 :max 1000000 :step 500 :format "%.0f" :label settings.max_visits :fallback "Stop analysing a position at (visits, 0 = never)")
     ;; Saving: automatic (to the game's file, or <config_dir>/autosave for new games).
     (bool sgf.autosave :label settings.autosave :fallback "Save games automatically (with their analysis)")
     (number sgf.autosave_seconds :step 10 :format "%.0f s" :label settings.autosave_seconds :fallback "Save analysis changes at most every")
@@ -123,6 +125,10 @@
     (text profile.names :placeholder "J, my-ogs-name, my-fox-name" :label settings.profile_names :fallback "Your player names (comma-separated)")
     (text profile.folder :placeholder "C:\\Users\\me\\Documents\\Go games" :label settings.profile_folder :fallback "Folder with your games")
     (command analysis.profile))
+  ;; Keyboard shortcuts (user changes go to <config_dir>/keymap.kv).
+  (section settings.keys :fallback Keys
+    (keymap)
+    (command keymap.reset))
   ;; Help -> Check for updates; GitHub releases.
   (section settings.updates :fallback Updates
     (bool updates.check :label settings.updates_check :fallback "Check for updates once a day")

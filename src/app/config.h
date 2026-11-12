@@ -74,6 +74,7 @@ typedef struct Config {
     String katago_overrides;
     String katago_network, katago_human_network;   // chosen network files ("" = newest installed)  // Deep report: rank index (0 = 20k .. 11 = 9d) the players are compared with // KataGo processes the GPU can hold at once (1 = one engine does everything)
     i32 analysis_game_visits;
+    i32 analysis_max_visits;   // live analysis stops at this many visits per position (0 = never: ponders)
     i32 new_game_size;
     f32 new_game_komi;
     i32 new_game_handicap;

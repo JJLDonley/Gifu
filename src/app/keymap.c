@@ -67,16 +67,62 @@ void keymap_load_kv(Keymap *keymap, const KvFile *kv, StringView source) {
             log_warn(SV_FMT ":%d: bad key binding '" SV_FMT "'", SV_ARG(source), e->line, SV_ARG(e->key));
             continue;
         }
-        bool replaced = false;
-        vec_foreach(KeyBinding, existing, &keymap->bindings) {
-            if (existing->chord.key == chord.key && existing->chord.mods == chord.mods) {
-                string_free(&existing->command);
-                existing->command = string_from(e->value);
-                replaced = true;
-            }
-        }
-        if (!replaced) vec_push(&keymap->bindings, (KeyBinding){ chord, string_from(e->value) });
+        if (sv_eq_nocase(e->value, SV("none"))) keymap_remove_chord(keymap, chord);
+        else keymap_set(keymap, chord, e->value);
     }
+}
+
+static bool chord_eq(KeyChord a, KeyChord b) { return a.key == b.key && a.mods == b.mods; }
+
+static void remove_at(Keymap *keymap, isize i) {
+    memmove(&keymap->bindings.items[i], &keymap->bindings.items[i + 1], sizeof(KeyBinding) * (usize)(keymap->bindings.len - i - 1));
+    keymap->bindings.len--;
+}
+
+void keymap_set(Keymap *keymap, KeyChord chord, StringView command) {
+    vec_foreach(KeyBinding, existing, &keymap->bindings) {
+        if (chord_eq(existing->chord, chord)) {
+            string_free(&existing->command);
+            existing->command = string_from(command);
+            return;
+        }
+    }
+    vec_push(&keymap->bindings, (KeyBinding){ chord, string_from(command) });
+}
+
+void keymap_remove_chord(Keymap *keymap, KeyChord chord) {
+    for (isize i = 0; i < keymap->bindings.len; ++i) {
+        if (!chord_eq(keymap->bindings.items[i].chord, chord)) continue;
+        string_free(&keymap->bindings.items[i].command);
+        remove_at(keymap, i);
+        return;
+    }
+}
+
+void keymap_clear_command(Keymap *keymap, StringView command) {
+    for (isize i = keymap->bindings.len - 1; i >= 0; --i) {
+        if (!sv_eq(string_sv(&keymap->bindings.items[i].command), command)) continue;
+        string_free(&keymap->bindings.items[i].command);
+        remove_at(keymap, i);
+    }
+}
+
+String keymap_diff_kv(const Keymap *keymap, const Keymap *defaults) {
+    String out = string_from(SV("# Key bindings changed in Settings -> Keys (on top of assets/data/keymap.kv).\n"
+                                "# \"Chord = none\" removes a default key. Delete this file to restore the defaults.\n"));
+    char chord_text[64];
+    vec_foreach(KeyBinding, b, &keymap->bindings) {
+        const KeyBinding *d = keymap_lookup(defaults, b->chord);
+        if (d && sv_eq(string_sv(&d->command), string_sv(&b->command))) continue;
+        key_chord_format(b->chord, chord_text, (i32)sizeof(chord_text));
+        string_pushf(&out, "%s = %s\n", chord_text, string_cstr(&b->command));
+    }
+    vec_foreach(KeyBinding, d, &defaults->bindings) {
+        if (keymap_lookup(keymap, d->chord)) continue;
+        key_chord_format(d->chord, chord_text, (i32)sizeof(chord_text));
+        string_pushf(&out, "%s = none\n", chord_text);
+    }
+    return out;
 }
 
 const KeyBinding *keymap_lookup(const Keymap *keymap, KeyChord chord) {

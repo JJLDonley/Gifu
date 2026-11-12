@@ -78,6 +78,7 @@ typedef struct App {
     Config config;
     I18n i18n;
     Keymap keymap;
+    Keymap keymap_defaults;   // assets/data/keymap.kv alone: Settings -> Keys saves only the differences
     CommandRegistry commands;
     EngineProfileVec engine_profiles;
 
@@ -97,10 +98,12 @@ typedef struct App {
     EngineSlot main;
     EngineSlot second;
     EngineSlot opponent;   // ai.engine: plays against you (e.g. Leela) while the main engine analyses
+    bool opponent_paused_engine;   // the main engine was stopped to make room for the opponent (engine.max_processes)
     bool analysis_enabled;
     // During a game against the AI the main engine keeps analysing, hidden (its own
     // moves pause it): the positions are analysed when the player switches to the
     // analysis (Space), and the graph and report are complete.
+    bool analysis_capped;              // live analysis reached analysis.max_visits here and was stopped
     bool background_analysis;
     AnalysisSnapshot *analysis;   // latest snapshot for the current node
     bool analysis_valid;
@@ -202,6 +205,10 @@ void app_shutdown(App *app);
 void app_update(App *app);
 
 StringView app_tr(const App *app, const char *key, const char *fallback);
+// Settings -> Keys: edit the key bindings; each change is saved to <config_dir>/keymap.kv.
+void app_keymap_bind(App *app, StringView command, KeyChord chord, bool add);   // add: keep its other keys
+void app_keymap_clear(App *app, StringView command);
+void app_keymap_reset(App *app);
 void app_set_status(App *app, const char *fmt, ...) PRINTF_LIKE(2, 3);
 void app_log(App *app, StringView line);
 

@@ -133,6 +133,8 @@ typedef struct Ui {
     ThemeEditor theme_editor;
     LayoutEditor layout_editor;
     i32 form_tab;          // selected section of a tabbed form (Settings)
+    char key_capture[64];  // Settings -> Keys: the command waiting for its new key ("" = none)
+    bool key_capture_add;  // the captured key is added to the command's keys (else replaces them)
     bool help_button_hovered;   // a "?" button is under the mouse (this frame)
 
     // Input for this frame.

@@ -292,6 +292,53 @@ static bool field_visible(const Ui *ui, const Sexpr *v) {
     return false;
 }
 
+// (keymap): every command with its keys; Change / + wait for the next key
+// (ui.c capture_key), Clear removes them. Saved at once to <config_dir>/keymap.kv.
+static void keymap_field(Ui *ui) {
+    App *app = ui->app;
+    const ThemeColors *c = &ui->theme->colors;
+    ui_label(ui, app_tr(app, "keys.help", "Change, then press the new key (with Ctrl / Shift / Alt if you like). Esc cancels."), FONT_UI, 13,
+             c->text_muted);
+    u32 i = 0;
+    vec_foreach(CommandDef, cmd, &app->commands.commands) {
+        ++i;
+        StringView id = sv(cmd->id);
+        char key[128];
+        snprintf(key, sizeof(key), "command.%s", cmd->id);
+        StringView label = app_tr(app, key, cmd->label);
+        String keys = { 0 };
+        vec_foreach(KeyBinding, b, &app->keymap.bindings) {
+            if (!sv_eq(string_sv(&b->command), id)) continue;
+            char text[64];
+            key_chord_format(b->chord, text, (i32)sizeof(text));
+            string_pushf(&keys, "%s%s", keys.len ? ", " : "", text);
+        }
+        bool capturing = sv_eq(sv(ui->key_capture), id);
+        StringView shown = capturing ? app_tr(app, "keys.press", "Press a key…")
+                           : keys.len ? arena_format(&ui->frame, "%s", string_cstr(&keys))
+                                      : app_tr(app, "keys.none", "—");
+        CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 6),
+                           .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
+            field_label(ui, label);
+            CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 150)), CLAY_SIZING_FIT(0) } } }) {
+                ui_label(ui, shown, FONT_MONO, 13, capturing ? c->accent : keys.len ? c->text : c->text_muted);
+            }
+            if (ui_button(ui, CLAY_IDI("KeyChange", i), app_tr(app, "keys.change", "Change"), BUTTON_SMALL, capturing && !ui->key_capture_add, true)) {
+                snprintf(ui->key_capture, sizeof(ui->key_capture), "%s", cmd->id);
+                ui->key_capture_add = false;
+            }
+            if (ui_button(ui, CLAY_IDI("KeyAdd", i), SV("+"), BUTTON_SMALL, capturing && ui->key_capture_add, keys.len > 0)) {
+                snprintf(ui->key_capture, sizeof(ui->key_capture), "%s", cmd->id);
+                ui->key_capture_add = true;
+            }
+            if (ui_button(ui, CLAY_IDI("KeyClear", i), app_tr(app, "keys.clear", "Clear"), BUTTON_SMALL, false, keys.len > 0)) {
+                app_keymap_clear(app, id);
+            }
+        }
+        string_free(&keys);
+    }
+}
+
 static void form_section(Ui *ui, const Sexpr *section, u32 index, bool title) {
     const ThemeColors *c = &ui->theme->colors;
     CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM,
@@ -301,6 +348,10 @@ static void form_section(Ui *ui, const Sexpr *section, u32 index, bool title) {
             StringView type = sexpr_head(v);
             if (sv_eq(type, SV("command"))) {   // (command ID): a button running a registered command
                 ui_command_button_ex(ui, field_key(v), SV(""), true, BUTTON_NORMAL, 100 + index);
+                continue;
+            }
+            if (sv_eq(type, SV("keymap"))) {   // (keymap): the key bindings editor
+                keymap_field(ui);
                 continue;
             }
             if (!field_visible(ui, v)) continue;

@@ -32,9 +32,16 @@ NODISCARD bool key_chord_parse(StringView text, KeyChord *out);
 // "Ctrl+O" style text for tooltips. Returns bytes written.
 i32 key_chord_format(KeyChord chord, char *buffer, i32 capacity);
 
-// Adds "Chord = command" entries; a later binding for the same chord wins.
+// Adds "Chord = command" entries; a later binding for the same chord wins, and
+// "Chord = none" removes the chord (a user file unbinding a default key).
 // `source` names the file in warnings.
 void keymap_load_kv(Keymap *keymap, const KvFile *kv, StringView source);
+// Binds `chord` to `command` (taking it from any other command).
+void keymap_set(Keymap *keymap, KeyChord chord, StringView command);
+void keymap_remove_chord(Keymap *keymap, KeyChord chord);
+void keymap_clear_command(Keymap *keymap, StringView command);
+// The user file that turns `defaults` into `keymap`: changed chords, "none" for removed ones.
+String keymap_diff_kv(const Keymap *keymap, const Keymap *defaults);
 const KeyBinding *keymap_lookup(const Keymap *keymap, KeyChord chord);
 const KeyBinding *keymap_find_command(const Keymap *keymap, StringView command);
 void keymap_free(Keymap *keymap);

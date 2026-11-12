@@ -71,6 +71,57 @@ static String find_root_dir(StringView exe_dir) {
 }
 
 // Loads assets/data/<name> then <config_dir>/<name> (user overrides) into `kv`.
+static void load_keymap_defaults(App *app) {
+    String shipped = path_join(string_sv(&app->assets_dir), SV("data/keymap.kv"));
+    KvFile kv = { 0 };
+    if (kv_load(&kv, string_sv(&shipped))) keymap_load_kv(&app->keymap_defaults, &kv, SV("keymap.kv"));
+    kv_free(&kv);
+    string_free(&shipped);
+}
+
+static void keymap_save(App *app) {
+    String path = path_join(string_sv(&app->config_dir), SV("keymap.kv"));
+    String text = keymap_diff_kv(&app->keymap, &app->keymap_defaults);
+    os_make_dirs(string_sv(&app->config_dir));
+    if (!os_write_file(string_sv(&path), string_sv(&text))) app_set_status(app, "Cannot save %s", string_cstr(&path));
+    string_free(&text);
+    string_free(&path);
+}
+
+void app_keymap_bind(App *app, StringView command, KeyChord chord, bool add) {
+    char text[64];
+    key_chord_format(chord, text, (i32)sizeof(text));
+    const KeyBinding *old = keymap_lookup(&app->keymap, chord);
+    if (old && !sv_eq(string_sv(&old->command), command)) {
+        const CommandDef *def = command_find(&app->commands, string_sv(&old->command));
+        char key[128];
+        snprintf(key, sizeof(key), "command." SV_FMT, SV_ARG(string_sv(&old->command)));
+        StringView label = def ? app_tr(app, key, def->label) : string_sv(&old->command);
+        app_set_status(app, "%s moved here: it no longer runs " SV_FMT, text, SV_ARG(label));
+    } else {
+        app_set_status(app, "%s saved", text);
+    }
+    if (!add) keymap_clear_command(&app->keymap, command);
+    keymap_set(&app->keymap, chord, command);
+    keymap_save(app);
+}
+
+void app_keymap_clear(App *app, StringView command) {
+    keymap_clear_command(&app->keymap, command);
+    keymap_save(app);
+}
+
+void app_keymap_reset(App *app) {
+    keymap_free(&app->keymap);
+    String shipped = path_join(string_sv(&app->assets_dir), SV("data/keymap.kv"));
+    KvFile kv = { 0 };
+    if (kv_load(&kv, string_sv(&shipped))) keymap_load_kv(&app->keymap, &kv, SV("keymap.kv"));
+    kv_free(&kv);
+    string_free(&shipped);
+    keymap_save(app);
+    app_set_status(app, "Keys reset to the defaults");
+}
+
 static void load_kv_layers(const App *app, const char *name, KvFile *kv) {
     String rel = string_format("data/%s", name);
     String shipped = path_join(string_sv(&app->assets_dir), string_sv(&rel));
@@ -144,6 +195,7 @@ static void stop_engine(App *app) {
     engine_destroy(app->main.engine);
     app->main.engine = NULL;
     app->main.status = ENGINE_STATUS_STOPPED;
+    app->analysis_capped = false;
     app->main.synced_node = NULL;
     app->main.waiting_move = false;
     app->main.human_requested = 0;
@@ -204,6 +256,7 @@ void app_restart_engine(App *app) {
 
 void app_set_analysis(App *app, bool enabled) {
     app->analysis_enabled = enabled;
+    app->analysis_capped = false;
     if (!app->main.engine) return;
     if (enabled) {
         AnalysisRequest req = app_analysis_request(app);
@@ -283,7 +336,7 @@ static bool analyzer_ensure(App *app) {
     }
     if (app->analyzer) return true;
     if (!engine_profile_can_batch(app->main.profile)) return false;
-    i32 running = (app->main.engine != NULL) + (app->second.engine != NULL);
+    i32 running = (app->main.engine != NULL) + (app->second.engine != NULL) + (app->opponent.engine != NULL);
     if (running + 1 > app->config.engine_max_processes) return false;
     String err = { 0 };
     KataGoTuning tuning = app_katago_tuning(app);
@@ -674,15 +727,24 @@ static void rank_update(App *app) {
 
 // An engine resigned: the game is over. Every engine stops playing and the result
 // (B+R / W+R) goes into the game unless it already has one.
+static void game_resigned(App *app, Stone loser);
+
 static void engine_resigned(App *app, Stone loser, StringView who) {
+    game_resigned(app, loser);
+    app_set_status(app, SV_FMT " resigns: %s wins", SV_ARG(who), loser == STONE_WHITE ? "Black" : "White");
+}
+
+// `loser` resigned (an engine, or the player with game.resign): the game is over
+// and the window switches to the analysis layout.
+static void game_resigned(App *app, Stone loser) {
     app->ai_plays[STONE_BLACK] = app->ai_plays[STONE_WHITE] = false;
+    app->play_layout = false;   // the game is over: back to the analysis layout to review it
     app->ai_move_once = false;
     app->match_mode = false;
     if (!game_tree_info(app->tree, SV("RE")).len) {
         game_node_set_prop(app->tree, app->tree->root, SV("RE"), loser == STONE_WHITE ? SV("B+R") : SV("W+R"));
         app_mark_edited(app);
     }
-    app_set_status(app, SV_FMT " resigns: %s wins", SV_ARG(who), loser == STONE_WHITE ? "Black" : "White");
 }
 
 // Plays an engine's move. A move for the side that is not to move, or one our
@@ -783,10 +845,46 @@ const EngineSlot *app_playing_slot(const App *app) {
     return opponent_profile(app) ? &app->opponent : &app->main;
 }
 
+// Engines are GPU-heavy: never run more than engine.max_processes at once (most GPUs
+// cannot run KataGo and Leela together; doing so has hung whole machines). The
+// opponent takes precedence: the second engine, then the main one, are stopped to
+// make room, and the main engine comes back when the game ends (opponent_release).
+static void opponent_make_room(App *app) {
+    i32 max = app->config.engine_max_processes;
+    if (app->analyzer) {   // the JSON analyzer is a KataGo process too
+        flash_stop(app);
+        if (app->rank_batch) app_rank_stop(app);
+        analyzer_release(app);
+    }
+    if (app->second.engine && 1 + (app->main.engine != NULL) + 1 > max) app_second_engine(app, false);
+    if (app->main.engine && 1 + 1 + (app->second.engine != NULL) > max) {
+        stop_engine(app);
+        app->opponent_paused_engine = true;
+        log_info("main engine paused while the opponent plays (engine.max_processes = %d)", max);
+    }
+}
+
+static void opponent_release(App *app) {
+    if (app->opponent.engine) log_info("opponent engine stopped");
+    if (app->score_requested && !app->main.engine) {   // the opponent was scoring: the main engine does it instead
+        app->score_requested = false;
+        app->score_pending = true;
+    }
+    slot_clear(&app->opponent);
+    if (app->opponent_paused_engine) {
+        app->opponent_paused_engine = false;
+        if (!app->main.engine) start_engine(app);
+    }
+}
+
 static void opponent_start(App *app) {
     EngineSlot *s = &app->opponent;
     const EngineProfile *p = opponent_profile(app);
-    if (s->engine && s->profile == p) return;
+    if (s->engine && s->profile == p) {
+        // Something restarted the main engine mid-game (e.g. Engine settings applied).
+        if (app->main.engine && app->opponent_paused_engine) opponent_make_room(app);
+        return;
+    }
     slot_clear(s);
     string_free(&s->error);
     if (!p) return;
@@ -796,6 +894,7 @@ static void opponent_start(App *app) {
         app_set_status(app, "Opponent: %s is not installed (Engine -> Download engines)", string_cstr(&p->name));
         return;
     }
+    opponent_make_room(app);
     String err = { 0 };
     KataGoTuning tuning = app_katago_tuning(app);
     s->engine = engine_create(p, app_ai_human_profile(app), &tuning, &err);
@@ -804,16 +903,35 @@ static void opponent_start(App *app) {
         s->status = ENGINE_STATUS_FAILED;
         s->error = err;
         app_set_status(app, "Opponent: %s", string_cstr(&err));
+        if (app->opponent_paused_engine) {   // nothing to make room for after all
+            app->opponent_paused_engine = false;
+            start_engine(app);
+        }
         return;
     }
     s->status = ENGINE_STATUS_STARTING;
     app_set_status(app, "Opponent: %s", string_cstr(&p->name));
 }
 
+static void on_score(App *app, const EngineEvent *ev) {
+    app->score_requested = false;
+    string_free(&app->result);
+    app->result = string_from(ev->text);
+    app->result_position = ev->position_id;
+    app_set_status(app, "Result: " SV_FMT, SV_ARG(ev->text));
+}
+
+// The engine that scores the game: the main one, or the opponent while the main one is paused for it.
+static const EngineSlot *scoring_slot(const App *app) {
+    if (!app->main.engine && app->opponent_paused_engine && app->opponent.engine) return &app->opponent;
+    return &app->main;
+}
+
 static void opponent_update(App *app) {
     EngineSlot *s = &app->opponent;
-    bool wanted = (app->ai_plays[STONE_BLACK] || app->ai_plays[STONE_WHITE] || app->ai_move_once) && opponent_profile(app);
+    bool wanted = (app->ai_plays[STONE_BLACK] || app->ai_plays[STONE_WHITE]) && opponent_profile(app);
     if (wanted && s->status != ENGINE_STATUS_FAILED) opponent_start(app);
+    if (!wanted && (s->engine || app->opponent_paused_engine)) opponent_release(app);   // game over: give the GPU back
     if (!s->engine) return;
     EngineEvent ev;
     while (engine_poll(s->engine, &ev)) {
@@ -836,7 +954,11 @@ static void opponent_update(App *app) {
             }
             case ENGINE_EVENT_ERROR:
                 s->waiting_move = false;
+                app->score_requested = false;
                 app_set_status(app, "Opponent: " SV_FMT, SV_ARG(ev.text));
+                break;
+            case ENGINE_EVENT_SCORE:
+                on_score(app, &ev);
                 break;
             default: break;
         }
@@ -906,6 +1028,9 @@ void app_update_profile_now(App *app) {
 
 static void autosave_update(App *app);
 
+static void main_engine_update(App *app);
+static void ai_turn_update(App *app);
+
 void app_update(App *app) {
     if (app->retired_tree) {   // replaced last frame: nothing draws it any more
         game_tree_free(app->retired_tree);
@@ -919,7 +1044,15 @@ void app_update(App *app) {
     second_update(app);
     opponent_update(app);
     app_update_profile_now(app);
-    if (!app->main.engine || app->rank_slot == &app->main) return;   // lent to the rank job
+    if (app->rank_slot == &app->main) return;   // lent to the rank job
+    // The main engine may be stopped (e.g. paused while an opponent engine plays):
+    // the opponent's turn below must still run.
+    if (app->main.engine) main_engine_update(app);
+    ai_turn_update(app);
+}
+
+// The main engine's events, its board kept on the current node, its hidden analysis.
+static void main_engine_update(App *app) {
     EngineEvent ev;
     while (engine_poll(app->main.engine, &ev)) {
         switch (ev.kind) {
@@ -944,6 +1077,14 @@ void app_update(App *app) {
                     ev.analysis->total_visits >= app->config.analysis_game_visits) {
                     batch_advance(app);
                 }
+                // Done with this position: stop searching (no endless pondering). Moving to
+                // another position starts the analysis again (see the resync below).
+                if (!app->batch_running && app->config.analysis_max_visits > 0 &&
+                    ev.analysis->total_visits >= app->config.analysis_max_visits &&
+                    app->main.synced_node == app->tree->current && engine_is_analyzing(app->main.engine)) {
+                    engine_stop_analysis(app->main.engine);
+                    app->analysis_capped = true;
+                }
                 break;
             case ENGINE_EVENT_MOVE:
                 app->main.waiting_move = false;
@@ -958,11 +1099,7 @@ void app_update(App *app) {
                 play_engine_move(app, &app->main, &ev, string_cstr(&app->main.profile->name));
                 break;
             case ENGINE_EVENT_SCORE:
-                app->score_requested = false;
-                string_free(&app->result);
-                app->result = string_from(ev.text);
-                app->result_position = ev.position_id;
-                app_set_status(app, "Result: " SV_FMT, SV_ARG(ev.text));
+                on_score(app, &ev);
                 break;
             case ENGINE_EVENT_HUMAN_POLICY:
                 on_human_policy(app, &app->main, &ev);
@@ -988,15 +1125,31 @@ void app_update(App *app) {
         app->main.synced_position_id = spec->id;
         app->main.synced_node = target;
         free(spec);
+        if (app->analysis_capped) {   // stopped at analysis.max_visits on the previous position
+            app->analysis_capped = false;
+            if ((app->analysis_enabled || app->background_analysis) && !engine_is_analyzing(app->main.engine)) {
+                AnalysisRequest req = app_analysis_request(app);
+                engine_start_analysis(app->main.engine, &req);
+            }
+        }
     }
     if (app->main.synced_node != app->tree->current) app->analysis_valid = false;
     background_analysis_update(app);
     human_update(app);
+}
 
+// Scoring after two passes, and asking whichever engine plays for its move.
+static void ai_turn_update(App *app) {
     // Two consecutive passes end the game: score it once and stop engine play.
     const GameNode *cur = app->tree->current;
     bool two_passes = cur->has_move && point_is_pass(cur->move.point) && cur->parent && cur->parent->has_move &&
                       point_is_pass(cur->parent->move.point);
+    if (two_passes && !app->main.engine && app->opponent_paused_engine && app->auto_scored_node != cur) {
+        // KataGo is paused for the opponent: end the game, it comes back and scores it.
+        app->auto_scored_node = cur;
+        app->ai_plays[STONE_BLACK] = app->ai_plays[STONE_WHITE] = false;
+        app->score_pending = true;
+    }
     if (two_passes && app->auto_scored_node != cur && app->main.synced_node == cur && app->main.status == ENGINE_STATUS_READY) {
         app->auto_scored_node = cur;
         app->ai_plays[STONE_BLACK] = app->ai_plays[STONE_WHITE] = false;
@@ -1005,18 +1158,20 @@ void app_update(App *app) {
         engine_request_score(app->main.engine, app->main.synced_position_id);
     }
 
-    if (app->score_pending && app->main.synced_node == cur && app->main.status == ENGINE_STATUS_READY) {
+    const EngineSlot *scorer = scoring_slot(app);
+    if (app->score_pending && scorer->engine && scorer->synced_node == cur && scorer->status == ENGINE_STATUS_READY && !scorer->waiting_move) {
         app->score_pending = false;
         app->score_requested = true;
-        engine_request_score(app->main.engine, app->main.synced_position_id);
+        engine_request_score(scorer->engine, scorer->synced_position_id);
     }
 
     // Engine's turn? In a match the second engine plays White.
     Stone to_play = app->tree->current->to_play;
     // Playing against an opponent engine (ai.engine): it answers; the main engine keeps analysing.
-    EngineSlot *slot = app->match_mode && to_play == STONE_WHITE ? &app->second
-                       : !app->match_mode && opponent_profile(app)  ? &app->opponent
-                                                                    : &app->main;
+    bool vs_ai = app->ai_plays[STONE_BLACK] || app->ai_plays[STONE_WHITE];
+    EngineSlot *slot = app->match_mode && to_play == STONE_WHITE      ? &app->second
+                       : !app->match_mode && vs_ai && opponent_profile(app) ? &app->opponent
+                                                                          : &app->main;
     bool engine_turn = (app->ai_plays[to_play] || app->ai_move_once || app->match_mode) && !two_passes;
     bool anyone_waiting = app->main.waiting_move || app->second.waiting_move || app->opponent.waiting_move;
     // A playing style that picks among KataGo's candidates: analyse for the move time, then choose.
@@ -1492,6 +1647,8 @@ static bool has_prev_var(const void *c) {
 static bool has_next_var(const void *c) { return CAPP(c)->tree->current->next_sibling != NULL; }
 
 static void cmd_pass(void *c) { app_play(APP(c), POINT_PASS); }
+static bool ai_to_move(const App *app) { return app->ai_plays[app->tree->current->to_play] && !app->config.ai_click_plays_ai; }
+static bool can_pass(const void *c) { return !ai_to_move(CAPP(c)); }
 static void cmd_tsumego_frame(void *c) { app_tsumego_frame(APP(c)); }
 static bool has_stones(const void *c) {
     const Board *b = &CAPP(c)->tree->current->board;
@@ -1517,6 +1674,20 @@ static void cmd_toggle_analysis(void *c) {
     app_set_analysis(app, !app->analysis_enabled);
 }
 static bool is_analyzing(const void *c) { return CAPP(c)->analysis_enabled; }
+// KataGo paused for an opponent engine counts: Space ends the game and it comes back.
+static bool can_analyze(const void *c) { return CAPP(c)->main.engine != NULL || CAPP(c)->opponent_paused_engine; }
+
+// The player resigns the game against the AI: the side the AI does not play (the
+// side to move when it plays both or neither).
+static void cmd_resign(void *c) {
+    App *app = APP(c);
+    bool b = app->ai_plays[STONE_BLACK], w = app->ai_plays[STONE_WHITE];
+    Stone loser = b && !w ? STONE_WHITE : w && !b ? STONE_BLACK : app->tree->current->to_play;
+    game_resigned(app, loser);
+    app_set_status(app, "You resign: %s wins", loser == STONE_WHITE ? "Black" : "White");
+}
+static void cmd_keymap_reset(void *c) { app_keymap_reset(APP(c)); }
+static bool can_resign(const void *c) { return CAPP(c)->ai_plays[STONE_BLACK] || CAPP(c)->ai_plays[STONE_WHITE]; }
 static bool has_engine(const void *c) { return CAPP(c)->main.engine != NULL; }
 
 static void cmd_play_best(void *c) {
@@ -1524,7 +1695,10 @@ static void cmd_play_best(void *c) {
     const Candidate *best = app->analysis_valid ? analysis_best(app->analysis) : NULL;
     if (best) app_play(app, best->move);
 }
-static bool has_best(const void *c) { return CAPP(c)->analysis_valid && CAPP(c)->analysis->candidate_count > 0; }
+static bool has_best(const void *c) {
+    const App *app = CAPP(c);
+    return app->analysis_valid && app->analysis->candidate_count > 0 && !app_hints_hidden(app);
+}
 
 static void cmd_toggle_ownership(void *c) {
     App *app = APP(c);
@@ -1560,7 +1734,8 @@ static void cmd_restart_engine(void *c) { app_restart_engine(APP(c)); }
 static void cmd_score(void *c) { APP(c)->score_pending = true; }
 static bool can_score(const void *c) {
     const App *app = CAPP(c);
-    return app->main.engine && app->main.status != ENGINE_STATUS_FAILED && !app->score_requested && !app->score_pending;
+    const EngineSlot *s = scoring_slot(app);
+    return s->engine && s->status != ENGINE_STATUS_FAILED && !app->score_requested && !app->score_pending;
 }
 static void cmd_write_result(void *c) {
     App *app = APP(c);
@@ -1608,7 +1783,11 @@ static void cmd_ai_white(void *c) { ai_button(APP(c), STONE_WHITE); }
 static bool ai_black(const void *c) { return CAPP(c)->ai_plays[STONE_BLACK]; }
 static bool ai_white(const void *c) { return CAPP(c)->ai_plays[STONE_WHITE]; }
 static void cmd_ai_move(void *c) { APP(c)->ai_move_once = true; }
-static bool can_ai_move(const void *c) { return CAPP(c)->main.status == ENGINE_STATUS_READY && !CAPP(c)->main.waiting_move; }
+static bool can_ai_move(const void *c) {
+    const App *app = CAPP(c);
+    const EngineSlot *s = app->opponent.engine && (app->ai_plays[STONE_BLACK] || app->ai_plays[STONE_WHITE]) ? &app->opponent : &app->main;
+    return s->status == ENGINE_STATUS_READY && !s->waiting_move;
+}
 
 static void cmd_sync_select(void *c) { app_sync_select(APP(c)); }
 static void cmd_sync_toggle(void *c) { app_sync_toggle(APP(c)); }
@@ -1633,9 +1812,11 @@ static const CommandDef APP_COMMANDS[] = {
     { "nav.last", "Last move", ">|", cmd_last, can_go_forward, NULL },
     { "nav.prev_variation", "Previous variation", "^", cmd_prev_var, has_prev_var, NULL },
     { "nav.next_variation", "Next variation", "v", cmd_next_var, has_next_var, NULL },
-    { "move.pass", "Pass", "Pass", cmd_pass, NULL, NULL },
+    { "move.pass", "Pass", "Pass", cmd_pass, can_pass, NULL },
+    { "game.resign", "Resign", "Resign", cmd_resign, can_resign, NULL },
+    { "keymap.reset", "Reset all keys", "Reset keys", cmd_keymap_reset, NULL, NULL },
     { "move.delete", "Delete node", "Del", cmd_delete, can_go_back, NULL },
-    { "analysis.toggle", "Analyze", "Analyze", cmd_toggle_analysis, has_engine, is_analyzing },
+    { "analysis.toggle", "Analyze", "Analyze", cmd_toggle_analysis, can_analyze, is_analyzing },
     { "analysis.play_best", "Play best move", "Best", cmd_play_best, has_best, NULL },
     { "analysis.ownership", "Territory", "Territory", cmd_toggle_ownership, NULL, shows_ownership },
     { "analysis.human_policy", "Human moves", "Human", cmd_toggle_human, NULL, shows_human },
@@ -1672,6 +1853,7 @@ void app_reload_engines(App *app) {
     stop_engine(app);
     slot_clear(&app->second);
     slot_clear(&app->opponent);   // its profile is about to be freed
+    app->opponent_paused_engine = false;
     batch_analyzer_destroy(app->analyzer);
     app->analyzer = NULL;
     engine_profiles_free(&app->engine_profiles);
@@ -1802,6 +1984,7 @@ bool app_init(App *app, const AppOptions *options) {
     load_kv_layers(app, "keymap.kv", &keymap_kv);
     keymap_load_kv(&app->keymap, &keymap_kv, SV("keymap.kv"));
     kv_free(&keymap_kv);
+    load_keymap_defaults(app);
 
     load_engine_profiles(app);
 
@@ -1864,6 +2047,7 @@ void app_shutdown(App *app) {
     config_free(&app->config);
     i18n_free(&app->i18n);
     keymap_free(&app->keymap);
+    keymap_free(&app->keymap_defaults);
     command_registry_free(&app->commands);
     engine_profiles_free(&app->engine_profiles);
     for (i32 i = 0; i < APP_LOG_LINES; ++i) string_free(&app->log_lines[i]);

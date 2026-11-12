@@ -381,8 +381,44 @@ static u8 current_mods(void) {
     return mods;
 }
 
+// Holding a key repeats only commands that step (moves, zoom, undo): a held Space
+// or Ctrl+S must not toggle analysis on and off, or save again and again.
+static bool key_repeats(StringView id) {
+    return sv_starts_with(id, SV("nav.")) || sv_starts_with(id, SV("view.zoom_")) || sv_eq(id, SV("edit.undo")) ||
+           sv_eq(id, SV("edit.redo"));
+}
+
+// Settings -> Keys is waiting for a key: the next chord (modifiers + a key) is
+// bound to the command, Escape cancels. Nothing else sees the keyboard meanwhile.
+static void capture_key(Ui *ui) {
+    for (i32 key = GetKeyPressed(); key; key = GetKeyPressed()) {
+        if (key == KEY_ESCAPE) {
+            ui->key_capture[0] = 0;
+            app_set_status(ui->app, "Key not changed");
+            return;
+        }
+        bool modifier = (key >= KEY_LEFT_SHIFT && key <= KEY_RIGHT_SUPER);
+        if (modifier) continue;   // wait for the key that goes with them
+        KeyChord chord = { key, current_mods() }, parsed;
+        char text[64];
+        key_chord_format(chord, text, (i32)sizeof(text));
+        if (!key_chord_parse(sv(text), &parsed) || parsed.key != chord.key) {   // e.g. keypad keys: not in the key names
+            app_set_status(ui->app, "That key cannot be bound: try another");
+            continue;
+        }
+        app_keymap_bind(ui->app, sv(ui->key_capture), chord, ui->key_capture_add);
+        ui->key_capture[0] = 0;
+        return;
+    }
+}
+
 static void handle_keys(Ui *ui) {
     App *app = ui->app;
+    if (ui->key_capture[0] && ui->dialog == UI_DIALOG_NONE) ui->key_capture[0] = 0;   // Settings closed meanwhile
+    if (ui->key_capture[0]) {
+        capture_key(ui);
+        return;
+    }
     if (ui->focus_id) return;   // a text input owns the keyboard
     if (ui->dialog != UI_DIALOG_NONE) {
         if (IsKeyPressed(KEY_ESCAPE)) ui_close_dialog(ui);
@@ -391,7 +427,18 @@ static void handle_keys(Ui *ui) {
     u8 mods = current_mods();
     vec_foreach(KeyBinding, b, &app->keymap.bindings) {
         if (b->chord.mods != mods) continue;
-        if (IsKeyPressed(b->chord.key) || IsKeyPressedRepeat(b->chord.key)) command_execute(&app->commands, string_sv(&b->command));
+        StringView id = string_sv(&b->command);
+        bool pressed = IsKeyPressed(b->chord.key);
+        if (!pressed && !(IsKeyPressedRepeat(b->chord.key) && key_repeats(id))) continue;
+        const CommandDef *cmd = command_find(&app->commands, id);
+        if (cmd && pressed && !key_repeats(id) && !command_is_enabled(&app->commands, cmd)) {
+            char key[128];
+            snprintf(key, sizeof(key), "command.%s", cmd->id);
+            StringView label = app_tr(app, key, cmd->label);
+            app_set_status(app, SV_FMT ": not available right now", SV_ARG(label));   // never silently ignored
+            continue;
+        }
+        command_execute(&app->commands, id);
     }
     if (IsKeyPressed(KEY_ESCAPE)) {
         ui->theme_menu_open = false;

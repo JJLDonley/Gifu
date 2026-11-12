@@ -85,6 +85,34 @@ static void test_keymap(void) {
     CHECK_SV(string_sv(&keymap_lookup(&km, (KeyChord){ 262, 0 })->command), SV("nav.last"));
     keymap_free(&km);
     kv_free(&user);
+
+    // Settings -> Keys: the saved file holds only the differences, and loading it
+    // over the defaults gives the edited keymap back (unbound defaults as "none").
+    Keymap defaults = { 0 }, edited = { 0 };
+    keymap_load_kv(&defaults, &kv, SV("keymap.kv"));
+    keymap_load_kv(&edited, &kv, SV("keymap.kv"));
+    keymap_clear_command(&edited, SV("nav.back"));                        // Left and Up
+    keymap_set(&edited, (KeyChord){ 'S', KEYMOD_CTRL }, SV("game.resign"));   // taken from file.save
+    keymap_set(&edited, (KeyChord){ 'Q', KEYMOD_ALT }, SV("nav.back"));
+    CHECK(keymap_find_command(&edited, SV("file.save")) == NULL);
+    String diff = keymap_diff_kv(&edited, &defaults);
+    KvFile saved = { 0 };
+    kv_parse(&saved, string_sv(&diff));
+    CHECK_EQ(saved.entries.len, 4);   // Left/Up = none, Ctrl+S, Alt+Q
+    Keymap reloaded = { 0 };
+    keymap_load_kv(&reloaded, &kv, SV("keymap.kv"));
+    keymap_load_kv(&reloaded, &saved, SV("user"));
+    CHECK_EQ(reloaded.bindings.len, edited.bindings.len);
+    vec_foreach(KeyBinding, b, &edited.bindings) {
+        const KeyBinding *r = keymap_lookup(&reloaded, b->chord);
+        CHECK(r && sv_eq(string_sv(&r->command), string_sv(&b->command)));
+    }
+    CHECK(keymap_lookup(&reloaded, (KeyChord){ 263, 0 }) == NULL);   // Left unbound
+    keymap_free(&reloaded);
+    kv_free(&saved);
+    string_free(&diff);
+    keymap_free(&edited);
+    keymap_free(&defaults);
     kv_free(&kv);
 }
 
@@ -179,6 +207,7 @@ static void test_settings_keys(void) {
                     CHECK(sv_find_char(k, '.') > 0);
                     continue;
                 }
+                if (sexpr_is_list(f, "keymap")) continue;   // the key bindings editor: no settings key
                 if (!config_field(k)) fprintf(stderr, "    forms.lisp:%d: unknown settings key '%.*s'\n", f->line, SV_ARG(k));
                 CHECK(config_field(k) != NULL);
             }

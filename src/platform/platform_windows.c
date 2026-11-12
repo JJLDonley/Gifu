@@ -465,14 +465,24 @@ void process_destroy(Process *proc) {
 
 
 
+// The common dialogs refuse '/' in their starting path (GetSaveFileName fails at once,
+// FNERR_INVALIDFILENAME, without showing anything): our paths mix both separators.
+static void backslashes(wchar_t *w) {
+    for (; w && *w; ++w) {
+        if (*w == L'/') *w = L'\\';
+    }
+}
+
 static bool run_dialog(bool save, StringView initial, String *out_path) {
     wchar_t buffer[4096] = { 0 };
     if (save && initial.len) {
         wchar_t *w = os_utf8_to_wide(initial);
         wcsncpy(buffer, w, countof(buffer) - 1);
         free(w);
+        backslashes(buffer);
     }
     wchar_t *dir = !save && initial.len ? os_utf8_to_wide(initial) : NULL;
+    backslashes(dir);
     OPENFILENAMEW ofn = { 0 };
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner = GetActiveWindow();
@@ -483,6 +493,13 @@ static bool run_dialog(bool save, StringView initial, String *out_path) {
     ofn.lpstrDefExt = L"sgf";
     ofn.Flags = OFN_NOCHANGEDIR | (save ? OFN_OVERWRITEPROMPT : OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST);
     BOOL ok = save ? GetSaveFileNameW(&ofn) : GetOpenFileNameW(&ofn);
+    DWORD err = ok ? 0 : CommDlgExtendedError();   // 0: the user cancelled
+    if (err) {
+        log_warn("file dialog failed (error 0x%lx): opening it without the suggested name", (unsigned long)err);
+        buffer[0] = 0;
+        ofn.lpstrInitialDir = NULL;
+        ok = save ? GetSaveFileNameW(&ofn) : GetOpenFileNameW(&ofn);
+    }
     free(dir);
     if (!ok) return false;
     *out_path = os_wide_to_utf8(buffer);
