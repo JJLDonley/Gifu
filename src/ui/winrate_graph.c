@@ -50,47 +50,6 @@ static void draw_graph(void *user, Rectangle r) {
         has_prev = true;
     }
 
-    // Rank estimate per phase: a dashed divider where each phase starts, and
-    // the estimated ranks ("● 3d ○ 1d") at the top of each phase's span.
-    if (ui->app->rank_valid) {
-        i32 points = game_tree_width(ui->app->tree) * game_tree_height(ui->app->tree);
-        f32 size = 11.0f * ui->scale;
-        f32 phase_x[RANK_PHASES + 1];
-        for (i32 ph = 0; ph < RANK_PHASES; ++ph) {
-            i32 start = rank_phase_start(ph, points);
-            isize index = st->count;
-            for (isize i = 0; i < st->count; ++i) {
-                if (st->line[i]->move_number >= start) {
-                    index = i;
-                    break;
-                }
-            }
-            phase_x[ph] = index >= st->count ? r.x + r.width : r.x + step * (f32)index;
-        }
-        phase_x[RANK_PHASE_OPENING] = r.x;
-        phase_x[RANK_PHASES] = r.x + r.width;
-        Color divider = color_with_alpha(c->human_policy, 0.55f);
-        for (i32 ph = 0; ph < RANK_PHASES; ++ph) {
-            f32 x0 = phase_x[ph], x1 = phase_x[ph + 1];
-            if (x1 - x0 < 2.0f) continue;   // the game did not reach this phase
-            if (ph > 0) {
-                for (f32 y = r.y; y < r.y + r.height; y += 6.0f * ui->scale) {
-                    DrawLineEx((Vector2){ x0, y }, (Vector2){ x0, fminf(y + 3.0f * ui->scale, r.y + r.height) }, 1.0f, divider);
-                }
-            }
-            const RankSummary *rs = &ui->app->rank;
-            i32 b = rank_tally_best(&rs->phase[ph][STONE_BLACK]), w = rank_tally_best(&rs->phase[ph][STONE_WHITE]);
-            if (b < 0 && w < 0) continue;
-            char text[48];
-            snprintf(text, sizeof(text), "\xE2\x97\x8F %.*s  \xE2\x97\x8B %.*s", (int)rank_label(b).len, rank_label(b).data,
-                     (int)rank_label(w).len, rank_label(w).data);   // ● ○
-            Vector2 m = font_measure(ui->fonts, FONT_MONO, size, sv(text));
-            if (m.x > x1 - x0 - 4.0f * ui->scale) continue;   // no room in a short phase
-            font_draw_centered(ui->fonts, FONT_MONO, size, sv(text), (Vector2){ (x0 + x1) * 0.5f, r.y + m.y * 0.5f + 3.0f * ui->scale },
-                               c->human_policy);
-        }
-    }
-
     // Current node marker.
     for (isize i = 0; i < st->count; ++i) {
         if (st->line[i] != ui->app->tree->current) continue;
