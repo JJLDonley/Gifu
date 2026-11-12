@@ -9,6 +9,7 @@
 #include "core/game_report.h"
 
 #include <math.h>
+#include <stdlib.h>
 #include <stdio.h>
 
 enum { DEEP_MAX_LINE = 4096, TREND_WINDOW = 10 };
@@ -356,27 +357,65 @@ static void distribution(DeepReport *d, bool winrate, f32 row_px) {
 
 // ---- Biggest mistakes -----------------------------------------------------------------------------------
 
+// A column title that sorts the table when clicked (the active one is
+// highlighted, with a small arrow).
+static void sort_header(Ui *ui, StringView label, i32 index, bool active, f32 width, bool right, String *setting, const char *value) {
+    const ThemeColors *c = &ui->theme->colors;
+    Clay_ElementId id = CLAY_IDI("DeepMistakeSort", (u32)index);
+    bool over = Clay_PointerOver(id);
+    Color color = active ? c->accent : over ? c->text : c->text_muted;
+    CLAY({ .id = id,
+           .layout = { .sizing = { width > 0 ? CLAY_SIZING_FIXED(ui_px(ui, width)) : CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 3),
+                       .childAlignment = { .x = right ? CLAY_ALIGN_X_RIGHT : CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_CENTER } } }) {
+        ui_label(ui, label, active ? FONT_UI_BOLD : FONT_UI, g_cell_size, color);
+        if (active) ui_icon(ui, icon_find(sv_eq(sv(value), SV("move")) ? SV("up") : SV("down")), 12, color);
+    }
+    if (over) SetMouseCursor(MOUSE_CURSOR_POINTING_HAND);
+    if (over && ui->mouse_pressed) {
+        string_free(setting);
+        *setting = string_from(sv(value));
+    }
+}
+
+static i32 by_move_number(const void *a, const void *b) {
+    return (*(GameNode *const *)a)->move_number - (*(GameNode *const *)b)->move_number;
+}
+
 static void mistakes(DeepReport *d) {
     Ui *ui = d->ui;
     const ThemeColors *c = &ui->theme->colors;
-    // Merge both players' worst lists by win-rate loss.
+    Config *cfg = &ui->app->config;
+    // Sorted by win rate lost, points lost or move number (a click on the column
+    // title; remembered). By move number, the rows are the biggest losses by the
+    // last loss column chosen, in game order.
+    StringView sort = string_sv(&cfg->report_mistakes_sort);
+    bool by_move = sv_eq(sort, SV("move"));
+    if (!by_move && !sv_eq(sort, string_sv(&cfg->report_mistakes_by))) {   // the loss column last chosen
+        string_free(&cfg->report_mistakes_by);
+        cfg->report_mistakes_by = string_from(sort);
+    }
+    bool by_points = by_move ? sv_eq(string_sv(&cfg->report_mistakes_by), SV("points")) : sv_eq(sort, SV("points"));
+    // Merge both players' worst lists by that loss.
     GameNode *rows[REPORT_WORST * 2];
-    f32 loss[REPORT_WORST * 2];
+    f32 key[REPORT_WORST * 2];
     i32 n = 0;
     for (Stone color = STONE_BLACK; color <= STONE_WHITE; ++color) {
         const PlayerReport *p = &d->report.player[color];
-        for (i32 i = 0; i < p->worst_count; ++i) {
+        i32 count = by_points ? p->worst_points_count : p->worst_count;
+        for (i32 i = 0; i < count; ++i) {
+            f32 k = by_points ? p->worst_points_loss[i] : p->worst_loss[i];
             i32 at = n++;
-            while (at > 0 && loss[at - 1] < p->worst_loss[i]) {
+            while (at > 0 && key[at - 1] < k) {
                 rows[at] = rows[at - 1];
-                loss[at] = loss[at - 1];
+                key[at] = key[at - 1];
                 --at;
             }
-            rows[at] = p->worst[i];
-            loss[at] = p->worst_loss[i];
+            rows[at] = by_points ? p->worst_points[i] : p->worst[i];
+            key[at] = k;
         }
     }
     n = MIN(n, REPORT_WORST);
+    if (by_move) qsort(rows, (size_t)n, sizeof(rows[0]), by_move_number);
     if (n == 0) {
         ui_label(ui, tr(ui, "report.no_mistakes", "No analysed moves yet: run Analyze game."), FONT_UI, 15, c->text_muted);
         return;
@@ -387,13 +426,13 @@ static void mistakes(DeepReport *d) {
     CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 10),
                        .padding = { ui_u16(ui, 6), ui_u16(ui, 6), 0, ui_u16(ui, 4) } },
            .border = { .color = color_to_clay(c->border), .width = { .bottom = 1 } } }) {
-        cell(ui, tr(ui, "label.move", "Move"), FONT_UI, c->text_muted, 70, false);
+        sort_header(ui, tr(ui, "label.move", "Move"), 0, by_move, 70, false, &cfg->report_mistakes_sort, "move");
         cell(ui, SV(""), FONT_UI, c->text_muted, 20, false);
         cell(ui, tr(ui, "report.played", "Played"), FONT_UI, c->text_muted, 80, false);
         cell(ui, tr(ui, "report.best", "Best"), FONT_UI, c->text_muted, 80, false);
         cell(ui, SV(""), FONT_UI, c->text_muted, 0, false);
-        cell(ui, tr(ui, "report.win_loss", "Win rate lost"), FONT_UI, c->text_muted, 110, true);
-        cell(ui, tr(ui, "report.points_lost", "Points lost"), FONT_UI, c->text_muted, 100, true);
+        sort_header(ui, tr(ui, "report.win_loss", "Win rate lost"), 1, !by_move && !by_points, 140, true, &cfg->report_mistakes_sort, "winrate");
+        sort_header(ui, tr(ui, "report.points_lost", "Points lost"), 2, !by_move && by_points, 130, true, &cfg->report_mistakes_sort, "points");
     }
     for (i32 i = 0; i < n; ++i) {
         GameNode *node = rows[i];
@@ -401,8 +440,9 @@ static void mistakes(DeepReport *d) {
         point_to_gtp(node->move.point, node->board.width, node->board.height, played);
         const NodeEval *before = &node->parent->eval;
         if (before->top_count > 0) point_to_gtp(before->top[0], node->board.width, node->board.height, best);
-        f32 points = 0;
+        f32 points = 0, wr = 0;
         bool has_points = game_node_score_loss(node, &points);
+        game_node_winrate_loss(node, &wr);
         Clay_ElementId id = CLAY_IDI("DeepMistake", (u32)i);
         bool over = Clay_PointerOver(id);
         f32 h = anim_towards(&ui->anim, id.id, over ? 1.0f : 0.0f, 18.0f, 0.0f);
@@ -417,8 +457,9 @@ static void mistakes(DeepReport *d) {
             cell(ui, arena_format(&ui->frame, "%s", played), FONT_MONO, c->candidate_bad, 80, false);
             cell(ui, arena_format(&ui->frame, "%s", best), FONT_MONO, c->candidate_good, 80, false);
             cell(ui, SV(""), FONT_UI, c->text, 0, false);
-            cell(ui, arena_format(&ui->frame, "-%.1f%%", loss[i] * 100.0f), FONT_MONO, loss[i] > 0.10f ? c->candidate_bad : c->text, 110, true);
-            cell(ui, has_points ? arena_format(&ui->frame, "-%.1f", points) : SV("—"), FONT_MONO, c->text, 100, true);
+            // Losses with a minus; a move that gained (by the other measure) gets a plus.
+            cell(ui, arena_format(&ui->frame, "%+.1f%%", -wr * 100.0f), FONT_MONO, wr > 0.10f ? c->candidate_bad : c->text, 140, true);
+            cell(ui, has_points ? arena_format(&ui->frame, "%+.1f", -points) : SV("—"), FONT_MONO, points > 5.0f ? c->candidate_bad : c->text, 130, true);
         }
         if (over && ui->mouse_pressed) app_goto(ui->app, node);
     }

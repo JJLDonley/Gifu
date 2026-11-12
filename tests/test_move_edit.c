@@ -75,6 +75,12 @@ static void test_edits(void) {
     line_text(t, text, sizeof(text));
     CHECK(strcmp(text, "B2,2 W16,16 B9,9 B2,16 W16,2") == 0);
     CHECK(game_node_child_count(n[1]) == 1);   // replaced, not a new variation
+    GameNode *inserted = n[1]->first_child;
+    CHECK(inserted->to_play == STONE_BLACK);   // still Black to play after inserting a black stone
+    MoveEditRecord r2;   // and it stays so when the line is replayed by a later edit
+    game_tree_goto(t, n[1]->first_child->first_child);
+    CHECK(move_edit_apply(t, &(MoveEdit){ MOVE_EDIT_SWAP, n[0]->first_child }, &r2));
+    CHECK(t->root->first_child->first_child->first_child->to_play == STONE_BLACK);
     game_tree_free(t);
 
     // Moving the first stone onto the last move's point: that move is left out.

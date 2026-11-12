@@ -79,6 +79,10 @@ static const ConfigField FIELDS[] = {
     STR("sync.area", sync_area, ""),
     INT("tsumego.margin", tsumego_margin, 2, 1, 5),
     INT("report.compare_rank", report_compare_rank, 11, 0, 11),
+    // Mistakes table: sorted by winrate | points | move; `by` picks which biggest
+    // losses are listed when sorted by move number.
+    STR("report.mistakes_sort", report_mistakes_sort, "winrate"),
+    STR("report.mistakes_by", report_mistakes_by, "winrate"),
     INT("engine.max_processes", engine_max_processes, 1, 1, 4),
     INT("new_game.size", new_game_size, 19, 5, 25),
     FLOAT("new_game.komi", new_game_komi, 7.5, -150.0, 150.0),

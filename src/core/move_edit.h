@@ -13,7 +13,8 @@
 #include "core/game_tree.h"
 
 typedef enum MoveEditKind {
-    MOVE_EDIT_INSERT,     // a new move after `node` (the current one); the rest follows it
+    MOVE_EDIT_INSERT,     // a stone after `node` (the current one); the rest follows it; the
+                          // same player is still to move (PL[])
     MOVE_EDIT_DELETE,     // remove `node`'s move ("de-insert")
     MOVE_EDIT_SWAP,       // `node`'s move by the other colour
     MOVE_EDIT_RELOCATE,   // `node`'s move to `move.point`

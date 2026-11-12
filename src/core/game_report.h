@@ -50,6 +50,9 @@ typedef struct PlayerReport {
     GameNode *worst[REPORT_WORST];   // biggest win-rate losses, worst first
     f32 worst_loss[REPORT_WORST];
     i32 worst_count;
+    GameNode *worst_points[REPORT_WORST];   // biggest point losses, worst first
+    f32 worst_points_loss[REPORT_WORST];
+    i32 worst_points_count;
 } PlayerReport;
 
 typedef struct GameReport {

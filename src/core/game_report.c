@@ -38,18 +38,19 @@ static i32 bucket(const f32 *bounds, f32 value) {
     return b;
 }
 
-static void insert_worst(PlayerReport *p, GameNode *node, f32 loss) {
-    i32 at = p->worst_count;
-    while (at > 0 && p->worst_loss[at - 1] < loss) --at;
+// Keeps the REPORT_WORST biggest losses, worst first.
+static void insert_worst(GameNode **nodes, f32 *losses, i32 *count, GameNode *node, f32 loss) {
+    i32 at = *count;
+    while (at > 0 && losses[at - 1] < loss) --at;
     if (at >= REPORT_WORST) return;
-    i32 last = MIN(p->worst_count, REPORT_WORST - 1);
+    i32 last = MIN(*count, REPORT_WORST - 1);
     for (i32 i = last; i > at; --i) {
-        p->worst[i] = p->worst[i - 1];
-        p->worst_loss[i] = p->worst_loss[i - 1];
+        nodes[i] = nodes[i - 1];
+        losses[i] = losses[i - 1];
     }
-    p->worst[at] = node;
-    p->worst_loss[at] = loss;
-    if (p->worst_count < REPORT_WORST) p->worst_count++;
+    nodes[at] = node;
+    losses[at] = loss;
+    if (*count < REPORT_WORST) ++*count;
 }
 
 void game_report_compute(GameNode *const *line, isize count, GameReport *out) {
@@ -95,7 +96,9 @@ void game_report_compute(GameNode *const *line, isize count, GameReport *out) {
             st->top3++;
             break;
         }
-        if (wr_loss > 0.0f) insert_worst(p, n, wr_loss);
+        if (wr_loss > 0.0f) insert_worst(p->worst, p->worst_loss, &p->worst_count, n, wr_loss);
+        f32 points = 0;
+        if (game_node_score_loss(n, &points) && points > 0.0f) insert_worst(p->worst_points, p->worst_points_loss, &p->worst_points_count, n, points);
     }
     for (i32 c = STONE_BLACK; c <= STONE_WHITE; ++c) {
         PlayerReport *p = &out->player[c];

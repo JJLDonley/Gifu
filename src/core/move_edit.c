@@ -2,10 +2,10 @@
 
 #include <stdlib.h>
 
-// Properties that travel with a move when its line is played again: comments and
-// markup (not the move itself, nor analysis of a position that no longer exists).
+// Properties that travel with a move when its line is played again: the player to
+// move after an inserted stone (PL), comments and markup (not the move itself, nor analysis of a position that no longer exists).
 static bool carried(StringView ident) {
-    static const char *const KEEP[] = { "C", "N", "LB", "TR", "SQ", "CR", "MA", "TB", "TW", "AR", "LN", "CGS", "CGP" };
+    static const char *const KEEP[] = { "PL", "C", "N", "LB", "TR", "SQ", "CR", "MA", "TB", "TW", "AR", "LN", "CGS", "CGP" };
     for (i32 i = 0; i < countof(KEEP); ++i) {
         if (sv_eq(ident, sv(KEEP[i]))) return true;
     }
@@ -65,6 +65,11 @@ bool move_edit_apply(GameTree *tree, const MoveEdit *e, MoveEditRecord *out) {
         GameNode *n = game_tree_play_new(tree, at, e->move, &err);
         if (!n) ok = false;
         else at = n, focus = n, new_first = n;
+        // An inserted stone does not change whose turn it is (PL[] says so).
+        if (n && n->to_play != parent->to_play) {
+            game_node_set_prop(tree, n, SV("PL"), parent->to_play == STONE_BLACK ? SV("B") : SV("W"));
+            game_tree_rebuild(tree, n);
+        }
     }
     for (isize i = 0; ok && i < count; ++i) {
         const GameNode *old = line[i];
@@ -90,6 +95,7 @@ bool move_edit_apply(GameTree *tree, const MoveEdit *e, MoveEditRecord *out) {
                 continue;
             }
             copy_props(tree, old, made, false);
+            if (game_node_find_prop(made, SV("PL"))) game_tree_rebuild(tree, made);   // whose turn it is
         } else {   // a node without a move (setup, comment): copied as is
             made = game_tree_append_child(tree, at);
             copy_props(tree, old, made, true);

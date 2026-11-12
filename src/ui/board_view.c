@@ -701,6 +701,14 @@ static bool stone_edit_input(Ui *ui, const Board *board, Point p) {
         if (same && ui->drag_moved && board_at(board, p) == STONE_EMPTY) app_move_edit(app, &(MoveEdit){ MOVE_EDIT_RELOCATE, node, { STONE_EMPTY, p } });
         return true;
     }
+    // Ctrl+Shift+click a stone: jump to the move that played it (Cmd+Shift on macOS too).
+    bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL) || IsKeyDown(KEY_LEFT_SUPER) || IsKeyDown(KEY_RIGHT_SUPER);
+    bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+    if (ui->mouse_pressed && ctrl && shift) {
+        GameNode *node = move_edit_stone_node(app->tree, p);
+        if (node) app_goto(app, node);
+        return true;   // never a move
+    }
     if (ui->mouse_pressed && app->config.drag_stones && board_at(board, p) != STONE_EMPTY) {
         GameNode *node = move_edit_stone_node(app->tree, p);
         if (!node) return false;
