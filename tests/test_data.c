@@ -116,6 +116,28 @@ static void test_keymap(void) {
     kv_free(&kv);
 }
 
+// data/icons.kv: every entry is "@icon [text]" for a command id (ui.c checks the
+// ids and icon names against the registries at startup).
+static void test_icons(void) {
+    KvFile kv = { 0 };
+    CHECK(load_kv_asset("data/icons.kv", &kv));
+    CHECK(kv.entries.len >= 10);
+    CHECK(sv_find(kv_get(&kv, SV("names_setting"), SV("")), SV("analysis.candidates")) >= 0);
+    vec_foreach(KvEntry, e, &kv.entries) {
+        if (sv_eq(e->key, SV("names_setting"))) continue;
+        if (sv_starts_with(e->key, SV("setting."))) {   // <setting key> [when_on] [tip=...]
+            StringView rest = e->value;
+            CHECK(config_field(sv_chop_token(&rest)) != NULL);
+            continue;
+        }
+        CHECK(sv_find_char(e->key, '.') > 0);
+        CHECK(sv_starts_with(e->value, SV("@")));
+    }
+    CHECK(sv_eq(kv_get(&kv, SV("analysis.candidates"), SV("")), SV("@candidates")));
+    CHECK(sv_eq(kv_get(&kv, SV("view.coordinates"), SV("")), SV("@coordinates")));
+    kv_free(&kv);
+}
+
 static void test_engine_profiles(void) {
     KvFile kv = { 0 };
     CHECK(load_kv_asset("data/engines.kv", &kv));
@@ -126,6 +148,25 @@ static void test_engine_profiles(void) {
     vec_foreach(EngineProfile, p, &profiles) {
         CHECK(sv_find(string_sv(&p->program), SV("${")) < 0);
         printf("    profile %-16s available=%d model=%s\n", string_cstr(&p->id), engine_profile_available(p), string_cstr(&p->model));
+        // Leela's network copies (--weights FILE) are shipped from leela/weights/.
+        for (isize i = 0; i + 1 < p->args.len; ++i) {
+            if (!sv_eq(string_sv(&p->args.items[i]), SV("--weights"))) continue;
+            String shipped = path_join(SV(GIFU_SOURCE_DIR "/leela/weights"), path_basename(string_sv(&p->args.items[i + 1])));
+            if (!os_file_exists(string_sv(&shipped))) fprintf(stderr, "    %s: missing %s\n", string_cstr(&p->id), string_cstr(&shipped));
+            CHECK(os_file_exists(string_sv(&shipped)));
+            string_free(&shipped);
+        }
+    }
+    for (const char *const *id = (const char *const[]){ "leela", "leela-fp16", "leela-q8", "leela-q6", "leela-opencl", "leela-opencl-fp16",
+                                                        "leela-opencl-q8", "leela-opencl-q6", NULL };
+         *id; ++id) {
+        CHECK(engine_profiles_find(&profiles, sv(*id)) != NULL);
+    }
+    // Every engine list: GPU profiles first, then CPU ones; each shipped profile says which.
+    for (isize i = 0; i < profiles.len; ++i) {
+        CHECK(profiles.items[i].device_set);
+        if (i > 0) CHECK(!(profiles.items[i - 1].cpu && !profiles.items[i].cpu));
+        CHECK(profiles.items[i].cpu == (sv_find(string_sv(&profiles.items[i].name), SV("CPU")) >= 0));
     }
     // User layer: override one field set, add args.
     KvFile user = { 0 };
@@ -293,6 +334,7 @@ void register_data_tests(void) {
     test_register("data/config_round_trip", test_config_round_trip);
     test_register("data/themes_parse", test_themes_parse);
     test_register("data/keymap", test_keymap);
+    test_register("data/icons", test_icons);
     test_register("data/engine_profiles", test_engine_profiles);
     test_register("data/i18n", test_i18n);
 }

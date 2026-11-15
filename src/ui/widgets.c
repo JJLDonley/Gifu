@@ -1,4 +1,5 @@
 #include "ui/ui.h"
+#include "platform/os.h"
 
 #include <stdarg.h>
 #include <math.h>
@@ -33,6 +34,15 @@ Clay_TextElementConfig *ui_text_style(Ui *ui, FontRole role, f32 size, Color col
 
 void ui_label(Ui *ui, StringView text, FontRole role, f32 size, Color color) {
     CLAY_TEXT(ui_str(ui, text), ui_text_style(ui, role, size, color));
+}
+
+void ui_label_fit(Ui *ui, StringView text, FontRole role, f32 size, Color color, bool elide_left) {
+    // A clipping box lets Clay give the text less than its full width; the renderer
+    // then shortens what runs past the edge (clay_render.c).
+    CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) } }, .clip = { .horizontal = true } }) {
+        CLAY_TEXT(ui_str(ui, text), CLAY_TEXT_CONFIG({ .fontId = (u16)role, .fontSize = ui_u16(ui, size), .textColor = color_to_clay(color),
+                                                       .wrapMode = CLAY_TEXT_WRAP_NONE, .userData = elide_left ? CLAY_TEXT_ELIDE_LEFT : NULL }));
+    }
 }
 
 bool ui_clicked(Ui *ui, Clay_ElementId id, bool enabled) {
@@ -97,6 +107,16 @@ bool ui_button(Ui *ui, Clay_ElementId id, StringView label, ButtonStyle style, b
     return ui_clicked(ui, id, enabled);
 }
 
+StringView ui_command_icon(const Ui *ui, StringView command_id) { return kv_get(&ui->app->icons, command_id, SV("")); }
+
+bool ui_command_names_setting(const Ui *ui, StringView command_id) {
+    StringView rest = kv_get(&ui->app->icons, SV("names_setting"), SV(""));
+    for (StringView id = sv_chop_token(&rest); id.len; id = sv_chop_token(&rest)) {
+        if (sv_eq(id, command_id)) return true;
+    }
+    return false;
+}
+
 void ui_command_button(Ui *ui, StringView command_id, StringView icon, ButtonStyle style, u32 index) {
     ui_command_button_ex(ui, command_id, icon, false, style, index);
 }
@@ -108,6 +128,9 @@ void ui_command_button_ex(Ui *ui, StringView command_id, StringView icon, bool w
         ui_label(ui, command_id, FONT_UI, 12, ui->theme->colors.danger);
         return;
     }
+    // A toggle shows its state: filled when on, plain when off, whatever its style.
+    // (:style primary drew it filled always, so Analyze looked on while off.)
+    if (cmd->checked && style == BUTTON_PRIMARY) style = BUTTON_NORMAL;
     char key[128];
     snprintf(key, sizeof(key), "command.%s", cmd->id);
     StringView label = icon.len ? icon : app_tr(app, key, cmd->label);
@@ -118,6 +141,41 @@ void ui_command_button_ex(Ui *ui, StringView command_id, StringView icon, bool w
     Clay_ElementId id = Clay_GetElementIdWithIndex(ui_str(ui, command_id), index);
     if (ui_button(ui, id, label, style, command_is_checked(&app->commands, cmd), command_is_enabled(&app->commands, cmd))) {
         command_execute(&app->commands, command_id);
+    }
+    // Tooltip: the command's name and its key (from the keymap, so a rebinding shows).
+    StringView name = app_tr(app, key, cmd->label);
+    char chord[48] = "";
+    const KeyBinding *binding = keymap_find_command(&app->keymap, command_id);
+    if (binding) key_chord_format(binding->chord, chord, sizeof(chord));
+    ui_tooltip(ui, id, chord[0] ? arena_format(&ui->frame, SV_FMT "   %s", SV_ARG(name), chord) : name);
+}
+
+void ui_tooltip(Ui *ui, Clay_ElementId id, StringView text) {
+    if (!text.len || !Clay_PointerOver(id)) return;
+    ui->tip_seen = true;
+    f64 now = os_time_seconds();
+    if (ui->tip_id != id.id || ui->mouse_down) ui->tip_id = id.id, ui->tip_since = now;   // a click hides it until the mouse rests again
+    if (now - ui->tip_since < 0.5) return;
+    const ThemeColors *c = &ui->theme->colors;
+    Clay_ElementData at = Clay_GetElementData(id);
+    if (!at.found) return;
+    // Below the element (above it in the lower half of the window); kept inside the
+    // window at the left and right edges.
+    bool up = at.boundingBox.y > (f32)GetScreenHeight() * 0.5f;
+    f32 mid = at.boundingBox.x + at.boundingBox.width * 0.5f, w = (f32)GetScreenWidth();
+    Clay_FloatingAttachPointType x_el = mid < w * 0.15f ? CLAY_ATTACH_POINT_LEFT_TOP : mid > w * 0.85f ? CLAY_ATTACH_POINT_RIGHT_TOP : CLAY_ATTACH_POINT_CENTER_TOP;
+    Clay_FloatingAttachPointType el = up ? (Clay_FloatingAttachPointType)(x_el + 2) : x_el;          // *_TOP -> *_BOTTOM
+    Clay_FloatingAttachPointType parent = up ? x_el : (Clay_FloatingAttachPointType)(x_el + 2);
+    CLAY({ .floating = { .attachTo = CLAY_ATTACH_TO_ELEMENT_WITH_ID, .parentId = id.id, .zIndex = 300,
+                         .offset = { 0, up ? -ui_px(ui, 6) : ui_px(ui, 6) },
+                         .attachPoints = { .element = el, .parent = parent },
+                         .pointerCaptureMode = CLAY_POINTER_CAPTURE_MODE_PASSTHROUGH },
+           .layout = { .padding = { ui_u16(ui, 8), ui_u16(ui, 8), ui_u16(ui, 4), ui_u16(ui, 4) } },
+           .backgroundColor = color_to_clay(color_with_alpha(c->surface, 1.0f)),
+           .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 4)),
+           .border = { .color = color_to_clay(c->border), .width = CLAY_BORDER_OUTSIDE(1) } }) {
+        CLAY_TEXT(ui_str(ui, text), CLAY_TEXT_CONFIG({ .fontId = FONT_UI, .fontSize = ui_u16(ui, 12),
+                                                       .textColor = color_to_clay(c->text), .wrapMode = CLAY_TEXT_WRAP_NONE }));
     }
 }
 

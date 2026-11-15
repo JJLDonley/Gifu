@@ -82,6 +82,10 @@ static bool parse_args(int argc, char **argv, AppOptions *opts) {
         else if (sv_eq(a, SV("--run")) && has_value && opts->run_command_count < (i32)countof(opts->run_commands)) {
             opts->run_commands[opts->run_command_count++] = sv(argv[++i]);
         }
+        else if (sv_eq(a, SV("--press")) && has_value && opts->press_count < (i32)countof(opts->press)) {
+            opts->press[opts->press_count++] = sv(argv[++i]);
+        }
+        else if (sv_eq(a, SV("--state-log")) && has_value) opts->state_log = sv(argv[++i]);
         else if (sv_eq(a, SV("--verbose"))) log_set_level(LOG_LEVEL_DEBUG);
         else if (sv_eq(a, SV("--help")) || sv_eq(a, SV("-h"))) return false;
         else if (!sv_starts_with(a, SV("--"))) opts->sgf_path = a;

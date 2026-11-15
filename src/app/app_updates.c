@@ -4,6 +4,7 @@
 #include "base/log.h"
 #include "platform/os.h"
 #include "base/version_info.h"
+#include "app/update.h"
 
 #include <stdlib.h>
 #include <time.h>
@@ -18,9 +19,26 @@ static void ensure_updater(App *app) {
     app->updater = updater_create(string_sv(&app->exe_dir), sv(appimage ? appimage : ""), string_sv(&app->config.updates_url));
 }
 
+bool app_update_pending(const App *app) {
+    switch (app->update.phase) {
+        case UPDATER_DOWNLOADING:
+        case UPDATER_VERIFYING:
+        case UPDATER_READY: return true;   // installing: finish with a restart
+        default: break;
+    }
+    StringView v = string_sv(&app->config.updates_available);
+    return v.len && version_compare(v, SV(GIFU_VERSION)) > 0 && !sv_eq(v, string_sv(&app->config.updates_skip));
+}
+
+static void announce(App *app) {
+    app_set_status(app, "Gifu %s is available: Help -> Check for updates", string_cstr(&app->config.updates_available));
+}
+
 void app_updates_init(App *app) {
     bool automated = app->options.screenshot.len > 0 || app->options.headless;
-    if (automated || !app->config.updates_check) return;
+    if (automated) return;
+    if (app_update_pending(app)) announce(app);   // found earlier: remind (no network needed)
+    if (!app->config.updates_check) return;
     char today[16];
     time_t now = time(NULL);
     strftime(today, sizeof(today), "%Y-%m-%d", localtime(&now));
@@ -72,6 +90,16 @@ void app_updates_update(App *app) {
     UpdaterPhase before = app->update.phase;
     updater_status_free(&app->update);
     updater_status(app->updater, &app->update);
+    // Remember what the check found, so the reminder survives restarts (cleared when up to date).
+    if (before == UPDATER_CHECKING && app->update.phase == UPDATER_AVAILABLE) {
+        bool fresh = !sv_eq(string_sv(&app->update.version), string_sv(&app->config.updates_available));
+        string_free(&app->config.updates_available);
+        app->config.updates_available = string_from(string_sv(&app->update.version));
+        if (fresh && app_update_pending(app)) announce(app);
+    } else if (before == UPDATER_CHECKING && app->update.phase == UPDATER_UP_TO_DATE) {
+        string_free(&app->config.updates_available);
+        app->config.updates_available = string_from(SV(""));
+    }
     // A background check opens the dialog only for a version the user has not skipped.
     if (app->update.phase == UPDATER_AVAILABLE && before == UPDATER_CHECKING && !app->update_manual &&
         !sv_eq(string_sv(&app->update.version), string_sv(&app->config.updates_skip))) {

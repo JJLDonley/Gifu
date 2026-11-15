@@ -40,6 +40,10 @@ bool command_is_checked(const CommandRegistry *registry, const CommandDef *cmd) 
     return cmd && cmd->checked && cmd->checked(context_for(registry, cmd));
 }
 
+bool command_needs_attention(const CommandRegistry *registry, const CommandDef *cmd) {
+    return cmd && cmd->attention && cmd->attention(context_for(registry, cmd));
+}
+
 bool command_execute(CommandRegistry *registry, StringView id) {
     const CommandDef *cmd = command_find(registry, id);
     if (!cmd) {

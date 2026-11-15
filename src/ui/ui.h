@@ -134,8 +134,15 @@ typedef struct Ui {
     LayoutEditor layout_editor;
     i32 form_tab;          // selected section of a tabbed form (Settings)
     char key_capture[64];  // Settings -> Keys: the command waiting for its new key ("" = none)
+    u8 press_state[128];   // --press: 0 waiting, 1 pressed, 2 logged after, 3 logged later
     bool key_capture_add;  // the captured key is added to the command's keys (else replaces them)
     bool help_button_hovered;   // a "?" button is under the mouse (this frame)
+    u32 tip_id;                 // element the mouse rests on (tooltip), 0 = none
+    f64 tip_since;              // when it got there (or was last clicked)
+    bool tip_seen;              // some tooltip element was hovered this frame
+    u32 dropdown_open;          // the form dropdown whose list is open (element id), 0 = none
+    bool dropdown_seen;         // that dropdown was drawn this frame (else it closes)
+    bool dropdown_reveal;       // scroll the open list to its chosen option (opened / key)
 
     // Input for this frame.
     Vector2 mouse;
@@ -265,6 +272,10 @@ CustomElement *ui_custom(Ui *ui, CustomDrawFn draw, void *user);
 
 Clay_TextElementConfig *ui_text_style(Ui *ui, FontRole role, f32 size, Color color);
 void ui_label(Ui *ui, StringView text, FontRole role, f32 size, Color color);
+// A one-line label that takes the room it is given and never more: text that does
+// not fit ends in "…" (or starts with it: elide_left, for paths). Use it wherever a
+// label sits in a box of limited width (dropdowns, rows, tabs).
+void ui_label_fit(Ui *ui, StringView text, FontRole role, f32 size, Color color, bool elide_left);
 void ui_stone_dot(Ui *ui, Stone color);   // small stone marker (panels.c)
 void deep_report_dialog(Ui *ui);          // deep_report.c
 void profile_dialog_body(Ui *ui, void *user);   // deep_report.c: the user's profile
@@ -276,11 +287,15 @@ StringView ui_wrap_text(Ui *ui, StringView text, FontRole role, f32 size, f32 ma
 i32 icon_find(StringView name);   // "@prev" or "prev"; -1 if unknown
 void icon_draw(i32 icon, Rectangle r, Color color, f32 stroke);
 void ui_icon(Ui *ui, i32 icon, f32 size, Color color);
+// Theme colours / fonts some icons use (the candidates icon); set once per frame.
+void icons_set_context(FontCache *fonts, Color candidate, Color candidate_text, i32 move_numbers);
 
 // BUTTON_SMALL: a ghost button with less padding and smaller text (compact steppers).
 typedef enum ButtonStyle { BUTTON_GHOST, BUTTON_NORMAL, BUTTON_PRIMARY, BUTTON_SMALL } ButtonStyle;
 // Immediate-mode button; returns true when clicked this frame.
 bool ui_button(Ui *ui, Clay_ElementId id, StringView label, ButtonStyle style, bool checked, bool enabled);
+// After the element `id`: when the mouse rests on it, a small box with `text` beside it.
+void ui_tooltip(Ui *ui, Clay_ElementId id, StringView text);
 // Pressed and released on element `id` (any element: rows, cards...).
 bool ui_clicked(Ui *ui, Clay_ElementId id, bool enabled);
 // Text input (single or multi-line). The caller owns `edit`.
@@ -293,6 +308,13 @@ bool ui_number_input(Ui *ui, Clay_ElementId id, f64 *value, f64 lo, f64 hi, cons
 // Small on/off switch; returns true when toggled this frame.
 bool ui_toggle(Ui *ui, Clay_ElementId id, bool on);
 // Button bound to a registered command (label from i18n "command.<id>").
+// A command's icon from data/icons.kv ("@name [text]"), "" when it has none.
+StringView ui_command_icon(const Ui *ui, StringView command_id);
+// The command is in icons.kv's names_setting (shown by name with "Names instead of icons").
+bool ui_command_names_setting(const Ui *ui, StringView command_id);
+// A setting's choice (as forms.lisp defines it) as a small dropdown, e.g. beside a
+// toolbar button (icons.kv "setting.<command>"); `tooltip` shows on hover.
+void ui_setting_dropdown(Ui *ui, StringView key, StringView tooltip, u32 index);
 void ui_command_button(Ui *ui, StringView command_id, StringView icon, ButtonStyle style, u32 index);
 void ui_command_button_ex(Ui *ui, StringView command_id, StringView icon, bool with_label, ButtonStyle style, u32 index);
 Clay_ElementDeclaration ui_card(Ui *ui, Clay_ElementId id);

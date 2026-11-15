@@ -11,6 +11,18 @@ Clay_Dimensions clay_measure_text(Clay_StringSlice text, Clay_TextElementConfig 
     return (Clay_Dimensions){ size.x, size.y };
 }
 
+char CLAY_TEXT_ELIDE_LEFT[1];
+
+// The shortest start of `text` to drop (at a UTF-8 boundary) so "…" + the rest fits `width`.
+static isize ellipsis_suffix_start(FontCache *fonts, FontRole role, f32 size, StringView text, f32 width) {
+    f32 dots = font_measure(fonts, role, size, SV("…")).x;
+    for (isize i = 1; i < text.len; ++i) {
+        if (((u8)text.data[i] & 0xC0) == 0x80) continue;   // inside a character
+        if (font_measure(fonts, role, size, sv_drop(text, i)).x + dots <= width) return i;
+    }
+    return text.len;
+}
+
 // The longest prefix of `text` (at a UTF-8 boundary) that fits in `width` with "…".
 static isize ellipsis_prefix(FontCache *fonts, FontRole role, f32 size, StringView text, f32 width) {
     f32 dots = font_measure(fonts, role, size, SV("…")).x;
@@ -73,13 +85,16 @@ void clay_render(Clay_RenderCommandArray commands, FontCache *fonts) {
                 StringView text = sv_from_parts(t->stringContents.chars, t->stringContents.length);
                 FontRole role = (FontRole)t->fontId;
                 f32 size = (f32)t->fontSize;
-                // Text running past the edge of its clipping container (a card, a cell)
-                // is shortened with an ellipsis instead of being cut mid-letter.
+                // Text running past the edge of its clipping container (a card, a cell,
+                // ui_label_fit) is shortened with an ellipsis instead of being cut mid-letter:
+                // at the end, or at the start for CLAY_TEXT_ELIDE_LEFT (paths).
                 if (g_scissor_depth > 0) {
                     Rectangle clip = g_scissor[g_scissor_depth - 1];
                     f32 room = clip.x + clip.width - r.x;
                     if (room > 0 && r.x >= clip.x && font_measure(fonts, role, size, text).x > room + 1.0f) {
-                        String cut = string_format(SV_FMT "…", SV_ARG(sv_take(text, ellipsis_prefix(fonts, role, size, text, room))));
+                        String cut = cmd->userData == CLAY_TEXT_ELIDE_LEFT
+                                         ? string_format("…" SV_FMT, SV_ARG(sv_drop(text, ellipsis_suffix_start(fonts, role, size, text, room))))
+                                         : string_format(SV_FMT "…", SV_ARG(sv_take(text, ellipsis_prefix(fonts, role, size, text, room))));
                         font_draw(fonts, role, size, string_sv(&cut), (Vector2){ r.x, r.y }, clay_to_color(t->textColor));
                         string_free(&cut);
                         break;

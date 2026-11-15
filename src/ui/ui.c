@@ -188,6 +188,7 @@ static void cmd_debug(void *c) {
 }
 
 static void cmd_check_updates(void *c) { app_updates_check(UI(c)->app); }
+static bool update_pending(const void *c) { return app_update_pending(((const Ui *)c)->app); }
 static void cmd_website(void *c) {
     UNUSED(c);
     os_open_url(SV("https://github.com/JJLDonley/Gifu"));
@@ -209,7 +210,7 @@ static void register_ui_commands(Ui *ui) {
         { "analysis.report", "Deep report", "Deep report", cmd_deep_report, deep_report_allowed, deep_report_shown, ui },
         { "analysis.profile", "My profile…", "Profile", cmd_profile, NULL, profile_shown, ui },
         { "engine.setup", "Download engines…", "Setup", cmd_setup, NULL, NULL, ui },
-        { "help.check_updates", "Check for updates…", "Updates", cmd_check_updates, NULL, NULL, ui },
+        { "help.check_updates", "Check for updates…", "Updates", cmd_check_updates, NULL, NULL, ui, update_pending },
         { "help.website", "Gifu on GitHub", "GitHub", cmd_website, NULL, NULL, ui },
         { "view.next_tab", "Next tab", "Tab", cmd_next_tab, NULL, NULL, ui },
         { "view.menu", "Menu", "Menu", cmd_menu, NULL, NULL, ui },
@@ -288,6 +289,24 @@ static void validate_command_refs(Ui *ui) {
                 }
             }
         }
+    }
+    vec_foreach(KvEntry, e, &ui->app->icons.entries) {
+        StringView rest = e->value;
+        if (sv_starts_with(e->key, SV("setting."))) {   // setting.<command> = <setting> ...
+            StringView setting = sv_chop_token(&rest);
+            if (!command_find(rc.commands, sv_drop(e->key, 8))) log_warn("icons:%d: unknown command '" SV_FMT "'", e->line, SV_ARG(sv_drop(e->key, 8))), rc.missing++;
+            if (!config_field(setting)) log_warn("icons:%d: unknown setting '" SV_FMT "'", e->line, SV_ARG(setting)), rc.missing++;
+            continue;
+        }
+        if (sv_eq(e->key, SV("names_setting"))) {   // a list of command ids
+            for (StringView id = sv_chop_token(&rest); id.len; id = sv_chop_token(&rest)) {
+                if (!command_find(rc.commands, id)) log_warn("icons:%d: unknown command '" SV_FMT "'", e->line, SV_ARG(id)), rc.missing++;
+            }
+            continue;
+        }
+        StringView name = sv_chop_char(&rest, ' ');
+        if (!command_find(rc.commands, e->key)) log_warn("icons:%d: unknown command '" SV_FMT "'", e->line, SV_ARG(e->key)), rc.missing++;
+        if (icon_find(name) < 0) log_warn("icons:%d: unknown icon '" SV_FMT "'", e->line, SV_ARG(name)), rc.missing++;
     }
     if (rc.missing == 0) log_info("data: all layout components and command references resolve");
 }
@@ -412,6 +431,125 @@ static void capture_key(Ui *ui) {
     }
 }
 
+// One key chord, from the keyboard or injected (--press): what the keymap says it
+// runs, with the same rules either way. `first`: the press itself (not auto-repeat).
+// Each press is logged with what it did, so a key that "does nothing" says why.
+static void handle_chord(Ui *ui, KeyChord chord, bool first) {
+    App *app = ui->app;
+    char text[64];
+    key_chord_format(chord, text, (i32)sizeof(text));
+    bool escape = chord.key == KEY_ESCAPE && chord.mods == 0;
+    if (ui->dropdown_open) {   // an open dropdown list has the keyboard (in a dialog or the toolbar)
+        if (escape && first) ui->dropdown_open = 0;
+        if (first) log_info("key %s: %s", text, escape ? "closes the dropdown" : "for the open dropdown");
+        return;
+    }
+    if (ui->dialog != UI_DIALOG_NONE) {   // a dialog has the keyboard: Escape closes it
+        if (escape && first) ui_close_dialog(ui);
+        if (first) log_info("key %s: %s", text, escape ? "closes the dialog" : "ignored (a dialog is open)");
+        return;
+    }
+    if (escape && first) {
+        ui->theme_menu_open = false;
+        ui->open_menu = -1;
+        ui->region_select = ui->region_dragging = false;
+    }
+    const KeyBinding *b = keymap_lookup(&app->keymap, chord);
+    if (!b) {
+        if (first && !escape) log_info("key %s: not bound", text);
+        return;
+    }
+    StringView id = string_sv(&b->command);
+    if (!first && !key_repeats(id)) return;
+    const CommandDef *cmd = command_find(&app->commands, id);
+    if (!cmd) {
+        if (first) log_warn("key %s: unknown command '" SV_FMT "'", text, SV_ARG(id));
+        return;
+    }
+    if (!command_is_enabled(&app->commands, cmd)) {
+        if (first) {
+            char key[128];
+            snprintf(key, sizeof(key), "command.%s", cmd->id);
+            app_set_status(app, SV_FMT ": not available right now", SV_ARG(app_tr(app, key, cmd->label)));   // never silently ignored
+            log_info("key %s: %s is not available now", text, cmd->id);
+        }
+        return;
+    }
+    command_execute(&app->commands, id);
+    if (first) log_info("key %s: %s%s", text, cmd->id, cmd->checked ? (command_is_checked(&app->commands, cmd) ? " (on)" : " (off)") : "");
+}
+
+// --state-log: one JSON line of what keys can change (every command's enabled / on
+// state, the position, dialog, menus, theme, toolbar, status), for checking keys.
+static void log_state(Ui *ui, const char *label) {
+    App *app = ui->app;
+    if (!app->options.state_log.len) return;
+    String s = string_format("{\"label\":\"%s\",\"t\":%.2f,\"move\":%d,\"node\":\"%p\",\"dialog\":%d,\"menu\":%d,"
+                             "\"theme\":\"%s\",\"scale\":%.2f,\"toolbar\":\"%s\",\"play_layout\":%d,\"stones\":%d,\"debug\":%d,\"tab\":%d,\"analysis_on\":%d,\"status\":\"",
+                             label, GetTime(), app->tree->current->move_number, (void *)app->tree->current, (int)ui->dialog, ui->open_menu,
+                             string_cstr(&app->config.theme), app->config.ui_scale, ui->toolbar_mode, app->play_layout,
+                             board_stone_count(&app->tree->current->board, STONE_BLACK) + board_stone_count(&app->tree->current->board, STONE_WHITE),
+                             ui->debug, ui->tab_selected[0], app->analysis_enabled);
+    for (isize i = 0; i < app->status_message.len; ++i) {
+        char c = app->status_message.data[i];
+        if (c == '"' || c == '\\') string_push(&s, SV("\\"));
+        if ((u8)c >= 32) string_push(&s, (StringView){ &c, 1 });
+    }
+    string_push(&s, SV("\",\"commands\":{"));
+    bool comma = false;
+    vec_foreach(CommandDef, cmd, &app->commands.commands) {
+        string_pushf(&s, "%s\"%s\":[%d,%d]", comma ? "," : "", cmd->id, command_is_enabled(&app->commands, cmd),
+                     command_is_checked(&app->commands, cmd));
+        comma = true;
+    }
+    string_push(&s, SV("}}\n"));
+    String old = { 0 };
+    if (!os_read_file(app->options.state_log, &old)) old = string_from(SV(""));   // first line
+    string_push(&old, string_sv(&s));
+    if (!os_write_file(app->options.state_log, string_sv(&old))) log_warn("cannot write the state log");
+    string_free(&old);
+    string_free(&s);
+}
+
+// --press CHORD@SECONDS[+WAIT]: injected presses (key testing). The state is logged
+// just before, 0.3 s after and WAIT s after (default 0.8; engine work needs longer).
+static void inject_keys(Ui *ui) {
+    const AppOptions *o = &ui->app->options;
+    f64 now = GetTime();
+    for (i32 i = 0; i < o->press_count && i < (i32)countof(ui->press_state); ++i) {
+        StringView spec = o->press[i];
+        isize at = sv_find_char(spec, '@');
+        StringView name = at >= 0 ? sv_take(spec, at) : spec;
+        StringView times = at >= 0 ? sv_drop(spec, at + 1) : SV("0");
+        isize plus = sv_find_char(times, '+');
+        char buf[32];
+        snprintf(buf, sizeof(buf), SV_FMT, SV_ARG(plus >= 0 ? sv_take(times, plus) : times));
+        f64 when = atof(buf), wait = 0.8;
+        if (plus >= 0) {
+            snprintf(buf, sizeof(buf), SV_FMT, SV_ARG(sv_drop(times, plus + 1)));
+            wait = atof(buf);
+        }
+        KeyChord chord;
+        if (!key_chord_parse(name, &chord)) continue;
+        char label[64];
+        u8 *st = &ui->press_state[i];
+        if (*st == 0 && now >= when) {
+            *st = 1;
+            snprintf(label, sizeof(label), "before %d " SV_FMT, i, SV_ARG(name));
+            log_state(ui, label);
+            handle_chord(ui, chord, true);
+        } else if (*st == 1 && now >= when + 0.3) {
+            *st = 2;
+            snprintf(label, sizeof(label), "after %d " SV_FMT, i, SV_ARG(name));
+            log_state(ui, label);
+        } else if (*st == 2 && now >= when + wait) {
+            *st = 3;
+            snprintf(label, sizeof(label), "later %d " SV_FMT, i, SV_ARG(name));
+            log_state(ui, label);
+        }
+    }
+}
+
 static void handle_keys(Ui *ui) {
     App *app = ui->app;
     if (ui->key_capture[0] && ui->dialog == UI_DIALOG_NONE) ui->key_capture[0] = 0;   // Settings closed meanwhile
@@ -419,32 +557,20 @@ static void handle_keys(Ui *ui) {
         capture_key(ui);
         return;
     }
+    inject_keys(ui);
     if (ui->focus_id) return;   // a text input owns the keyboard
-    if (ui->dialog != UI_DIALOG_NONE) {
-        if (IsKeyPressed(KEY_ESCAPE)) ui_close_dialog(ui);
-        return;
-    }
     u8 mods = current_mods();
+    if (IsKeyPressed(KEY_ESCAPE) && !keymap_lookup(&app->keymap, (KeyChord){ KEY_ESCAPE, mods })) handle_chord(ui, (KeyChord){ KEY_ESCAPE, mods }, true);
+    // Collect first: a command may change the keymap (Settings -> Keys -> Reset all keys).
+    KeyChord chords[16];
+    bool firsts[16];
+    i32 n = 0;
     vec_foreach(KeyBinding, b, &app->keymap.bindings) {
-        if (b->chord.mods != mods) continue;
-        StringView id = string_sv(&b->command);
+        if (b->chord.mods != mods || n == 16) continue;
         bool pressed = IsKeyPressed(b->chord.key);
-        if (!pressed && !(IsKeyPressedRepeat(b->chord.key) && key_repeats(id))) continue;
-        const CommandDef *cmd = command_find(&app->commands, id);
-        if (cmd && pressed && !key_repeats(id) && !command_is_enabled(&app->commands, cmd)) {
-            char key[128];
-            snprintf(key, sizeof(key), "command.%s", cmd->id);
-            StringView label = app_tr(app, key, cmd->label);
-            app_set_status(app, SV_FMT ": not available right now", SV_ARG(label));   // never silently ignored
-            continue;
-        }
-        command_execute(&app->commands, id);
+        if (pressed || IsKeyPressedRepeat(b->chord.key)) chords[n] = b->chord, firsts[n++] = pressed;
     }
-    if (IsKeyPressed(KEY_ESCAPE)) {
-        ui->theme_menu_open = false;
-        ui->open_menu = -1;
-        ui->region_select = ui->region_dragging = false;
-    }
+    for (i32 i = 0; i < n; ++i) handle_chord(ui, chords[i], firsts[i]);
 }
 
 // Wheel scrolling: each notch moves the innermost hovered scroll container's
@@ -570,6 +696,11 @@ void ui_frame(Ui *ui) {
         ui->help_topic[0] = '\0';
     }
     ui->help_button_hovered = false;
+    icons_set_context(ui->fonts, ui->theme->colors.candidate_best, ui->theme->colors.candidate_text, ui->app->config.move_numbers);
+    if (!ui->dropdown_seen) ui->dropdown_open = 0;   // its field is gone (other tab, dialog closed)
+    ui->dropdown_seen = false;
+    if (!ui->tip_seen) ui->tip_id = 0;   // the mouse left every tooltip element last frame
+    ui->tip_seen = false;
 
     if (ui->language_version != ui->app->language_version) {
         ui->language_version = ui->app->language_version;

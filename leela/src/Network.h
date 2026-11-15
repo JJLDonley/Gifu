@@ -69,6 +69,12 @@ public:
 
 private:
 
+public:
+    // OpenCL build: run the policy net on the CPU instead (the self-test compares
+    // the GPU against it, so it holds for any weights file, not only the original).
+    static bool s_policy_on_cpu;
+
+private:
     static Netresult get_scored_moves_internal(
       FastState * state, NNPlanes & planes, int rotation);
     static float get_value_internal(

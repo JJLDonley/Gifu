@@ -134,7 +134,8 @@ void Network::initialize(void) {
 #endif
 }
 
-#ifdef USE_BLAS
+// Also in the OpenCL build: its self-test computes the policy net on the CPU too.
+#if defined(USE_BLAS) || defined(USE_OPENCL)
 template<unsigned int filter_size,
          unsigned int channels, unsigned int outputs,
          size_t W, size_t B>
@@ -522,6 +523,8 @@ float Network::get_value_internal(
     return result;
 }
 
+bool Network::s_policy_on_cpu = false;
+
 Network::Netresult Network::get_scored_moves_internal(
     FastState * state, NNPlanes & planes, int rotation) {
     Netresult result;
@@ -545,7 +548,35 @@ Network::Netresult Network::get_scored_moves_internal(
     }
 #ifdef USE_OPENCL
     std::copy(orig_input_data.begin(), orig_input_data.end(), input_data.begin());
-    opencl_policy_net.forward(input_data, output_data, nullptr, nullptr);
+    if (s_policy_on_cpu) {   // the self-test's reference: the 192-filter net on the CPU
+        convolve<5,  32, 128>(input_data, conv1_w, conv1_b, output_data);
+        std::swap(input_data, output_data);
+        convolve<3, 128, 192>(input_data, conv2_w, conv2_b, output_data);
+        std::swap(input_data, output_data);
+        convolve<3, 192, 192>(input_data, conv3_w, conv3_b, output_data);
+        std::swap(input_data, output_data);
+        convolve<3, 192, 192>(input_data, conv4_w, conv4_b, output_data);
+        std::swap(input_data, output_data);
+        convolve<3, 192, 192>(input_data, conv5_w, conv5_b, output_data);
+        std::swap(input_data, output_data);
+        convolve<3, 192, 192>(input_data, conv6_w, conv6_b, output_data);
+        std::swap(input_data, output_data);
+        convolve<3, 192, 192>(input_data, conv7_w, conv7_b, output_data);
+        std::swap(input_data, output_data);
+        convolve<3, 192, 192>(input_data, conv8_w, conv8_b, output_data);
+        std::swap(input_data, output_data);
+        convolve<3, 192, 192>(input_data, conv9_w, conv9_b, output_data);
+        std::swap(input_data, output_data);
+        convolve<3, 192, 192>(input_data, conv10_w, conv10_b, output_data);
+        std::swap(input_data, output_data);
+        convolve<3, 192, 192>(input_data, conv11_w, conv11_b, output_data);
+        std::swap(input_data, output_data);
+        convolve<3, 192, 192>(input_data, conv12_w, conv12_b, output_data);
+        std::swap(input_data, output_data);
+        convolve<3, 192,   1>(input_data, conv13_w, conv13_b, output_data);
+    } else {
+        opencl_policy_net.forward(input_data, output_data, nullptr, nullptr);
+    }
     softmax(output_data, softmax_data, cfg_softmax_temp);
     std::vector<float>& outputs = softmax_data;
 #elif defined(USE_BLAS)

@@ -3,6 +3,7 @@
 #include "ui/ui.h"
 
 #include <math.h>
+#include <stdio.h>
 
 typedef void (*IconDraw)(Rectangle r, Color c, f32 stroke);
 
@@ -226,6 +227,111 @@ static void icon_check(Rectangle r, Color c, f32 w) {
     line(r, 0.42f, 0.7f, 0.76f, 0.32f, w, c);
 }
 
+// ---- Toolbar icons (analysis) ----
+
+// What a few icons borrow from the UI: the theme's candidate colours and the fonts.
+static struct {
+    FontCache *fonts;
+    Color candidate, candidate_text;
+    char move_numbers[16];   // the Move numbers setting as shown in its icon ("All", "5", "")
+} icon_ctx;
+
+void icons_set_context(FontCache *fonts, Color candidate, Color candidate_text, i32 move_numbers) {
+    icon_ctx.fonts = fonts, icon_ctx.candidate = candidate, icon_ctx.candidate_text = candidate_text;
+    if (move_numbers < 0) snprintf(icon_ctx.move_numbers, sizeof(icon_ctx.move_numbers), "All");
+    else if (move_numbers == 0) icon_ctx.move_numbers[0] = '\0';
+    else snprintf(icon_ctx.move_numbers, sizeof(icon_ctx.move_numbers), "%d", move_numbers);
+}
+
+static void icon_search(Rectangle r, Color c, f32 w) {   // magnifying glass (Analyze)
+    Vector2 o = at(r, 0.44f, 0.44f);
+    f32 rad = r.width * 0.22f;
+    DrawRing(o, rad - w * 0.5f, rad + w * 0.5f, 0, 360, 32, c);
+    line(r, 0.6f, 0.6f, 0.78f, 0.78f, w * 1.2f, c);
+}
+// The best move as the board shows it: the candidate colour with a number in it.
+// Keeps the button's transparency (a disabled button fades it).
+static void icon_candidates(Rectangle r, Color c, f32 w) {
+    UNUSED(w);
+    f32 fade = (f32)c.a / 255.0f;
+    Vector2 o = at(r, 0.5f, 0.5f);
+    f32 rad = r.width * 0.5f;
+    Color fill = icon_ctx.fonts ? icon_ctx.candidate : c;
+    DrawCircleV(o, rad, color_with_alpha(fill, 0.88f * fade));
+    DrawRing(o, rad - fmaxf(1.0f, rad * 0.12f), rad + 0.5f, 0, 360, 32, color_with_alpha(color_lerp(fill, BLACK, 0.35f), fade));
+    if (icon_ctx.fonts) font_draw_centered(icon_ctx.fonts, FONT_UI_BOLD, r.width * 0.5f, SV("-99"), o, color_with_alpha(icon_ctx.candidate_text, fade));
+}
+static void icon_territory(Rectangle r, Color c, f32 w) {   // a board, one side owned
+    line(r, 0.2f, 0.2f, 0.8f, 0.2f, w, c);
+    line(r, 0.8f, 0.2f, 0.8f, 0.8f, w, c);
+    line(r, 0.8f, 0.8f, 0.2f, 0.8f, w, c);
+    line(r, 0.2f, 0.8f, 0.2f, 0.2f, w, c);
+    Vector2 a = at(r, 0.2f, 0.2f), b = at(r, 0.5f, 0.8f);
+    DrawRectangleV(a, (Vector2){ b.x - a.x, b.y - a.y }, c);
+    line(r, 0.65f, 0.2f, 0.65f, 0.8f, w * 0.6f, c);   // a grid line in the empty half
+    line(r, 0.5f, 0.5f, 0.8f, 0.5f, w * 0.6f, c);
+}
+static void icon_person(Rectangle r, Color c, f32 w) {   // Human moves
+    Vector2 head = at(r, 0.5f, 0.34f);
+    f32 hr = r.width * 0.13f;
+    DrawRing(head, hr - w * 0.5f, hr + w * 0.5f, 0, 360, 24, c);
+    Vector2 body = at(r, 0.5f, 0.86f);
+    f32 br = r.width * 0.3f;
+    DrawRing(body, br - w * 0.5f, br + w * 0.5f, 180, 360, 24, c);
+    line(r, 0.2f, 0.86f, 0.8f, 0.86f, w, c);
+}
+// A stone with the current Move numbers setting on it ("1", "5", "10", "All"; empty for none).
+static void icon_move_numbers(Rectangle r, Color c, f32 w) {
+    Vector2 o = at(r, 0.5f, 0.5f);
+    f32 rad = r.width * 0.46f;
+    DrawRing(o, rad - w * 0.5f, rad + w * 0.5f, 0, 360, 32, c);
+    StringView text = sv(icon_ctx.move_numbers);
+    f32 size = r.width * (text.len >= 3 ? 0.36f : text.len == 2 ? 0.46f : 0.56f);   // "All" / "10" fit inside
+    if (icon_ctx.fonts && text.len) font_draw_centered(icon_ctx.fonts, FONT_UI_BOLD, size, text, o, c);
+}
+static void icon_coordinates(Rectangle r, Color c, f32 w) {   // "A1", a point's name
+    UNUSED(w);
+    if (icon_ctx.fonts) font_draw_centered(icon_ctx.fonts, FONT_UI_BOLD, r.width * 0.72f, SV("A1"), at(r, 0.5f, 0.5f), c);
+}
+static void spark(Rectangle r, f32 x, f32 y, f32 s, Color c, f32 w) {   // a four-point star
+    line(r, x, y - s, x, y + s, w * 0.8f, c);
+    line(r, x - s, y, x + s, y, w * 0.8f, c);
+    line(r, x - s * 0.5f, y - s * 0.5f, x + s * 0.5f, y + s * 0.5f, w * 0.6f, c);
+    line(r, x - s * 0.5f, y + s * 0.5f, x + s * 0.5f, y - s * 0.5f, w * 0.6f, c);
+}
+static void icon_ai_move(Rectangle r, Color c, f32 w) {   // a stone with a spark: the AI plays now
+    DrawCircleV(at(r, 0.42f, 0.58f), r.width * 0.26f, c);
+    spark(r, 0.76f, 0.24f, 0.13f, c, w);
+}
+static void icon_scales(Rectangle r, Color c, f32 w) {   // Score
+    line(r, 0.5f, 0.2f, 0.5f, 0.8f, w, c);
+    line(r, 0.34f, 0.8f, 0.66f, 0.8f, w, c);
+    line(r, 0.18f, 0.3f, 0.82f, 0.3f, w, c);
+    line(r, 0.18f, 0.3f, 0.1f, 0.54f, w * 0.7f, c), line(r, 0.18f, 0.3f, 0.26f, 0.54f, w * 0.7f, c);
+    line(r, 0.08f, 0.54f, 0.28f, 0.54f, w, c);
+    line(r, 0.82f, 0.3f, 0.74f, 0.54f, w * 0.7f, c), line(r, 0.82f, 0.3f, 0.9f, 0.54f, w * 0.7f, c);
+    line(r, 0.72f, 0.54f, 0.92f, 0.54f, w, c);
+}
+static void icon_pass(Rectangle r, Color c, f32 w) {   // an arrow jumping over a point: skip the turn
+    DrawCircleV(at(r, 0.5f, 0.72f), r.width * 0.08f, c);
+    f32 px = 0.16f, py = 0.72f;
+    for (i32 i = 1; i <= 10; ++i) {   // an arc from left to right over the point
+        f32 a = PI * (1.0f - (f32)i / 10.0f);
+        f32 x = 0.5f + 0.34f * cosf(a), y = 0.72f - 0.4f * sinf(a);
+        line(r, px, py, x, y, w, c);
+        px = x, py = y;
+    }
+    line(r, 0.84f, 0.72f, 0.72f, 0.62f, w, c);   // arrow head
+    line(r, 0.84f, 0.72f, 0.9f, 0.58f, w, c);
+}
+static void icon_flag(Rectangle r, Color c, f32 w) {   // white flag (Resign)
+    line(r, 0.26f, 0.16f, 0.26f, 0.86f, w, c);
+    line(r, 0.26f, 0.2f, 0.78f, 0.2f, w, c);
+    line(r, 0.78f, 0.2f, 0.66f, 0.36f, w, c);
+    line(r, 0.66f, 0.36f, 0.78f, 0.52f, w, c);
+    line(r, 0.78f, 0.52f, 0.26f, 0.52f, w, c);
+}
+
 static const struct {
     const char *name;
     IconDraw draw;
@@ -241,6 +347,9 @@ static const struct {
     { "number", icon_number },     { "arrow", icon_arrow },       { "line", icon_line },
     { "pen", icon_pen },           { "shade", icon_shade },       { "eraser", icon_eraser },
     { "trash", icon_trash },       { "play_stones", icon_play_stones },
+    { "search", icon_search },     { "candidates", icon_candidates }, { "territory", icon_territory },
+    { "person", icon_person },     { "coordinates", icon_coordinates }, { "move_numbers", icon_move_numbers }, { "ai_move", icon_ai_move },
+    { "scales", icon_scales },     { "pass", icon_pass },         { "flag", icon_flag },
 };
 
 i32 icon_find(StringView name) {

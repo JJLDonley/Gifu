@@ -14,6 +14,7 @@ typedef struct Config {
     String theme;          // theme id, e.g. "light", "dark", "cream", "coffee-paper"
     String language;       // "en", "zh_CN", "zh_TW", "ja", "ko"
     f32 ui_scale;
+    bool toolbar_labels;         // icons.kv names_setting buttons show their names instead of icons
     bool ui_scale_with_window;   // shrink / grow the interface with the window (around 1400x900)
     String engine;         // engine profile id
     String engine2;
@@ -65,6 +66,7 @@ typedef struct Config {
     String updates_url;          // GitHub /releases API endpoint
     String updates_last_check;   // "YYYY-MM-DD" of the last automatic check
     String updates_skip;         // a version the user chose to skip
+    String updates_available;    // the newer version the last check found ("" = none): Help shows "!" until updated
     String markup_colors;        // shading / pen palette: "rrggbb,rrggbb,..."
     bool markup_count_empty;     // shading counts: empty points only
     String tsumego_ko_threats;   // "none", "attacker", "defender" or "both": who gets a ko threat in the frame

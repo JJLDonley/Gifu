@@ -831,7 +831,7 @@ static void rank_page(DeepReport *d) {
     const ThemeColors *c = &ui->theme->colors;
     if (d->prob_moves == 0) {
         ui_label(ui, tr(ui, "report.rank_none", "No rank estimate for this game yet."), FONT_UI, 15, c->text_muted);
-        ui_command_button_ex(ui, SV("analysis.rank"), SV("@rank"), true, BUTTON_PRIMARY, 20);
+        ui_command_button_ex(ui, SV("analysis.rank"), ui_command_icon(ui, SV("analysis.rank")), true, BUTTON_PRIMARY, 20);
         return;
     }
     i32 ref = CLAMP(app->config.report_compare_rank, 0, RANK_COUNT - 1);
@@ -985,8 +985,8 @@ static void body(Ui *ui, void *user) {
                 }
             }
         }
-        ui_command_button_ex(ui, SV("analysis.rank"), SV("@rank"), true, BUTTON_NORMAL, 10);
-        ui_command_button_ex(ui, SV("analysis.game"), SV("@chart"), true, BUTTON_NORMAL, 11);
+        ui_command_button_ex(ui, SV("analysis.rank"), ui_command_icon(ui, SV("analysis.rank")), true, BUTTON_NORMAL, 10);
+        ui_command_button_ex(ui, SV("analysis.game"), ui_command_icon(ui, SV("analysis.game")), true, BUTTON_NORMAL, 11);
         // Edit: the report's settings (match rule, custom range, filters, Distribution
         // limits) as inputs on every tab; Done shows them as text again.
         StringView edit_label = ui->deep_report_editing ? arena_format(&ui->frame, "@check " SV_FMT, SV_ARG(tr(ui, "report.done", "Done")))
@@ -1284,7 +1284,7 @@ static void profile_header(Ui *ui) {
                              BUTTON_PRIMARY, false, app->config.profile_names.len && app->config.profile_folder.len)) {
             app_profile_build(app);
         }
-        ui_command_button_ex(ui, SV("view.settings"), SV("@gear"), false, BUTTON_NORMAL, 12);
+        ui_command_button_ex(ui, SV("view.settings"), ui_command_icon(ui, SV("view.settings")), false, BUTTON_NORMAL, 12);
         ui_help_button(ui, SV("profile"));
     }
     if (building) {

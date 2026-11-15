@@ -1,11 +1,13 @@
-# Engine profiles: "<id>.<field> = value". Fields: name kind program model config
-# working_dir analysis_config human_model human_required arg (repeat per argument) platforms (comma list). Variables: ${root}
+# Engine profiles: "<id>.<field> = value". Fields: name kind device (gpu|cpu; every engine
+# list shows the GPU engines first, then the CPU ones) program model config working_dir
+# analysis_config human_model human_required arg (repeat per argument) platforms (comma list). Variables: ${root}
 # (install root), ${exe_dir}, ${platform} (windows|linux|macos), ${exe} (".exe" on
 # Windows). A model that is a directory picks the most recently installed network in it.
 # Add or override profiles in <config_dir>/engines.kv.
 
 katago-opencl.name = KataGo · OpenCL
 katago-opencl.kind = katago-gtp
+katago-opencl.device = gpu
 katago-opencl.program = ${root}/katago/${platform}-opencl/katago${exe}
 katago-opencl.model = ${root}/katago/networks
 katago-opencl.config = ${root}/katago/${platform}-opencl/default_gtp.cfg
@@ -14,6 +16,7 @@ katago-opencl.human_model = ${root}/katago/networks/human
 
 katago-cpu.name = KataGo · CPU
 katago-cpu.kind = katago-gtp
+katago-cpu.device = cpu
 katago-cpu.platforms = linux
 katago-cpu.program = ${root}/katago/linux-eigenavx2/katago
 katago-cpu.model = ${root}/katago/networks
@@ -26,6 +29,7 @@ katago-cpu.human_model = ${root}/katago/networks/human
 # *plays* like a human of the rank chosen in Settings (KataGo's human example cfg).
 katago-human.name = KataGo · Human OpenCL
 katago-human.kind = katago-gtp
+katago-human.device = gpu
 katago-human.program = ${root}/katago/${platform}-opencl/katago${exe}
 katago-human.model = ${root}/katago/networks
 katago-human.human_model = ${root}/katago/networks/human
@@ -37,15 +41,75 @@ katago-human.config = ${root}/katago/${platform}-opencl/gtp_human5k_example.cfg
 # human games. It plays Chinese rules and thinks for the AI time per move.
 leela.name = Leela · CPU
 leela.kind = gtp
+leela.device = cpu
 leela.program = ${exe_dir}/leela/leela${exe}
 leela.arg = --gtp
 leela.arg = --noponder
 
 leela-opencl.name = Leela · OpenCL
 leela-opencl.kind = gtp
+leela-opencl.device = gpu
 leela-opencl.program = ${exe_dir}/leela/leela-opencl${exe}
 leela-opencl.arg = --gtp
 leela-opencl.arg = --noponder
+
+# The same Leela with smaller copies of its network (leela/tools/pack_weights.py).
+# Measured against the original: fp16 and 8-bit play the same (8-bit perhaps a
+# little weaker on the GPU net); 6-bit is clearly weaker (a gentler opponent).
+
+leela-fp16.name = Leela · CPU · fp16
+leela-fp16.kind = gtp
+leela-fp16.device = cpu
+leela-fp16.program = ${exe_dir}/leela/leela${exe}
+leela-fp16.arg = --gtp
+leela-fp16.arg = --noponder
+leela-fp16.arg = --weights
+leela-fp16.arg = ${exe_dir}/leela/leela-0.11-fp16.weights
+
+leela-opencl-fp16.name = Leela · OpenCL · fp16
+leela-opencl-fp16.kind = gtp
+leela-opencl-fp16.device = gpu
+leela-opencl-fp16.program = ${exe_dir}/leela/leela-opencl${exe}
+leela-opencl-fp16.arg = --gtp
+leela-opencl-fp16.arg = --noponder
+leela-opencl-fp16.arg = --weights
+leela-opencl-fp16.arg = ${exe_dir}/leela/leela-0.11-fp16.weights
+
+leela-q8.name = Leela · CPU · 8-bit
+leela-q8.kind = gtp
+leela-q8.device = cpu
+leela-q8.program = ${exe_dir}/leela/leela${exe}
+leela-q8.arg = --gtp
+leela-q8.arg = --noponder
+leela-q8.arg = --weights
+leela-q8.arg = ${exe_dir}/leela/leela-0.11-q8.weights
+
+leela-opencl-q8.name = Leela · OpenCL · 8-bit
+leela-opencl-q8.kind = gtp
+leela-opencl-q8.device = gpu
+leela-opencl-q8.program = ${exe_dir}/leela/leela-opencl${exe}
+leela-opencl-q8.arg = --gtp
+leela-opencl-q8.arg = --noponder
+leela-opencl-q8.arg = --weights
+leela-opencl-q8.arg = ${exe_dir}/leela/leela-0.11-q8.weights
+
+leela-q6.name = Leela · CPU · 6-bit
+leela-q6.kind = gtp
+leela-q6.device = cpu
+leela-q6.program = ${exe_dir}/leela/leela${exe}
+leela-q6.arg = --gtp
+leela-q6.arg = --noponder
+leela-q6.arg = --weights
+leela-q6.arg = ${exe_dir}/leela/leela-0.11-q6.weights
+
+leela-opencl-q6.name = Leela · OpenCL · 6-bit
+leela-opencl-q6.kind = gtp
+leela-opencl-q6.device = gpu
+leela-opencl-q6.program = ${exe_dir}/leela/leela-opencl${exe}
+leela-opencl-q6.arg = --gtp
+leela-opencl-q6.arg = --noponder
+leela-opencl-q6.arg = --weights
+leela-opencl-q6.arg = ${exe_dir}/leela/leela-0.11-q6.weights
 
 # Remote engine over SSH (key-based login: there is no terminal for a password
 # prompt). Program, model and config are paths on the remote machine. Put your

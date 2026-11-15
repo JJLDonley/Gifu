@@ -9,6 +9,7 @@
 // Common props: :grow :width N :height N :gap N :padding N.
 #include "ui/ui.h"
 #include "ui/anim.h"
+#include "ui/clay_render.h"
 
 #include "base/log.h"
 #include "platform/os.h"
@@ -19,6 +20,7 @@
 typedef struct LayoutCtx {
     bool horizontal;   // parent's main axis
     bool ghost;        // buttons render ghost-style (navbar)
+    bool toolbar;      // inside (toolbar): buttons follow the icons / names setting
     u32 counter;       // unique index for element ids
     i32 tabs_index;    // stable per-tabs-node state slot
     i32 menu_index;
@@ -66,7 +68,32 @@ static void button(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
     if (!cmd) return;
     StringView style = sexpr_prop_text(node, "style", SV(""));
     ButtonStyle bs = sv_eq(style, SV("primary")) ? BUTTON_PRIMARY : sv_eq(style, SV("ghost")) || ctx->ghost ? BUTTON_GHOST : BUTTON_NORMAL;
-    ui_command_button_ex(ui, cmd->text, sexpr_prop_text(node, "icon", SV("")), sexpr_flag(node, "label"), bs, ctx->counter++);
+    // A command's icon is data of the command (data/icons.kv), not of the layout:
+    // every layout, saved ones included, shows the same icon. (:icon is ignored.)
+    StringView icon = ui_command_icon(ui, cmd->text);
+    bool with_label = sexpr_flag(node, "label");
+    // Toolbar: the icon only (the name is in the tooltip; an old :label is ignored).
+    // "Names instead of icons" (Settings > Appearance) applies only to the commands
+    // listed in icons.kv's names_setting. A command without an icon shows its name.
+    if (ctx->toolbar) with_label = false;
+    if (ui->app->config.toolbar_labels && ui_command_names_setting(ui, cmd->text)) icon = SV("");
+    ui_command_button_ex(ui, cmd->text, icon, with_label, bs, ctx->counter++);
+    // A setting that goes with the command, beside its button (icons.kv
+    // "setting.<command> = <setting> [when_on] [tip=<l10n key>]"), in every layout.
+    char key[128];
+    snprintf(key, sizeof(key), "setting." SV_FMT, SV_ARG(cmd->text));
+    StringView rest = kv_get(&ui->app->icons, sv(key), SV(""));
+    StringView setting = sv_chop_token(&rest), tip = SV("");
+    bool shown = setting.len > 0;
+    for (StringView t = sv_chop_token(&rest); t.len; t = sv_chop_token(&rest)) {
+        if (sv_eq(t, SV("when_on"))) {
+            const CommandDef *def = command_find(&ui->app->commands, cmd->text);
+            shown &= def && command_is_checked(&ui->app->commands, def);
+        } else if (sv_starts_with(t, SV("tip="))) {
+            tip = app_tr(ui->app, arena_format(&ui->frame, SV_FMT, SV_ARG(sv_drop(t, 4))).data, "");
+        }
+    }
+    if (shown) ui_setting_dropdown(ui, setting, tip, ctx->counter++);
 }
 
 static void status_text(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
@@ -275,6 +302,30 @@ static void tabs(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
     *selected = ((*selected % count) + count) % count;   // view.next_tab wraps
     Clay_Sizing sizing = node_sizing(ui, node, ctx, true);
     if (sexpr_flag(node, "grow") && !ctx->horizontal) sizing.height = CLAY_SIZING_GROW(ui_px(ui, 160));
+    // Short labels: "tab.<panel>", then "panel.<panel>", then the panel id.
+    StringView labels[16];
+    for (i32 t = 0; t < count; ++t) {
+        char tab_key[96], panel_key[96];
+        snprintf(tab_key, sizeof(tab_key), "tab." SV_FMT, SV_ARG(names[t]));
+        snprintf(panel_key, sizeof(panel_key), "panel." SV_FMT, SV_ARG(names[t]));
+        labels[t] = app_tr(ui->app, tab_key, app_tr(ui->app, panel_key, panel_key + 6).data);
+    }
+    // A narrow bar (small window, many tabs): all labels shrink to one size so
+    // together they fit the bar (its width from the last frame). Tabs are as wide
+    // as their label, so a short label leaves room for a long one; below 8 they clip.
+    f32 font_size = 12.0f;
+    Clay_ElementData bar = Clay_GetElementData(CLAY_IDI("SidebarTabBar", (u32)slot));
+    if (bar.found) {
+        f32 room = bar.boundingBox.width - ui_px(ui, 2 * 3) - ui_px(ui, 2) * (f32)(count - 1) - ui_px(ui, 2 * 4) * (f32)count;
+        f32 total = 0;
+        for (i32 t = 0; t < count; ++t) {
+            Clay_TextElementConfig cfg = { .fontId = FONT_UI_BOLD, .fontSize = ui_u16(ui, 12) };
+            Clay_StringSlice slice = { .length = (i32)labels[t].len, .chars = labels[t].data, .baseChars = labels[t].data };
+            total += clay_measure_text(slice, &cfg, ui->fonts).width;
+        }
+        // 0.95: rounding of the font size and glyph metrics never quite scale linearly.
+        if (total > room && total > 0) font_size = CLAMP(12.0f * 0.95f * room / total, 8.0f, 12.0f);
+    }
     CLAY({ .layout = { .sizing = sizing, .layoutDirection = CLAY_TOP_TO_BOTTOM, .childGap = ui_u16(ui, 6) } }) {
         CLAY({ .id = CLAY_IDI("SidebarTabBar", (u32)slot),
                .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 2),
@@ -283,11 +334,7 @@ static void tabs(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
                .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, ui->theme->shape.radius)),
                .border = { .color = color_to_clay(c->border), .width = CLAY_BORDER_OUTSIDE((u16)ui->theme->shape.border_width) } }) {
             for (i32 t = 0; t < count; ++t) {
-                // Short label: "tab.<panel>", then "panel.<panel>", then the panel id.
-                char tab_key[96], panel_key[96];
-                snprintf(tab_key, sizeof(tab_key), "tab." SV_FMT, SV_ARG(names[t]));
-                snprintf(panel_key, sizeof(panel_key), "panel." SV_FMT, SV_ARG(names[t]));
-                StringView label = app_tr(ui->app, tab_key, app_tr(ui->app, panel_key, panel_key + 6).data);
+                StringView label = labels[t];
                 Clay_ElementId id = CLAY_IDI("SidebarTab", (u32)(slot * 32 + t));
                 bool active = t == *selected, over = Clay_PointerOver(id);
                 f32 on = anim_towards(&ui->anim, id.id, active ? 1.0f : 0.0f, 14.0f, active ? 1.0f : 0.0f);
@@ -300,7 +347,7 @@ static void tabs(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
                        .backgroundColor = color_to_clay(tab_bg),
                        .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, ui->theme->shape.radius * 0.6f)),
                        .clip = { .horizontal = true } }) {   // many tabs: shrink (clip) instead of widening the sidebar
-                    CLAY_TEXT(ui_str(ui, label), CLAY_TEXT_CONFIG({ .fontId = FONT_UI_BOLD, .fontSize = ui_u16(ui, 12),
+                    CLAY_TEXT(ui_str(ui, label), CLAY_TEXT_CONFIG({ .fontId = FONT_UI_BOLD, .fontSize = ui_u16(ui, font_size),
                                                                     .textColor = color_to_clay(color_lerp(c->text_muted, c->accent_text, on)),
                                                                     .wrapMode = CLAY_TEXT_WRAP_NONE }));
                 }
@@ -563,11 +610,32 @@ static void toolbar(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
         if (sexpr_is_list(c, "modes")) ui->toolbar_modes = c;
     }
     if (!ui->toolbar_modes) ui->markup_mode = false;
+    bool was = ctx->toolbar;
+    ctx->toolbar = true;
     bar(ui, node, ctx, true, false);
+    ctx->toolbar = was;
 }
 static void navbar(Ui *ui, const Sexpr *node, LayoutCtx *ctx) { bar(ui, node, ctx, false, true); }
 
 // ---- Menu bar --------------------------------------------------------------------------------------------
+
+// A small "!" pill: something in this menu (or this item) needs the user (e.g. an update).
+static void attention_badge(Ui *ui) {
+    const ThemeColors *c = &ui->theme->colors;
+    CLAY({ .layout = { .padding = { ui_u16(ui, 5), ui_u16(ui, 5), 0, 0 }, .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER } },
+           .backgroundColor = color_to_clay(c->accent),
+           .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 8)) }) {
+        ui_label(ui, SV("!"), FONT_UI_BOLD, 12, c->accent_text);
+    }
+}
+
+static bool menu_needs_attention(Ui *ui, const Sexpr *menu) {
+    const Sexpr *title = sexpr_next_arg(menu, NULL);
+    for (const Sexpr *a = sexpr_next_arg(menu, title); a; a = sexpr_next_arg(menu, a)) {
+        if (command_needs_attention(&ui->app->commands, command_find(&ui->app->commands, a->text))) return true;
+    }
+    return false;
+}
 
 // (menu TITLE-KEY :fallback "File" command command - command ...); also the board's
 // (board-menu empty|stone command ...), floating at the mouse (`at`, root-relative).
@@ -625,6 +693,7 @@ static void menu_panel(Ui *ui, const Sexpr *menu, i32 menu_index, const Vector2 
                 CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) } } }) {
                     ui_label(ui, app_tr(app, key, cmd->label), FONT_UI, 14, fg);
                 }
+                if (command_needs_attention(&app->commands, cmd)) attention_badge(ui);
                 if (shortcut[0]) ui_label(ui, sv(shortcut), FONT_UI, 12, enabled ? color_with_alpha(fg, 0.7f) : fg);
             }
             if (over && ui->mouse_released) {
@@ -679,10 +748,12 @@ static void menubar(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
             any_title_hovered |= over;
             f32 t = anim_towards(&ui->anim, id.id, open ? 1.0f : over ? 0.6f : 0.0f, 20.0f, 0.0f);
             CLAY({ .id = id,
-                   .layout = { .padding = { ui_u16(ui, 10), ui_u16(ui, 10), ui_u16(ui, 4), ui_u16(ui, 4) } },
+                   .layout = { .padding = { ui_u16(ui, 10), ui_u16(ui, 10), ui_u16(ui, 4), ui_u16(ui, 4) }, .childGap = ui_u16(ui, 5),
+                               .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } },
                    .backgroundColor = color_to_clay(color_with_alpha(c->hover, t * 2.0f * c->hover.a / 255.0f)),
                    .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 4)) }) {
                 ui_label(ui, title_text, FONT_UI, 14, c->text);
+                if (menu_needs_attention(ui, menu)) attention_badge(ui);
                 if (open) menu_dropdown(ui, menu, i);
             }
             if (over && ui->mouse_pressed) ui->open_menu = open ? -1 : i;

@@ -28,6 +28,9 @@ typedef struct AppOptions {
     i32 start_move;          // advance N moves after loading (-1 = end)
     i32 window_width, window_height;   // --size WxH (0 = from config)
     StringView run_commands[8];   // command ids executed once the UI is up (--run)
+    StringView press[128];        // --press CHORD@SECONDS[+WAIT]: keys injected for testing
+    i32 press_count;
+    StringView state_log;         // --state-log FILE: JSON lines around each injected key
     i32 run_command_count;
     StringView settings[16];      // "key=value" config overrides (--set)
     i32 setting_count;
@@ -78,6 +81,7 @@ typedef struct App {
     Config config;
     I18n i18n;
     Keymap keymap;
+    KvFile icons;             // data/icons.kv + user icons.kv: command id -> "@icon [text]"
     Keymap keymap_defaults;   // assets/data/keymap.kv alone: Settings -> Keys saves only the differences
     CommandRegistry commands;
     EngineProfileVec engine_profiles;
@@ -218,6 +222,8 @@ bool app_save_sgf(App *app, StringView path);
 MoveError app_play(App *app, Point point);
 void app_goto(App *app, GameNode *node);
 void app_restart_engine(App *app);
+// Stops every engine process (main, second, opponent, game analysis, rank); app_reload_engines restarts.
+void app_stop_engines(App *app);
 void app_second_engine(App *app, bool on);
 // Restricts (or with region.active=false, frees) analysis to a board rectangle.
 void app_set_region(App *app, BoardRegion region);
@@ -294,6 +300,9 @@ void app_updates_set_channel(App *app, UpdateChannel channel);   // the user's c
 void app_updates_restart(App *app);      // installs the downloaded version and quits
 void app_updates_skip(App *app);         // never offer this version again
 void app_updates_update(App *app);       // every frame
+// A newer version is waiting (found by the last check, not skipped, not yet installed):
+// Help -> Check for updates gets a "!" badge.
+bool app_update_pending(const App *app);
 void app_updates_shutdown(App *app);
 
 // Board sync (app_sync.c): pick the board area on screen, then follow it.

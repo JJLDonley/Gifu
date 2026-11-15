@@ -1848,14 +1848,20 @@ static void load_engine_profiles(App *app) {
     app->human_available = engine_profiles_find_human(&app->engine_profiles, SV("")) != NULL;
 }
 
-void app_reload_engines(App *app) {
+// Every engine process Gifu runs exits (Engine setup replaces their files, which
+// Windows does not allow while a program runs). app_reload_engines starts them again.
+void app_stop_engines(App *app) {
     app_rank_stop(app);
     stop_engine(app);
     slot_clear(&app->second);
-    slot_clear(&app->opponent);   // its profile is about to be freed
+    slot_clear(&app->opponent);
     app->opponent_paused_engine = false;
     batch_analyzer_destroy(app->analyzer);
     app->analyzer = NULL;
+}
+
+void app_reload_engines(App *app) {
+    app_stop_engines(app);   // the profiles are about to be freed
     engine_profiles_free(&app->engine_profiles);
     load_engine_profiles(app);
     start_engine(app);
@@ -1985,6 +1991,7 @@ bool app_init(App *app, const AppOptions *options) {
     keymap_load_kv(&app->keymap, &keymap_kv, SV("keymap.kv"));
     kv_free(&keymap_kv);
     load_keymap_defaults(app);
+    load_kv_layers(app, "icons.kv", &app->icons);
 
     load_engine_profiles(app);
 
@@ -2048,6 +2055,7 @@ void app_shutdown(App *app) {
     i18n_free(&app->i18n);
     keymap_free(&app->keymap);
     keymap_free(&app->keymap_defaults);
+    kv_free(&app->icons);
     command_registry_free(&app->commands);
     engine_profiles_free(&app->engine_profiles);
     for (i32 i = 0; i < APP_LOG_LINES; ++i) string_free(&app->log_lines[i]);

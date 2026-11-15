@@ -19,6 +19,7 @@ typedef struct CommandDef {
     CommandQuery enabled;  // NULL = always enabled
     CommandQuery checked;  // NULL = not a toggle
     void *context;         // NULL = the registry's context (the App)
+    CommandQuery attention;  // NULL = never: true shows a "!" on the item and on its menu's title
 } CommandDef;
 
 typedef struct CommandRegistry {
@@ -33,5 +34,6 @@ void command_register_all(CommandRegistry *registry, const CommandDef *defs, isi
 const CommandDef *command_find(const CommandRegistry *registry, StringView id);
 bool command_is_enabled(const CommandRegistry *registry, const CommandDef *cmd);
 bool command_is_checked(const CommandRegistry *registry, const CommandDef *cmd);
+bool command_needs_attention(const CommandRegistry *registry, const CommandDef *cmd);
 // Runs the command if it exists and is enabled; returns whether it ran.
 bool command_execute(CommandRegistry *registry, StringView id);

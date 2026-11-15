@@ -275,6 +275,7 @@ static bool fail(Installer *in, String *error, const char *what) {
     mutex_lock(&in->lock);
     snprintf(in->state.error, sizeof(in->state.error), "%s: %s", what, error ? string_cstr(error) : "");
     in->state.failed = true;
+    log_warn("installer: %s", in->state.error);
     mutex_unlock(&in->lock);
     if (error) string_free(error);
     return false;

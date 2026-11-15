@@ -82,9 +82,13 @@ bool zip_extract_memory(StringView data, StringView dest_dir, ZipStats *stats, S
         String path = path_join(dest_dir, name);
         os_make_dirs(path_dirname(string_sv(&path)));
         bool written = os_write_file(string_sv(&path), sv_from_parts((const char *)out, size));
-        string_free(&path);
         free(out);
-        if (!written) return fail(error, "cannot write extracted file");
+        if (!written) {   // e.g. a running program's file (Windows locks it)
+            if (error) *error = string_format("cannot write %s (in use by a running program?)", string_cstr(&path));
+            string_free(&path);
+            return false;
+        }
+        string_free(&path);
         if (stats) {
             stats->files++;
             stats->bytes += size;

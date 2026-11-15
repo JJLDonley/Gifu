@@ -103,12 +103,22 @@ bool GTP::perform_self_test(GameState & state) {
 #ifdef USE_OPENCL
     myprintf("OpenCL self-test: ");
     // Perform self-test
-    auto vec = Network::get_Network()->get_scored_moves(
+    // The GPU's policy for the start position must match the same weights computed on
+    // the CPU (the original test compared with values of the original network only,
+    // so smaller copies of the network - fp16, 8-bit, 6-bit - always failed it).
+    auto gpu = Network::get_Network()->get_scored_moves(
         &state, Network::Ensemble::DIRECT, 0);
-    testPassed &= vec[60].first > 0.176 && vec[60].first < 0.177;
-    testPassed &= vec[60].second == 88;
-    testPassed &= vec[72].first > 0.175 && vec[72].first < 0.176;
-    testPassed &= vec[72].second == 100;
+    Network::s_policy_on_cpu = true;
+    auto cpu = Network::get_Network()->get_scored_moves(
+        &state, Network::Ensemble::DIRECT, 0);
+    Network::s_policy_on_cpu = false;
+    testPassed &= !gpu.empty() && gpu.size() == cpu.size();
+    float sum = 0.0f;
+    for (size_t i = 0; testPassed && i < gpu.size(); i++) {
+        testPassed &= gpu[i].second == cpu[i].second && std::fabs(gpu[i].first - cpu[i].first) < 0.001f;
+        sum += gpu[i].first;
+    }
+    testPassed &= sum > 0.99f && sum < 1.01f;
     if (testPassed) {
         myprintf("passed.\n");
     } else {

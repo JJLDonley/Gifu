@@ -18,6 +18,10 @@ typedef struct CustomElement {
 void render_push_scissor(Rectangle r);
 void render_pop_scissor(void);
 
+// A text config's .userData = CLAY_TEXT_ELIDE_LEFT: text that does not fit is shortened
+// from the left ("…end/of/path") instead of the right.
+extern char CLAY_TEXT_ELIDE_LEFT[1];
+
 Clay_Dimensions clay_measure_text(Clay_StringSlice text, Clay_TextElementConfig *config, void *user_data);
 void clay_render(Clay_RenderCommandArray commands, FontCache *fonts);
 

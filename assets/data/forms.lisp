@@ -8,13 +8,14 @@
 ;;   (command ID)  a button that runs a registered command (e.g. view.theme_editor)
 ;;   (form NAME :tabs ...) shows one section at a time, with the section titles as tabs
 ;;   (choice KEY :columns N [:source themes|engines] (option VALUE "Label") ...)
+;;     :dropdown instead of :columns: one button that opens the options as a list
 ;;   (text KEY :placeholder "Text" ...)
 ;;   (keymap)      the key bindings editor (Settings -> Keys)
 ;; Changes apply immediately (settings) or when the dialog's action runs.
 
 (form settings :tabs :title command.view.settings :fallback Settings
   (section settings.appearance :fallback Appearance
-    (choice theme :source themes :columns 2 :label label.theme :fallback Theme)
+    (choice theme :source themes :dropdown :label label.theme :fallback Theme)
     (choice language :columns 3 :label settings.language :fallback Language
       (option en English)
       (option zh_CN "简体中文")
@@ -22,6 +23,7 @@
       (option ja "日本語")
       (option ko "한국어"))
     (number ui_scale :min 0.75 :max 2.0 :step 0.05 :format "%.2f×" :label settings.ui_scale :fallback "Interface scale")
+    (bool toolbar.labels :label settings.toolbar_labels :fallback "Names instead of icons (analysis and play buttons)")
     (bool ui_scale_with_window :label settings.scale_with_window :fallback "Scale the interface with the window size")
     (command view.theme_editor)
     (command view.layout_editor))
@@ -39,14 +41,14 @@
       (option new-zealand "New Zealand")
       (option tromp-taylor Tromp-Taylor)))
   (section settings.engine :fallback Engine
-    (choice engine :source engines :columns 1 :label settings.engine_profile :fallback "Engine profile")
-    (choice engine2 :source engines :columns 1 :label settings.engine2 :fallback "Second engine (compare / matches)")
+    (choice engine :source engines :dropdown :label settings.engine_profile :fallback "Engine profile")
+    (choice engine2 :source engines :dropdown :label settings.engine2 :fallback "Second engine (compare / matches)")
     (number engine.max_processes :min 1 :max 4 :step 1 :format "%.0f" :label settings.max_processes :fallback "KataGo processes at once (GPU memory)"))
   ;; KataGo launch settings (-override-config); 0 keeps the value from the engine's .cfg file.
   (section settings.katago :fallback KataGo
     ;; Engine -> Download engines adds networks of other sizes (blocks).
-    (choice katago.network :source networks :columns 1 :label settings.network :fallback "Network")
-    (choice katago.human_network :source human_networks :columns 1 :label settings.human_network :fallback "Human network")
+    (choice katago.network :source networks :dropdown :label settings.network :fallback "Network")
+    (choice katago.human_network :source human_networks :dropdown :label settings.human_network :fallback "Human network")
     (number katago.search_threads :step 1 :format "%.0f" :zero settings.cfg_default :label settings.search_threads :fallback "Search threads")
     (number katago.max_visits :step 100 :format "%.0f" :zero settings.cfg_default :label settings.max_visits :fallback "Max visits per engine move")
     (number katago.gpu :step 1 :format "%.0f" :zero_value -1 :zero settings.auto :label settings.gpu :fallback "GPU (device number)")
@@ -58,7 +60,7 @@
   ;; AI play: which engine plays against you, how, and how long it thinks.
   ;; (:when "key=value" shows a field only while that setting has that value.)
   (section settings.ai :fallback "AI play"
-    (choice ai.engine :source opponents :columns 1 :label settings.opponent :fallback "AI opponent")
+    (choice ai.engine :source opponents :dropdown :label settings.opponent :fallback "AI opponent")
     ;; Styles need KataGo's analysis, so they are for the engine that analyses.
     ;; Human-like: KataGo's human network at the strength below. The others choose, among
     ;; KataGo's moves that lose at most a point, the one that fits the style (app/ai_style.h).
@@ -69,7 +71,7 @@
       (option influence "Influence")
       (option fighting "Fighting")
       (option calm "Calm"))
-    (choice ai.human_profile :when "ai.engine=,ai.style=human|ai.engine=katago-human" :columns 5 :label settings.ai_human_rank :fallback "Human-like: plays like"
+    (choice ai.human_profile :when "ai.engine=,ai.style=human|ai.engine=katago-human" :dropdown :label settings.ai_human_rank :fallback "Human-like: plays like"
       (option rank_20k 20k) (option rank_15k 15k) (option rank_10k 10k) (option rank_7k 7k) (option rank_5k 5k)
       (option rank_3k 3k) (option rank_1k 1k) (option rank_1d 1d) (option rank_3d 3d) (option rank_5d 5d)
       (option rank_7d 7d) (option rank_9d 9d) (option proyear_2023 "Pro 2023"))
@@ -78,13 +80,13 @@
     (bool ai.click_plays_ai :label settings.ai_click_plays :fallback "Clicks can play the AI's move"))
   (section settings.analysis :fallback Analysis
     ;; Human win rate widget: the players' strength on Fox ranks (Rendu 2023).
-    (choice human_winrate.level :columns 7 :label settings.human_winrate_level :fallback "Human win rate: players' strength (Fox)"
+    (choice human_winrate.level :dropdown :label settings.human_winrate_level :fallback "Human win rate: players' strength (Fox)"
       (option -11 12k) (option -10 11k) (option -9 10k) (option -8 9k) (option -7 8k) (option -6 7k) (option -5 6k) (option -4 5k) (option -3 4k) (option -2 3k) (option -1 2k) (option 0 1k) (option 1 1d) (option 2 2d) (option 3 3d) (option 4 4d) (option 5 5d) (option 6 6d) (option 7 7d) (option 8 8d) (option 9 9d))
     (bool analysis.on_start :label settings.analyze_on_start :fallback "Analyze on start")
     (bool analysis.show_candidates :label command.analysis.candidates :fallback Candidates)
     (bool analysis.show_ownership :label command.analysis.ownership :fallback Territory)
     (bool analysis.show_human_policy :label command.analysis.human_policy :fallback "Human moves")
-    (choice analysis.human_profile :columns 5 :label settings.overlay_rank :fallback "Human moves: strength shown"
+    (choice analysis.human_profile :dropdown :label settings.overlay_rank :fallback "Human moves: strength shown"
       (option rank_20k 20k) (option rank_15k 15k) (option rank_10k 10k) (option rank_7k 7k) (option rank_5k 5k)
       (option rank_3k 3k) (option rank_1k 1k) (option rank_1d 1d) (option rank_3d 3d) (option rank_5d 5d)
       (option rank_7d 7d) (option rank_9d 9d) (option proyear_2023 "Pro 2023"))
@@ -164,7 +166,7 @@
       (option white "White")
       (option black "Black"))
     ;; Which engine plays (KataGo, Leela...): the same setting as Settings -> AI play.
-    (choice ai.engine :source opponents :when "new_game.opponent=white|new_game.opponent=black" :columns 2
+    (choice ai.engine :source opponents :when "new_game.opponent=white|new_game.opponent=black" :dropdown
       :label settings.opponent :fallback "AI opponent")
     ;; Human: KataGo's human network at the strength below. The others choose, among KataGo's
     ;; moves that lose at most a point, the one that fits the style (app/ai_style.h).
@@ -175,7 +177,7 @@
       (option influence "Influence")
       (option fighting "Fighting")
       (option calm "Calm"))
-    (choice ai.human_profile :when "ai.engine=,ai.style=human|ai.engine=katago-human" :columns 5 :label settings.ai_human_rank :fallback "Human-like: plays like"
+    (choice ai.human_profile :when "ai.engine=,ai.style=human|ai.engine=katago-human" :dropdown :label settings.ai_human_rank :fallback "Human-like: plays like"
       (option rank_20k 20k) (option rank_15k 15k) (option rank_10k 10k) (option rank_7k 7k) (option rank_5k 5k)
       (option rank_3k 3k) (option rank_1k 1k) (option rank_1d 1d) (option rank_3d 3d) (option rank_5d 5d)
       (option rank_7d 7d) (option rank_9d 9d) (option proyear_2023 "Pro 2023"))))

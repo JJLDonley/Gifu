@@ -12,20 +12,6 @@ static const KataGoBackend *current_backend(Ui *ui) {
     return b ? b : katago_backend_at(0);
 }
 
-// Shortens `text` from the left ("…/end/of/path") until it fits `max_width`.
-static StringView elide_left(Ui *ui, StringView text, f32 size, f32 max_width) {
-    f32 px = ui_px(ui, size);
-    if (font_measure(ui->fonts, FONT_MONO, px, text).x <= max_width) return text;
-    StringView tail = text;
-    while (tail.len > 4) {
-        tail = sv_drop(tail, 1);
-        while (tail.len && ((u8)tail.data[0] & 0xC0) == 0x80) tail = sv_drop(tail, 1);   // stay on a UTF-8 boundary
-        StringView candidate = arena_format(&ui->frame, "…" SV_FMT, SV_ARG(tail));
-        if (font_measure(ui->fonts, FONT_MONO, px, candidate).x <= max_width) return candidate;
-    }
-    return tail;
-}
-
 static void item_row(Ui *ui, u32 index, bool *selected, bool installed, StringView title, StringView detail, bool running) {
     const ThemeColors *c = &ui->theme->colors;
     CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 12),
@@ -57,7 +43,7 @@ static void setup_body(Ui *ui, void *user) {
     }
 
     ui_label(ui, tr(ui, "setup.intro", "Gifu uses KataGo to analyse games. Files are installed into"), FONT_UI, 13, c->text_muted);
-    ui_label(ui, elide_left(ui, string_sv(&dir), 12, ui_px(ui, 600 - 48)), FONT_MONO, 12, c->text);
+    ui_label_fit(ui, string_sv(&dir), FONT_MONO, 12, c->text, true);
 
     ui_card_title(ui, tr(ui, "setup.backend", "Engine build"));
     CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .layoutDirection = CLAY_TOP_TO_BOTTOM, .childGap = ui_u16(ui, 6) } }) {
@@ -131,6 +117,10 @@ static void setup_footer(Ui *ui, void *user) {
     bool any = ui->setup_engine || ui->setup_networks || ui->setup_human;
     if (ui_button(ui, CLAY_ID("SetupDownload"), tr(ui, "setup.download", "Download"), BUTTON_PRIMARY, false, any)) {
         String dir = app_katago_dir(ui->app);
+        // Installing KataGo overwrites katago.exe and its DLLs: the running engines must
+        // exit first (Windows keeps a running program's files locked). They start again
+        // when the install ends, whether it worked or not (engine_setup_poll).
+        if (ui->setup_engine) app_stop_engines(ui->app);
         installer_start(&ui->installer, string_sv(&dir), current_backend(ui), ui->setup_engine, ui->setup_networks, ui->setup_human);
         ui->setup_reloaded = false;
         string_free(&dir);
@@ -145,8 +135,8 @@ void engine_setup_poll(Ui *ui) {
     if (!st.finished || ui->setup_reloaded) return;
     ui->setup_reloaded = true;
     installer_finish(&ui->installer);
+    app_reload_engines(ui->app);   // also after a failure: the engines were stopped for the install
     if (st.failed) return;
-    app_reload_engines(ui->app);
     ui->setup_init = false;
     app_set_status(ui->app, "KataGo is installed and starting");
 }

@@ -117,6 +117,7 @@ void engine_profiles_from_kv(const KvFile *kv, const PathVars *vars, EngineProfi
         else if (sv_eq(field, SV("analysis_config"))) set_field(&p->analysis_config, path_vars_expand(vars, e->value));
         else if (sv_eq(field, SV("human_model"))) set_field(&p->human_model, path_vars_expand(vars, e->value));
         else if (sv_eq(field, SV("human_required"))) p->human_required = sv_eq(e->value, SV("true")) || sv_eq(e->value, SV("1"));
+        else if (sv_eq(field, SV("device"))) p->cpu = sv_eq(e->value, SV("cpu")), p->device_set = true;
         else if (sv_eq(field, SV("working_dir"))) set_field(&p->working_dir, path_vars_expand(vars, e->value));
         else if (sv_eq(field, SV("arg"))) vec_push(&p->args, path_vars_expand(vars, e->value));
         else if (sv_eq(field, SV("launcher"))) {
@@ -158,6 +159,17 @@ void engine_profiles_from_kv(const KvFile *kv, const PathVars *vars, EngineProfi
         if (!replaced) vec_push(out, *p);
     }
     vec_free(&loaded);
+    // Every list of engines (Settings, New game, menus) shows GPU profiles, then CPU
+    // ones, otherwise in file order (stable). Without a device: "CPU" in the name.
+    vec_foreach(EngineProfile, p, out) {
+        if (!p->device_set) p->cpu = sv_find(string_sv(&p->name), SV("CPU")) >= 0;
+    }
+    for (isize i = 1; i < out->len; ++i) {
+        EngineProfile moving = out->items[i];
+        isize k = i;
+        for (; k > 0 && out->items[k - 1].cpu && !moving.cpu; --k) out->items[k] = out->items[k - 1];
+        out->items[k] = moving;
+    }
 }
 
 void engine_profiles_free(EngineProfileVec *profiles) {

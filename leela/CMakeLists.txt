@@ -4,8 +4,18 @@
 #   leela-opencl  GPU, the 192-filter policy net; OpenCL is loaded when the program
 #                 starts (OpenCLLoader.cpp), so it builds without an SDK and fails with
 #                 a message on machines without an OpenCL driver
-# Both read the network from leela-0.11.weights, copied next to them.
+# Both read the network from leela-0.11.weights, copied next to them, or from a
+# smaller copy chosen with --weights (engines.kv): fp16 and 8-bit play like the
+# original, 6-bit is clearly weaker (tools/pack_weights.py makes them).
 enable_language(CXX)
+
+set(LEELA_WEIGHTS leela-0.11.weights leela-0.11-fp16.weights leela-0.11-q8.weights leela-0.11-q6.weights)
+function(leela_copy_weights)
+    foreach(w ${LEELA_WEIGHTS})
+        configure_file(${CMAKE_CURRENT_SOURCE_DIR}/weights/${w} ${LEELA_OUT}/${w} COPYONLY)
+        install(FILES weights/${w} DESTINATION leela)
+    endforeach()
+endfunction()
 
 # GIFU_LEELA_PREBUILT: a folder holding leela[.exe] and leela-opencl[.exe] built earlier
 # from these same sources (CI keeps them in its cache, keyed by a hash of leela/):
@@ -22,8 +32,7 @@ if(GIFU_LEELA_PREBUILT AND EXISTS "${GIFU_LEELA_PREBUILT}/leela${LEELA_EXE}" AND
             VERBATIM)
         install(PROGRAMS "${GIFU_LEELA_PREBUILT}/${name}${LEELA_EXE}" DESTINATION leela)
     endforeach()
-    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/weights/leela-0.11.weights ${LEELA_OUT}/leela-0.11.weights COPYONLY)
-    install(FILES weights/leela-0.11.weights DESTINATION leela)
+    leela_copy_weights()
     install(FILES LICENSE DESTINATION licenses RENAME leela-LICENSE.txt)
     install(FILES opencl/LICENSE DESTINATION licenses RENAME opencl-headers-LICENSE.txt)
     return()
@@ -60,10 +69,9 @@ if(NOT WIN32)
     target_link_libraries(leela-opencl PRIVATE ${CMAKE_DL_LIBS})
 endif()
 
-configure_file(${CMAKE_CURRENT_SOURCE_DIR}/weights/leela-0.11.weights ${LEELA_OUT}/leela-0.11.weights COPYONLY)
+leela_copy_weights()
 
-# Shipped next to Gifu: <install>/leela/{leela, leela-opencl, leela-0.11.weights}.
+# Shipped next to Gifu: <install>/leela/{leela, leela-opencl, leela-0.11*.weights}.
 install(TARGETS leela leela-opencl RUNTIME DESTINATION leela)
-install(FILES weights/leela-0.11.weights DESTINATION leela)
 install(FILES LICENSE DESTINATION licenses RENAME leela-LICENSE.txt)
 install(FILES opencl/LICENSE DESTINATION licenses RENAME opencl-headers-LICENSE.txt)

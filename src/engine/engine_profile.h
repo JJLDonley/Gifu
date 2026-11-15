@@ -38,6 +38,8 @@ typedef struct EngineProfile {
     String analysis_config;   // enables the JSON batch analyzer for this engine
     String human_model;       // human SL network (empty = none / not installed)
     bool human_required;      // profile is unusable without its human network (human-style play)
+    bool cpu;                 // device = cpu (else gpu); lists show GPU profiles first
+    bool device_set;          // device given (else guessed: "CPU" in the name)
     String working_dir;
     StringVec args;
     StringVec launcher;   // e.g. ssh -T user@host: the engine runs remotely

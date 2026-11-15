@@ -1,0 +1,68 @@
+# Command icons: <command id> = @<icon> (src/ui/icons.c), optionally followed by text
+# ("@stone_black AI"). A command's button shows this icon in every layout, including
+# layouts saved with Customize layout.
+# Buttons show the icon (the name and key are in the tooltip). Override in
+# <config_dir>/icons.kv.
+
+# The buttons that showed their name before they had an icon: Settings -> Appearance
+# -> "Names instead of icons" shows these by name again. Every other icon stays.
+names_setting = analysis.toggle analysis.candidates analysis.ownership analysis.human_policy view.coordinates view.move_numbers game.ai_move game.score move.pass game.resign
+
+# A setting shown as a small dropdown beside a command's button (in every layout):
+#   setting.<command> = <setting key> [when_on: only while the command is on] [tip=<l10n key>]
+# The options are the setting's (choice ...) in forms.lisp.
+setting.analysis.human_policy = analysis.human_profile when_on tip=toolbar.human_strength
+
+# Files
+file.new = @plus
+file.open = @folder
+file.save = @save
+
+# Analysis
+analysis.toggle = @search
+analysis.game = @chart
+analysis.report = @clipboard
+analysis.rank = @rank
+analysis.candidates = @candidates
+analysis.ownership = @territory
+analysis.human_policy = @person
+view.coordinates = @coordinates
+view.move_numbers = @move_numbers
+view.settings = @gear
+
+# Play
+engine.second = @play
+game.match = @play
+game.ai_black = @stone_black AI
+game.ai_white = @stone_white AI
+game.ai_move = @ai_move
+game.score = @scales
+move.pass = @pass
+game.resign = @flag
+
+# Navigation
+nav.first = @first
+nav.back10 = @prev2
+nav.back = @prev
+nav.forward = @next
+nav.forward10 = @next2
+nav.last = @last
+nav.prev_variation = @up
+nav.next_variation = @down
+
+# Markup tools
+markup.tool.play = @play_stones
+markup.tool.black = @stone_black
+markup.tool.white = @stone_white
+markup.tool.triangle = @triangle
+markup.tool.square = @square
+markup.tool.circle = @circle
+markup.tool.cross = @cross
+markup.tool.letter = @letter
+markup.tool.number = @number
+markup.tool.arrow = @arrow
+markup.tool.line = @line
+markup.tool.pen = @pen
+markup.tool.shade = @shade
+markup.tool.eraser = @eraser
+markup.clear = @trash

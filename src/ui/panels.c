@@ -73,7 +73,9 @@ static void panel_game_info(Ui *ui) {
                           ui_text_style(ui, FONT_UI, 12, over ? ui->theme->colors.accent : ui->theme->colors.text_muted));
             }
             if (over) SetMouseCursor(MOUSE_CURSOR_POINTING_HAND);
-            if (over && ui->mouse_pressed) command_execute(&app->commands, SV("game.komi"));
+            // On release, like a button: opening on the press let the dialog's
+            // "click outside closes" see that same press and close it at once.
+            if (ui_clicked(ui, komi_id, true)) command_execute(&app->commands, SV("game.komi"));
             CLAY_TEXT(ui_fmt(ui, "  ·  " SV_FMT " %s%s" SV_FMT, SV_ARG(tr(ui, "label.rules", "Rules")), string_cstr(&app->config.rules),
                              result.len ? "  ·  " : "", SV_ARG(result)),
                       ui_text_style(ui, FONT_UI, 12, ui->theme->colors.text_muted));
@@ -280,7 +282,7 @@ static void panel_compare(Ui *ui) {
             if (!app->second.engine) {
                 ui_label(ui, tr(ui, "compare.hint", "Run a second engine to compare its view of each position."), FONT_UI, 13, c->text_muted);
                 CLAY({ .layout = { .padding = { 0, 0, ui_u16(ui, 8), 0 } } }) {
-                    ui_command_button_ex(ui, SV("engine.second"), SV("@play"), true, BUTTON_NORMAL, 0);
+                    ui_command_button_ex(ui, SV("engine.second"), ui_command_icon(ui, SV("engine.second")), true, BUTTON_NORMAL, 0);
                 }
             } else {
                 const Candidate *a = app->analysis_valid ? analysis_best(app->analysis) : NULL;
@@ -296,8 +298,8 @@ static void panel_compare(Ui *ui) {
                     compare_column(ui, &app->second, app->second.analysis, app->second.analysis_valid, tr(ui, "compare.second", "Second"), 1);
                 }
                 CLAY({ .layout = { .childGap = ui_u16(ui, 6), .padding = { 0, 0, ui_u16(ui, 8), 0 } } }) {
-                    ui_command_button_ex(ui, SV("game.match"), SV("@play"), true, BUTTON_NORMAL, 0);
-                    ui_command_button_ex(ui, SV("engine.second"), SV("@close"), true, BUTTON_GHOST, 1);
+                    ui_command_button_ex(ui, SV("game.match"), ui_command_icon(ui, SV("game.match")), true, BUTTON_NORMAL, 0);
+                    ui_command_button_ex(ui, SV("engine.second"), SV("@close"), true, BUTTON_GHOST, 1);   // closes the comparison: not the command's own icon
                 }
             }
         }
@@ -403,9 +405,9 @@ static void panel_report(Ui *ui) {
                     CLAY_TEXT(ui_fmt(ui, "%d / %d", report->analysed_nodes, (i32)count), ui_text_style(ui, FONT_UI, 12, c->text_muted));
                 }
             }
-            ui_command_button_ex(ui, SV("analysis.rank"), SV("@rank"), false, BUTTON_NORMAL, 0);
-            ui_command_button(ui, SV("analysis.game"), SV("@chart"), BUTTON_NORMAL, 0);
-            ui_command_button_ex(ui, SV("analysis.report"), SV("@clipboard"), false, BUTTON_NORMAL, 2);
+            ui_command_button_ex(ui, SV("analysis.rank"), ui_command_icon(ui, SV("analysis.rank")), false, BUTTON_NORMAL, 0);
+            ui_command_button(ui, SV("analysis.game"), ui_command_icon(ui, SV("analysis.game")), BUTTON_NORMAL, 0);
+            ui_command_button_ex(ui, SV("analysis.report"), ui_command_icon(ui, SV("analysis.report")), false, BUTTON_NORMAL, 2);
             ui_help_button(ui, SV("report"));
         }
         if (app_game_analysis_running(app) || app->rank_job || app->rank_batch) {
