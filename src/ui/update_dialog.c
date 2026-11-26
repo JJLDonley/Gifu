@@ -34,12 +34,29 @@ static void tag(Ui *ui, StringView text, Color color) {
     }
 }
 
+// A notes line as plain text: **bold** markers dropped, &lt; &gt; &amp; decoded (the notes script escapes them
+// for GitHub). In the frame arena.
+static StringView plain_line(Ui *ui, StringView line) {
+    String out = { 0 };
+    for (isize i = 0; i < line.len; ++i) {
+        StringView at = sv_drop(line, i);
+        if (sv_starts_with(at, SV("**"))) { ++i; continue; }
+        if (sv_starts_with(at, SV("&lt;"))) { string_push(&out, SV("<")); i += 3; continue; }
+        if (sv_starts_with(at, SV("&gt;"))) { string_push(&out, SV(">")); i += 3; continue; }
+        if (sv_starts_with(at, SV("&amp;"))) { string_push(&out, SV("&")); i += 4; continue; }
+        string_push(&out, sv_take(at, 1));
+    }
+    StringView result = arena_format(&ui->frame, SV_FMT, SV_ARG(string_sv(&out)));
+    string_free(&out);
+    return result;
+}
+
 // Release notes are Markdown: headings in bold, list items as bullets, the rest as is.
 static void notes(Ui *ui, StringView text) {
     const ThemeColors *c = &ui->theme->colors;
     StringView rest = text;
     while (rest.len) {
-        StringView line = sv_trim(sv_chop_char(&rest, '\n'));
+        StringView line = plain_line(ui, sv_trim(sv_chop_char(&rest, '\n')));
         if (!line.len) continue;
         if (line.data[0] == '#') {
             while (line.len && line.data[0] == '#') line = sv_drop(line, 1);
