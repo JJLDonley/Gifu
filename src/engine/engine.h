@@ -94,6 +94,8 @@ typedef struct EngineVTable {
     void (*set_human_profile)(Engine *engine, StringView profile);
     bool (*poll)(Engine *engine, EngineEvent *out);
     void (*destroy)(Engine *engine);
+    // Optional (NULL: not supported): one raw protocol command typed in View -> Console. Its reply shows there.
+    void (*send_command)(Engine *engine, StringView command);
 } EngineVTable;
 
 struct Engine {
@@ -107,6 +109,11 @@ static inline void engine_start_analysis(Engine *e, const AnalysisRequest *r) { 
 static inline void engine_stop_analysis(Engine *e) { e->vtable->stop_analysis(e); }
 static inline bool engine_is_analyzing(const Engine *e) { return e->vtable->is_analyzing(e); }
 static inline bool engine_poll(Engine *e, EngineEvent *out) { return e->vtable->poll(e, out); }
+static inline bool engine_send_command(Engine *e, StringView command) {
+    if (!e || !e->vtable->send_command) return false;
+    e->vtable->send_command(e, command);
+    return true;
+}
 static inline void engine_request_move(Engine *e, const MoveRequest *r) { e->vtable->request_move(e, r); }
 static inline bool engine_is_thinking(const Engine *e) { return e->vtable->is_thinking(e); }
 static inline void engine_request_score(Engine *e, u64 position_id) { e->vtable->request_score(e, position_id); }

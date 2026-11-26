@@ -3,13 +3,16 @@
 // surfaced immediately as GTP_EVENT_INFO.
 #include "engine/gtp_client.h"
 
+#include "base/console.h"
 #include "base/log.h"
 #include "platform/line_channel.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 
 struct GtpClient {
     LineChannel *channel;
+    char name[24];   // the program's name without path or .exe (View -> Console)
     i32 next_id;
     // Response being assembled.
     bool in_response;
@@ -25,6 +28,15 @@ GtpClient *gtp_client_start(const ProcessSpec *spec, String *error) {
     if (!client) abort();
     client->channel = channel;
     client->next_id = 1;
+    StringView base = spec->program;   // the file name: after the last / or \\ (and without .exe)
+    for (isize i = spec->program.len - 1; i >= 0; --i) {
+        if (spec->program.data[i] == '/' || spec->program.data[i] == '\\') {
+            base = sv_drop(spec->program, i + 1);
+            break;
+        }
+    }
+    if (sv_ends_with(base, SV(".exe"))) base = sv_take(base, base.len - 4);
+    snprintf(client->name, sizeof(client->name), SV_FMT, SV_ARG(sv_take(base, 23)));
     return client;
 }
 
@@ -33,6 +45,7 @@ i32 gtp_client_send(GtpClient *client, StringView command) {
     i32 id = client->next_id++;
     String line = string_format("%d " SV_FMT, id, SV_ARG(command));
     log_debug("gtp> %s", string_cstr(&line));
+    console_add(CONSOLE_SENT, sv(client->name), string_sv(&line));
     bool ok = line_channel_send(client->channel, string_sv(&line));
     string_free(&line);
     return ok ? id : -1;
@@ -60,11 +73,15 @@ static bool frame_line(GtpClient *c, StringView line, GtpEvent *out) {
         return false;
     }
     if (line.len == 0) {
+        String shown = string_format("%c%d " SV_FMT, c->success ? '=' : '?', c->id, SV_ARG(string_sv(&c->body)));
+        console_add(CONSOLE_REPLY, sv(c->name), string_sv(&shown));
+        string_free(&shown);
         *out = (GtpEvent){ GTP_EVENT_RESPONSE, c->id, c->success, string_from(string_sv(&c->body)) };
         c->in_response = false;
         return true;
     }
     if (sv_starts_with(line, SV("info ")) || sv_starts_with(line, SV("ownership "))) {
+        console_add(CONSOLE_ANALYSIS, sv(c->name), line);   // dropped unless the console shows analysis lines
         *out = (GtpEvent){ GTP_EVENT_INFO, c->id, true, string_from(line) };
         return true;
     }
@@ -80,6 +97,7 @@ bool gtp_client_poll(GtpClient *client, GtpEvent *out) {
         switch (line.kind) {
             case LINE_STDOUT: ready = frame_line(client, string_sv(&line.text), out); break;
             case LINE_STDERR:
+                console_add(CONSOLE_ENGINE_LOG, sv(client->name), string_sv(&line.text));
                 *out = (GtpEvent){ GTP_EVENT_STDERR, 0, true, string_from(string_sv(&line.text)) };
                 ready = true;
                 break;

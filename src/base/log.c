@@ -1,4 +1,5 @@
 #include "base/log.h"
+#include "base/console.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -25,6 +26,7 @@ void log_message(LogLevel level, const char *fmt, ...) {
     if (n > 0 && n < (int)sizeof(line)) vsnprintf(line + n, sizeof(line) - (size_t)n, fmt, args);
     va_end(args);
     fprintf(stderr, "%s\n", line);
+    if (level >= LOG_LEVEL_INFO) console_add(CONSOLE_APP, SV("gifu"), sv(line));   // View -> Console
     if (g_file) {
         fprintf(g_file, "%s\n", line);
         fflush(g_file);

@@ -149,9 +149,17 @@ static void engine_status_widget(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
             break;
     }
     if (pulse) dot = color_with_alpha(dot, 0.45f + 0.55f * (0.5f + 0.5f * sinf((f32)GetTime() * 6.0f)));
-    CLAY({ .id = CLAY_ID("EngineStatus"),
+    // A click opens the console (View -> Console): what the engine prints while it starts, its errors.
+    Clay_ElementId status_id = CLAY_ID("EngineStatus");
+    bool status_over = Clay_PointerOver(status_id);
+    if (status_over) SetMouseCursor(MOUSE_CURSOR_POINTING_HAND);
+    if (ui_clicked(ui, status_id, true)) command_execute(&app->commands, SV("view.console"));
+    ui_tooltip(ui, status_id, app_tr(app, "console.open_hint", "Open the console: engine start-up, commands and errors (F8)"));
+    CLAY({ .id = status_id,
            .layout = { .childGap = ui_u16(ui, 6), .childAlignment = { .y = CLAY_ALIGN_Y_CENTER },
-                       .padding = { ui_u16(ui, 8), ui_u16(ui, 8), 0, 0 } } }) {
+                       .padding = { ui_u16(ui, 8), ui_u16(ui, 8), 0, 0 } },
+           .backgroundColor = color_to_clay(status_over ? c->hover : color_with_alpha(c->hover, 0.0f)),
+           .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 4)) }) {
         CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 8)), CLAY_SIZING_FIXED(ui_px(ui, 8)) } },
                .backgroundColor = color_to_clay(dot), .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 4)) }) {}
         ui_label(ui, text, FONT_UI, 13, text_color);

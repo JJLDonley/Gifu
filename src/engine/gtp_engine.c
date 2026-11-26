@@ -268,7 +268,14 @@ static void ge_destroy(Engine *e) {
     free(g);
 }
 
+// View -> Console: a command typed by the user, sent as is (its reply is shown there and otherwise ignored).
+static void ge_send_command(Engine *e, StringView command) {
+    GtpEngine *x = (GtpEngine *)e;
+    if (x->gtp) send(x, SV_FMT, SV_ARG(command));
+}
+
 static const EngineVTable GTP_VTABLE = {
+    .send_command = ge_send_command,
     .name = ge_name,
     .status = ge_status,
     .set_position = ge_set_position,

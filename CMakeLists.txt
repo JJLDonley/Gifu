@@ -107,6 +107,7 @@ add_library(gifu_core STATIC
     src/base/str.c
     src/base/vec.c
     src/base/log.c
+    src/base/console.c
     src/base/json.c
     src/base/sexpr.c
     src/base/kv.c
@@ -192,6 +193,7 @@ add_executable(gifu
     src/ui/form.c
     src/ui/setup.c
     src/ui/update_dialog.c
+    src/ui/console_dialog.c
     src/ui/estimate_panels.c
     src/ui/variation_tree.c
     src/ui/board_view.c

@@ -47,6 +47,7 @@ typedef enum UiDialog {
     UI_DIALOG_LAYOUT_EDITOR,
     UI_DIALOG_UPDATE,
     UI_DIALOG_PROFILE,
+    UI_DIALOG_CONSOLE,
 } UiDialog;
 
 // Theme editor state (theme_editor.c): `edit` is the live copy ui->theme points to while open.
@@ -137,6 +138,12 @@ typedef struct Ui {
     LayoutEditor layout_editor;
     i32 form_tab;          // selected section of a tabbed form (Settings)
     f32 modal_width;       // the open dialog's width this frame (set before its body is laid out)
+    // View -> Console: which kinds of lines are shown (bit = ConsoleKind), the command being typed, and whether the
+    // list follows the newest line.
+    u8 console_show;
+    TextEdit console_input;
+    bool console_follow;
+    i64 console_last_seen;
     Vector2 modal_offset;  // the dialog dragged by its title bar, from the centre of the window
     Vector2 modal_grab;    // mouse minus offset when the drag started
     bool modal_dragging;
@@ -367,6 +374,7 @@ void ui_modal_shell(Ui *ui, StringView title, f32 width, ModalSection body, Moda
 void engine_setup_dialog(Ui *ui);   // setup.c
 void engine_setup_poll(Ui *ui);     // reload engines once an install finishes
 void update_dialog(Ui *ui);         // update_dialog.c
+void console_dialog(Ui *ui);        // console_dialog.c
 void panel_territory(Ui *ui);       // estimate_panels.c: territory estimate
 void panel_confidence(Ui *ui);      // secure / likely / unclaimed bar
 void panel_human_winrate(Ui *ui);   // the win chance for humans of a chosen strength

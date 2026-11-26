@@ -26,6 +26,10 @@ static const NetworkFamily FAMILIES[] = {
     { "b28c512nbt", "28 blocks", "Strongest per visit; needs a strong GPU (258 MB)" },
     { "b40c256", "40 blocks", "Older large size, slower (165 MB)" },
     { "b60c320", "60 blocks", "Older largest size, slowest (384 MB)" },
+    // Transformers (KataGo 1.17+): stronger per visit for their cost than the convnets (docs/NetworkArchitectures.md).
+    { "tf2-b10c384", "Transformer S", "Smaller and stronger per visit than 18 blocks; needs KataGo 1.17+ (40 MB)" },
+    { "tf3-b10c512", "Transformer M", "About as strong as 28 blocks at under its cost; KataGo 1.17+ (95 MB)" },
+    { "tf3-b11c768", "Transformer L", "Strongest; like the 232 MB b40c768 at a third of its cost; KataGo 1.17+ (250 MB)" },
 };
 
 isize katago_family_count(void) { return countof(FAMILIES); }

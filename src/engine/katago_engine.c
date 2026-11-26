@@ -17,6 +17,7 @@ typedef struct KataGoEngine {
     GtpClient *gtp;
     EngineStatus status;
     i32 version_id;
+    bool raw_nn_color;   // KataGo 1.17+: kata-raw(-human)-nn takes the colour to move (else KataGo's own idea of it)
 
     // What the engine currently has loaded.
     bool synced;
@@ -164,7 +165,9 @@ static void kg_request_human_policy(Engine *e, u64 position_id) {
     if (k->human_count == (i32)countof(k->human_ids)) return;   // caller is flooding; drop
     i32 slot = (k->human_head + k->human_count) % (i32)countof(k->human_ids);
     k->human_positions[slot] = position_id;
-    k->human_ids[slot] = send(k, "kata-raw-human-nn 0");   // ("all" would print 8 separate blocks)
+    // ("all" would print 8 separate blocks)
+    k->human_ids[slot] = k->raw_nn_color ? send(k, "kata-raw-human-nn %s 0", k->to_play == STONE_WHITE ? "w" : "b")
+                                         : send(k, "kata-raw-human-nn 0");
     k->human_count++;
     if (k->analyzing) send_analyze(k);
 }
@@ -397,6 +400,16 @@ static bool kg_poll(Engine *e, EngineEvent *out) {
                     return true;
                 }
                 if (ev.id == k->version_id && k->status == ENGINE_STATUS_STARTING) {
+                    // "1.18.1": from 1.17 the human-policy request names the colour. Without it KataGo evaluates
+                    // for its own player to move, which is Black after set_position (setup stones, markup) even when
+                    // it is White's turn: the Human moves overlay then showed Black's moves.
+                    i32 major = 0, minor = 0;
+                    StringView v = sv_trim(string_sv(&ev.text));
+                    if (sv_starts_with(v, SV("v"))) v = sv_drop(v, 1);
+                    char vb[32];
+                    snprintf(vb, sizeof(vb), SV_FMT, SV_ARG(v));
+                    if (sscanf(vb, "%d.%d", &major, &minor) == 2)
+                        k->raw_nn_color = major > 1 || (major == 1 && minor >= 17);
                     k->status = ENGINE_STATUS_READY;
                     *out = (EngineEvent){ .kind = ENGINE_EVENT_STATUS, .status = k->status, .text = string_sv(&ev.text) };
                     return true;
@@ -442,7 +455,14 @@ static void kg_destroy(Engine *e) {
     free(k);
 }
 
+// View -> Console: a command typed by the user, sent as is (its reply is shown there and otherwise ignored).
+static void kg_send_command(Engine *e, StringView command) {
+    KataGoEngine *x = (KataGoEngine *)e;
+    if (x->gtp) send(x, SV_FMT, SV_ARG(command));
+}
+
 static const EngineVTable KATAGO_VTABLE = {
+    .send_command = kg_send_command,
     .name = kg_name,
     .status = kg_status,
     .set_position = kg_set_position,
@@ -479,6 +499,11 @@ Engine *katago_engine_create(const KataGoSettings *settings, String *error) {
     String overrides = string_from(SV("reportAnalysisWinratesAs=SIDETOMOVE"));
     bool human = settings->human_model.len && human_profile_valid(settings->human_profile);
     if (human) string_pushf(&overrides, ",humanSLProfile=" SV_FMT, SV_ARG(settings->human_profile));
+    // Gifu's own defaults, unless the profile's overrides set them: KataGo's log on stderr, so View -> Console
+    // shows its start-up (backend, OpenCL tuning, network); and no time limit on analysis (pondering) — the
+    // example configs stop it after 60 s (gtp_human5k_example.cfg); Gifu stops it itself (analysis.max_visits).
+    if (sv_find(settings->overrides, SV("logToStderr")) < 0) string_push(&overrides, SV(",logToStderr=true"));
+    if (sv_find(settings->overrides, SV("maxTimePondering")) < 0) string_push(&overrides, SV(",maxTimePondering=1000000000"));
     string_push(&overrides, settings->overrides);
     log_info("katago overrides: " SV_FMT, SV_ARG(string_sv(&overrides)));
     args[argc++] = SV("-override-config");

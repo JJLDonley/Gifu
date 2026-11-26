@@ -1,4 +1,5 @@
 #include "ui/ui.h"
+#include "base/console.h"
 #include "platform/os.h"
 
 #include "base/log.h"
@@ -123,6 +124,8 @@ static void open_dialog(Ui *ui, UiDialog dialog) {
     anim_set(&ui->anim, CLAY_ID("ModalDialog").id, 0.0f);   // replay the open animation
 }
 static void cmd_settings(void *c) { open_dialog(UI(c), UI_DIALOG_SETTINGS); }
+static void cmd_console(void *c) { open_dialog(UI(c), UI_DIALOG_CONSOLE); UI(c)->console_follow = true; }
+static bool console_shown(const void *c) { return ((const Ui *)c)->dialog == UI_DIALOG_CONSOLE; }
 static bool settings_shown(const void *c) { return ((const Ui *)c)->dialog == UI_DIALOG_SETTINGS; }
 static void cmd_new_game(void *c) { open_dialog(UI(c), UI_DIALOG_NEW_GAME); }
 static void cmd_theme_editor(void *c) { theme_editor_open(UI(c)); }
@@ -202,6 +205,7 @@ static void register_ui_commands(Ui *ui) {
         { "view.zoom_out", "Zoom out", "-", cmd_zoom_out, NULL, NULL, ui },
         { "view.debug", "Layout debugger", "Debug", cmd_debug, NULL, NULL, ui },
         { "view.settings", "Settings", "Settings", cmd_settings, NULL, settings_shown, ui },
+        { "view.console", "Console", "Console", cmd_console, NULL, console_shown, ui },
         { "file.new", "New game", "New", cmd_new_game, NULL, NULL, ui },
         { "game.info", "Game info…", "Info", cmd_game_info, NULL, NULL, ui },
         { "game.komi", "Komi…", "Komi", cmd_komi, NULL, NULL, ui },
@@ -312,7 +316,8 @@ static void validate_command_refs(Ui *ui) {
 }
 
 bool ui_init(Ui *ui, App *app) {
-    *ui = (Ui){ .app = app, .hover_candidate = -1, .hover_list_candidate = -1, .open_menu = -1, .board_menu = -1 };
+    *ui = (Ui){ .app = app, .hover_candidate = -1, .hover_list_candidate = -1, .open_menu = -1, .board_menu = -1,
+                .console_show = 0x1F & ~(1u << 3), .console_follow = true };   // every kind but the analysis stream
     ui->frame.default_block_size = 512 * 1024;
     ui->fonts = font_cache_create();
 
@@ -365,12 +370,14 @@ bool ui_init(Ui *ui, App *app) {
 }
 
 void ui_shutdown(Ui *ui) {
+    console_clear();   // the console's lines (View -> Console)
     for (i32 i = 0; i < (i32)countof(ui->number_fields); ++i) text_edit_free(&ui->number_fields[i].edit);
     theme_editor_cancel(ui);
     layout_editor_close(ui);
     text_edit_free(&ui->layout_editor.preset_name);
     text_edit_free(&ui->theme_editor.name);
     text_edit_free(&ui->theme_editor.hex);
+    text_edit_free(&ui->console_input);
     if (ui->installer.started) {   // stop a running download cleanly
         installer_cancel(&ui->installer);
         installer_finish(&ui->installer);
