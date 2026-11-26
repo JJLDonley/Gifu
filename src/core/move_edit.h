@@ -45,3 +45,7 @@ void move_edit_redo(GameTree *tree, const MoveEditRecord *r);
 // The node whose move put the stone at `p` on the current board (the latest such
 // move up to the current node), or NULL (empty point, or a setup stone).
 GameNode *move_edit_stone_node(const GameTree *tree, Point p);
+// Shift+click on the board: the move of the current branch at `p`. A stone on the board -> the move that placed it
+// (move_edit_stone_node); an empty point -> the next move played there further along the branch (first children
+// from the current node, as forward navigation follows them). NULL when the branch has neither.
+GameNode *move_edit_branch_node(const GameTree *tree, Point p);

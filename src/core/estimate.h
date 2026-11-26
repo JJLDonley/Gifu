@@ -22,3 +22,6 @@ typedef struct TerritoryEstimate {
 // ownership: +1 = Black owns, -1 = White, row-major like board->cells.
 // territory_rules: Japanese / Korean counting (else area). score_lead: Black's lead.
 TerritoryEstimate territory_estimate(const Board *board, const f32 *black_ownership, f32 komi, f32 score_lead, bool territory_rules);
+// Ownership levels (0..1) of the estimate: >= secure counts as decided (and a stone there as dead), >= likely as likely
+// territory, below as unclaimed. Settings estimate.secure_pct / estimate.likely_pct; defaults 0.8 / 0.4.
+void estimate_levels_set(f32 secure, f32 likely);

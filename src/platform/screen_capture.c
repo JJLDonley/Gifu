@@ -6,7 +6,7 @@
 
 #include <stdlib.h>
 
-const char *const CAPTURE_NAMES[CAPTURE_KINDS] = { "gdi", "x11", "portal", "grim", "screencapture", "command", "kwin" };
+const char *const CAPTURE_NAMES[CAPTURE_KINDS] = { "gdi", "x11", "portal", "grim", "screencapture", "command", "kwin", "dxgi" };
 
 void screen_capture_set_cancel(ScreenCapture *c, const volatile bool *cancel) { c->cancel = cancel; }
 

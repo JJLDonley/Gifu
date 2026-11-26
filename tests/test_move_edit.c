@@ -112,6 +112,11 @@ static void test_edits(void) {
     CHECK(strcmp(text, "B2,2 W16,16 B2,16 W16,2") == 0 && t->current == n[3]);
     // Which move put a stone there.
     CHECK(move_edit_stone_node(t, (Point){ 2, 16 }) == n[2] && move_edit_stone_node(t, (Point){ 9, 9 }) == NULL);
+    // Shift+click: back to a stone's move, or ahead along the branch to where an empty point is played.
+    game_tree_goto(t, n[1]);
+    CHECK(move_edit_branch_node(t, (Point){ 2, 2 }) == n[0]);
+    CHECK(move_edit_branch_node(t, (Point){ 2, 16 }) == n[2] && move_edit_branch_node(t, (Point){ 16, 2 }) == n[3]);
+    CHECK(move_edit_branch_node(t, (Point){ 9, 9 }) == NULL);
     game_tree_free(t);
 }
 

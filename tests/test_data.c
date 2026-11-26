@@ -1,6 +1,8 @@
 // Validates the shipped data files so a typo in JSON fails CI, not the user.
 #include "test.h"
 
+#include <string.h>
+
 #include "app/config.h"
 #include "base/sexpr.h"
 #include "app/i18n.h"
@@ -72,6 +74,15 @@ static void test_keymap(void) {
     CHECK(key_chord_parse(SV("Ctrl+Shift+O"), &c) && c.key == 'O' && c.mods == (KEYMOD_CTRL | KEYMOD_SHIFT));
     CHECK(key_chord_parse(SV("Right"), &c) && c.key == 262 && c.mods == 0);
     CHECK(!key_chord_parse(SV("Ctrl+"), &c));
+    // Mouse buttons bind like keys (middle and the thumb buttons; left / right stay with the board).
+    CHECK(key_chord_parse(SV("Mouse4"), &c) && c.key == KEY_MOUSE_BASE + 3 && key_chord_is_mouse(c.key));
+    CHECK(key_chord_parse(SV("Ctrl+MouseMiddle"), &c) && c.key == KEY_MOUSE_BASE + 2 && c.mods == KEYMOD_CTRL);
+    {
+        char text[32];
+        key_chord_format((KeyChord){ KEY_MOUSE_BASE + 4, KEYMOD_SHIFT }, text, (i32)sizeof(text));
+        CHECK(strcmp(text, "Shift+Mouse5") == 0);
+    }
+    CHECK(!key_chord_parse(SV("MouseLeft"), &c));
     KvFile kv = { 0 };
     CHECK(load_kv_asset("data/keymap.kv", &kv));
     Keymap km = { 0 };
@@ -91,14 +102,14 @@ static void test_keymap(void) {
     Keymap defaults = { 0 }, edited = { 0 };
     keymap_load_kv(&defaults, &kv, SV("keymap.kv"));
     keymap_load_kv(&edited, &kv, SV("keymap.kv"));
-    keymap_clear_command(&edited, SV("nav.back"));                        // Left and Up
+    keymap_clear_command(&edited, SV("nav.back"));                        // Left, Up and Mouse4
     keymap_set(&edited, (KeyChord){ 'S', KEYMOD_CTRL }, SV("game.resign"));   // taken from file.save
     keymap_set(&edited, (KeyChord){ 'Q', KEYMOD_ALT }, SV("nav.back"));
     CHECK(keymap_find_command(&edited, SV("file.save")) == NULL);
     String diff = keymap_diff_kv(&edited, &defaults);
     KvFile saved = { 0 };
     kv_parse(&saved, string_sv(&diff));
-    CHECK_EQ(saved.entries.len, 4);   // Left/Up = none, Ctrl+S, Alt+Q
+    CHECK_EQ(saved.entries.len, 5);   // Left/Up/Mouse4 = none, Ctrl+S, Alt+Q
     Keymap reloaded = { 0 };
     keymap_load_kv(&reloaded, &kv, SV("keymap.kv"));
     keymap_load_kv(&reloaded, &saved, SV("user"));

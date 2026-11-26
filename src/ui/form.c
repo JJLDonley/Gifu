@@ -178,8 +178,110 @@ static isize collect_options(Ui *ui, const Sexpr *v, ChoiceOption *out, isize ca
     return n;
 }
 
-// (choice ... :dropdown): the label, then one button with the chosen option; it opens
-// the options as a list below it (scrolls when long). A click outside closes it.
+// A dropdown: one button showing the chosen option; it opens the options as a list
+// below it (scrolls when long). A click outside closes it. While open, Up / Down
+// choose the previous / next option at once (a theme shows as you go) and Enter
+// closes it (Escape too: handle_chord closes the list before the dialog).
+// `available` NULL = all; `none_label` shows when nothing is chosen. Returns the newly
+// chosen index this frame, else -1.
+isize ui_dropdown(Ui *ui, u32 index, f32 width, f32 text_size, StringView tooltip,
+                  const StringView *labels, const bool *available, isize count, isize chosen, StringView none_label) {
+    const ThemeColors *c = &ui->theme->colors;
+    isize result = -1;
+    Clay_ElementId button = CLAY_IDI("FormDropdown", index);
+    Clay_ElementId list = CLAY_IDI("FormDropdownList", index);
+    bool open = ui->dropdown_open == button.id;
+    // While open, the list and any press belong to it: nothing underneath (the board)
+    // reacts; a press outside only closes it.
+    if (open && (ui->mouse_pressed || Clay_PointerOver(list))) ui->pointer_over_menu = true;
+    // Last frame's layout: a press outside the button and its list closes it.
+    if (open && ui->mouse_pressed && !Clay_PointerOver(button) && !Clay_PointerOver(list)) ui->dropdown_open = 0, open = false;
+    if (open) {
+        i32 step = (IsKeyPressed(KEY_DOWN) || IsKeyPressedRepeat(KEY_DOWN)) - (IsKeyPressed(KEY_UP) || IsKeyPressedRepeat(KEY_UP));
+        isize next = chosen;
+        if (step) {
+            for (isize k = chosen + step; k >= 0 && k < count; k += step) {
+                if (!available || available[k]) {
+                    next = k;
+                    break;
+                }
+            }
+            if (chosen < 0 && step > 0) next = 0;
+        }
+        if (next != chosen && next >= 0) {
+            result = next;
+            chosen = next;
+            ui->dropdown_reveal = true;
+        }
+        if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER)) ui->dropdown_open = 0, open = false;
+    }
+    StringView shown = chosen >= 0 && chosen < count ? labels[chosen] : none_label;
+    bool over = Clay_PointerOver(button);
+    CLAY({ .id = button,
+           .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, width)), CLAY_SIZING_FIT(0) },
+                       .padding = { ui_u16(ui, 10), ui_u16(ui, 6), ui_u16(ui, 6), ui_u16(ui, 6) },
+                       .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } },
+           .backgroundColor = color_to_clay(over || open ? c->hover : c->surface),
+           .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, ui->theme->shape.radius * 0.6f)),
+           .border = { .color = color_to_clay(open ? c->accent : c->border), .width = CLAY_BORDER_OUTSIDE(1) } }) {
+        ui_label_fit(ui, shown, FONT_UI, text_size, c->text, false);
+        ui_icon(ui, icon_find(SV("chevron_down")), 16, c->text_muted);
+        if (open) {
+            f32 row_h = ui_px(ui, 30), max_h = row_h * 9.5f;   // about 9 rows, then it scrolls
+            CLAY({ .id = list,
+                   .floating = { .attachTo = CLAY_ATTACH_TO_PARENT, .zIndex = 260, .offset = { 0, ui_px(ui, 4) },
+                                 .attachPoints = { .element = CLAY_ATTACH_POINT_LEFT_TOP, .parent = CLAY_ATTACH_POINT_LEFT_BOTTOM } },
+                   .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, fmaxf(width, 140))), CLAY_SIZING_FIT(0, max_h) },
+                               .layoutDirection = CLAY_TOP_TO_BOTTOM, .padding = CLAY_PADDING_ALL(ui_u16(ui, 4)) },
+                   .backgroundColor = color_to_clay(color_with_alpha(c->surface, 1.0f)),
+                   .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 6)),
+                   .border = { .color = color_to_clay(c->border), .width = CLAY_BORDER_OUTSIDE(1) } }) {
+              Clay_ElementId scroll = CLAY_IDI("FormDropdownScroll", index);
+              CLAY({ .id = scroll,
+                     .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0, max_h - ui_px(ui, 8)) }, .layoutDirection = CLAY_TOP_TO_BOTTOM },
+                     .clip = { .horizontal = true, .vertical = true, .childOffset = Clay_GetScrollOffset() } }) {
+                for (isize i = 0; i < count; ++i) {
+                    bool usable = !available || available[i];
+                    Clay_ElementId item = CLAY_IDI("FormDropdownItem", index * 64 + (u32)i);
+                    bool item_over = Clay_PointerOver(item) && usable;
+                    Color bg = i == chosen ? c->accent : item_over ? c->hover : color_with_alpha(c->surface, 0.0f);
+                    Color fg = i == chosen ? c->accent_text : usable ? c->text : color_with_alpha(c->text_muted, 0.6f);
+                    CLAY({ .id = item,
+                           .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(row_h) },
+                                       .padding = { ui_u16(ui, 8), ui_u16(ui, 8), 0, 0 },
+                                       .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } },
+                           .backgroundColor = color_to_clay(bg),
+                           .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 4)) }) {
+                        ui_label_fit(ui, labels[i], FONT_UI, text_size, fg, false);
+                    }
+                    if (ui_clicked(ui, item, usable)) {
+                        ui->dropdown_open = 0;
+                        if (i != chosen) result = i;
+                    }
+                }
+                ui_scrollbar(ui, scroll, 260);
+              }
+              // Keep the chosen option in view (when the list opens and after a key).
+              Clay_ScrollContainerData sc = Clay_GetScrollContainerData(scroll);
+              if (ui->dropdown_reveal && chosen >= 0 && sc.found && sc.scrollPosition) {
+                  f32 y = row_h * (f32)chosen, vh = sc.scrollContainerDimensions.height;
+                  Clay_Vector2 *pos = sc.scrollPosition;
+                  if (y + pos->y > vh - row_h) pos->y = -(y - vh + row_h);
+                  if (y + pos->y < 0) pos->y = -y;
+                  ui->dropdown_reveal = false;
+              }
+            }
+        }
+    }
+    if (ui_clicked(ui, button, true)) ui->dropdown_open = open ? 0 : button.id, ui->dropdown_reveal = !open;
+    if (!open) ui_tooltip(ui, button, tooltip);
+    // Still open after this frame (including the frame it was opened in): keep it.
+    // (Marking only while drawing the list closed it again the frame after the click.)
+    if (ui->dropdown_open == button.id) ui->dropdown_seen = true;
+    return result;
+}
+
+// (choice ... :dropdown): the label, then the dropdown; a choice is applied at once.
 // `label` empty: compact (just the button, e.g. in the toolbar), with `tooltip`.
 static void dropdown_field(Ui *ui, StringView label, StringView tooltip, f32 width, const ConfigField *f, u32 index,
                            const ChoiceOption *options, isize count, bool numeric, StringView current, f64 current_number) {
@@ -189,40 +291,10 @@ static void dropdown_field(Ui *ui, StringView label, StringView tooltip, f32 wid
     for (isize i = 0; i < count && chosen < 0; ++i) {
         if (numeric ? fabs(options[i].number - current_number) < 1e-9 : sv_eq(options[i].value, current)) chosen = i;
     }
-    Clay_ElementId button = CLAY_IDI("FormDropdown", index);
-    Clay_ElementId list = CLAY_IDI("FormDropdownList", index);
-    bool open = ui->dropdown_open == button.id;
-    // While open, the list and any press belong to it: nothing underneath (the board)
-    // reacts; a press outside only closes it.
-    if (open && (ui->mouse_pressed || Clay_PointerOver(list))) ui->pointer_over_menu = true;
-    // Last frame's layout: a press outside the button and its list closes it.
-    if (open && ui->mouse_pressed && !Clay_PointerOver(button) && !Clay_PointerOver(list)) ui->dropdown_open = 0, open = false;
-    // Keys while the list is open: Up / Down choose the previous / next option and
-    // apply it at once (a theme shows as you go), Enter closes the list (Escape too:
-    // handle_chord closes the list before the dialog).
-    if (open) {
-        i32 step = (IsKeyPressed(KEY_DOWN) || IsKeyPressedRepeat(KEY_DOWN)) - (IsKeyPressed(KEY_UP) || IsKeyPressedRepeat(KEY_UP));
-        isize next = chosen;
-        if (step) {
-            for (isize k = chosen + step; k >= 0 && k < count; k += step) {
-                if (options[k].available) {
-                    next = k;
-                    break;
-                }
-            }
-            if (chosen < 0 && step > 0) next = 0;
-        }
-        if (next != chosen && next >= 0) {
-            if (numeric) config_set_number(config, f, options[next].number);
-            else config_set_string(config, f, options[next].value);
-            apply_change(ui, f);
-            chosen = next;
-            ui->dropdown_reveal = true;
-        }
-        if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER)) ui->dropdown_open = 0, open = false;
-    }
-    StringView shown = chosen >= 0 ? options[chosen].label : current.len ? current : SV("—");
-    f32 text_size = label.len ? 14 : 13;
+    StringView *labels = arena_alloc(&ui->frame, (isize)sizeof(StringView) * (count > 0 ? count : 1), (isize)_Alignof(StringView));
+    bool *available = arena_alloc(&ui->frame, count > 0 ? count : 1, 1);
+    for (isize i = 0; i < count; ++i) labels[i] = options[i].label, available[i] = options[i].available;
+    isize picked = -1;
     CLAY({ .layout = { .sizing = { label.len ? CLAY_SIZING_GROW(0) : CLAY_SIZING_FIT(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 12),
                        .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
         if (label.len) {
@@ -230,72 +302,14 @@ static void dropdown_field(Ui *ui, StringView label, StringView tooltip, f32 wid
                 ui_label(ui, label, FONT_UI, 14, c->text);
             }
         }
-        bool over = Clay_PointerOver(button);
-        CLAY({ .id = button,
-               .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, width)), CLAY_SIZING_FIT(0) },
-                           .padding = { ui_u16(ui, 10), ui_u16(ui, 6), ui_u16(ui, 6), ui_u16(ui, 6) },
-                           .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } },
-               .backgroundColor = color_to_clay(over || open ? c->hover : c->surface),
-               .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, ui->theme->shape.radius * 0.6f)),
-               .border = { .color = color_to_clay(open ? c->accent : c->border), .width = CLAY_BORDER_OUTSIDE(1) } }) {
-            ui_label_fit(ui, shown, FONT_UI, text_size, c->text, false);
-            ui_icon(ui, icon_find(SV("chevron_down")), 16, c->text_muted);
-            if (open) {
-                f32 row_h = ui_px(ui, 30), max_h = row_h * 9.5f;   // about 9 rows, then it scrolls
-                CLAY({ .id = list,
-                       .floating = { .attachTo = CLAY_ATTACH_TO_PARENT, .zIndex = 260, .offset = { 0, ui_px(ui, 4) },
-                                     .attachPoints = { .element = CLAY_ATTACH_POINT_LEFT_TOP, .parent = CLAY_ATTACH_POINT_LEFT_BOTTOM } },
-                       .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, fmaxf(width, 140))), CLAY_SIZING_FIT(0, max_h) },
-                                   .layoutDirection = CLAY_TOP_TO_BOTTOM, .padding = CLAY_PADDING_ALL(ui_u16(ui, 4)) },
-                       .backgroundColor = color_to_clay(color_with_alpha(c->surface, 1.0f)),
-                       .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 6)),
-                       .border = { .color = color_to_clay(c->border), .width = CLAY_BORDER_OUTSIDE(1) } }) {
-                  Clay_ElementId scroll = CLAY_IDI("FormDropdownScroll", index);
-                  CLAY({ .id = scroll,
-                         .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0, max_h - ui_px(ui, 8)) }, .layoutDirection = CLAY_TOP_TO_BOTTOM },
-                         .clip = { .horizontal = true, .vertical = true, .childOffset = Clay_GetScrollOffset() } }) {
-                    for (isize i = 0; i < count; ++i) {
-                        Clay_ElementId item = CLAY_IDI("FormDropdownItem", index * 64 + (u32)i);
-                        bool item_over = Clay_PointerOver(item) && options[i].available;
-                        Color bg = i == chosen ? c->accent : item_over ? c->hover : color_with_alpha(c->surface, 0.0f);
-                        Color fg = i == chosen ? c->accent_text : options[i].available ? c->text : color_with_alpha(c->text_muted, 0.6f);
-                        CLAY({ .id = item,
-                               .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(row_h) },
-                                           .padding = { ui_u16(ui, 8), ui_u16(ui, 8), 0, 0 },
-                                           .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } },
-                               .backgroundColor = color_to_clay(bg),
-                               .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, 4)) }) {
-                            ui_label_fit(ui, options[i].label, FONT_UI, text_size, fg, false);
-                        }
-                        if (ui_clicked(ui, item, options[i].available)) {
-                            ui->dropdown_open = 0;
-                            if (i != chosen) {
-                                if (numeric) config_set_number(config, f, options[i].number);
-                                else config_set_string(config, f, options[i].value);
-                                apply_change(ui, f);
-                            }
-                        }
-                    }
-                    ui_scrollbar(ui, scroll, 260);
-                  }
-                  // Keep the chosen option in view (when the list opens and after a key).
-                  Clay_ScrollContainerData sc = Clay_GetScrollContainerData(scroll);
-                  if (ui->dropdown_reveal && chosen >= 0 && sc.found && sc.scrollPosition) {
-                      f32 y = row_h * (f32)chosen, vh = sc.scrollContainerDimensions.height;
-                      Clay_Vector2 *pos = sc.scrollPosition;
-                      if (y + pos->y > vh - row_h) pos->y = -(y - vh + row_h);
-                      if (y + pos->y < 0) pos->y = -y;
-                      ui->dropdown_reveal = false;
-                  }
-                }
-            }
-        }
-        if (ui_clicked(ui, button, true)) ui->dropdown_open = open ? 0 : button.id, ui->dropdown_reveal = !open;
-        if (!open) ui_tooltip(ui, button, tooltip);
+        picked = ui_dropdown(ui, index, width, label.len ? 14 : 13, tooltip, labels, available, count, chosen,
+                             current.len ? current : SV("—"));   // a value not among the options: shown as is
     }
-    // Still open after this frame (including the frame it was opened in): keep it.
-    // (Marking only while drawing the list closed it again the frame after the click.)
-    if (ui->dropdown_open == button.id) ui->dropdown_seen = true;
+    if (picked >= 0) {
+        if (numeric) config_set_number(config, f, options[picked].number);
+        else config_set_string(config, f, options[picked].value);
+        apply_change(ui, f);
+    }
 }
 
 // The (choice KEY ...) that defines a setting in forms.lisp (first one found).
@@ -462,7 +476,7 @@ static void keymap_field(Ui *ui) {
             string_pushf(&keys, "%s%s", keys.len ? ", " : "", text);
         }
         bool capturing = sv_eq(sv(ui->key_capture), id);
-        StringView shown = capturing ? app_tr(app, "keys.press", "Press a key…")
+        StringView shown = capturing ? app_tr(app, "keys.press", "Press a key or mouse button…")
                            : keys.len ? arena_format(&ui->frame, "%s", string_cstr(&keys))
                                       : app_tr(app, "keys.none", "—");
         CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 6),
@@ -537,8 +551,9 @@ void form_render(Ui *ui, const Sexpr *form) {
     i32 tab = CLAMP(ui->form_tab, 0, count - 1);
     // The tabs wrap onto more rows when they do not fit (narrow windows, long
     // translations) instead of stretching the dialog past its edge.
-    Clay_ElementData body = Clay_GetElementData(CLAY_ID("ModalBody"));
-    f32 avail = body.found ? body.boundingBox.width - ui_px(ui, 40) : 1e9f;   // the body's side padding
+    // Against this frame's dialog width, not last frame's laid-out body: after a zoom the old body was wider, the
+    // tabs then fit on one row, and that row kept the body wide frame after frame (contents past the dialog's edge).
+    f32 avail = ui->modal_width > 0 ? ui->modal_width - ui_px(ui, 40) : 1e9f;   // the body's side padding
     f32 gap = ui_px(ui, 4);
     i32 row_start[33], rows = 0;
     f32 x = 0;
@@ -586,20 +601,43 @@ void ui_modal_shell(Ui *ui, StringView title, f32 width, ModalSection body, Moda
     Clay_ElementId dialog = CLAY_ID("ModalDialog");
     f32 open = anim_towards(&ui->anim, dialog.id, 1.0f, 14.0f, 0.0f);   // reset to 0 when a dialog opens
     f32 slide = (1.0f - ease_out_cubic(open)) * ui_px(ui, 48);
+    // Dragging by the title bar (every dialog): the offset from the centre, kept while that dialog stays open and
+    // clamped so the whole dialog stays inside the window (last frame's height).
+    Clay_ElementId header = CLAY_ID("ModalHeader");
+    if (ui->modal_for != (i32)ui->dialog) ui->modal_for = (i32)ui->dialog, ui->modal_offset = (Vector2){ 0 }, ui->modal_dragging = false;
+    if (ui->mouse_pressed && Clay_PointerOver(header) && !Clay_PointerOver(CLAY_ID("ModalClose")) && !ui->dropdown_open) {
+        ui->modal_dragging = true;
+        ui->modal_grab = (Vector2){ ui->mouse.x - ui->modal_offset.x, ui->mouse.y - ui->modal_offset.y };
+    }
+    if (ui->modal_dragging) {
+        if (!ui->mouse_down) ui->modal_dragging = false;
+        else ui->modal_offset = (Vector2){ ui->mouse.x - ui->modal_grab.x, ui->mouse.y - ui->modal_grab.y };
+    }
+    if (ui->modal_dragging || Clay_PointerOver(header)) SetMouseCursor(MOUSE_CURSOR_RESIZE_ALL);
+    {
+        Clay_ElementData last = Clay_GetElementData(dialog);
+        f32 w = fminf(ui_px(ui, width), sw - 40), h = last.found ? last.boundingBox.height : 0.0f;
+        f32 mx = fmaxf((sw - w) * 0.5f, 0.0f), my = fmaxf((sh - h) * 0.5f, 0.0f);
+        ui->modal_offset.x = CLAMP(ui->modal_offset.x, -mx, mx);
+        ui->modal_offset.y = CLAMP(ui->modal_offset.y, -my, my);
+    }
+    // The centred dialog is moved by uneven padding on the backdrop (twice the offset on one side).
+    f32 dx = ui->modal_offset.x, dy = ui->modal_offset.y + slide * 0.5f;
     CLAY({ .id = CLAY_ID("ModalBackdrop"),
            .floating = { .attachTo = CLAY_ATTACH_TO_ROOT, .zIndex = 200 },
            .layout = { .sizing = { CLAY_SIZING_FIXED(sw), CLAY_SIZING_FIXED(sh) },
-                       .padding = { 0, 0, (u16)slide, 0 },
+                       .padding = { (u16)fmaxf(2 * dx, 0), (u16)fmaxf(-2 * dx, 0), (u16)fmaxf(2 * dy, 0), (u16)fmaxf(-2 * dy, 0) },
                        .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER } },
            .backgroundColor = color_to_clay(color_with_alpha(BLACK, (t->dark ? 0.55f : 0.30f) * open)) }) {
+        ui->modal_width = fminf(ui_px(ui, width), sw - 40);
         CLAY({ .id = dialog,
-               .layout = { .sizing = { CLAY_SIZING_FIXED(fminf(ui_px(ui, width), sw - 40)), CLAY_SIZING_FIT(0, sh * 0.88f) },
+               .layout = { .sizing = { CLAY_SIZING_FIXED(ui->modal_width), CLAY_SIZING_FIT(0, sh * 0.88f) },
                            .layoutDirection = CLAY_TOP_TO_BOTTOM },
                .backgroundColor = color_to_clay(color_with_alpha(c->surface, 1.0f)),
                .cornerRadius = CLAY_CORNER_RADIUS(ui_px(ui, t->shape.radius * 1.5f)),
                .border = { .color = color_to_clay(c->border), .width = CLAY_BORDER_OUTSIDE(1) } }) {
-            // Header.
-            CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) },
+            // Header (drag it to move the dialog).
+            CLAY({ .id = header, .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) },
                                .padding = { ui_u16(ui, 20), ui_u16(ui, 14), ui_u16(ui, 14), ui_u16(ui, 10) },
                                .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } },
                    .border = { .color = color_to_clay(c->border), .width = { .bottom = 1 } } }) {
@@ -630,7 +668,7 @@ void ui_modal_shell(Ui *ui, StringView title, f32 width, ModalSection body, Moda
     ui->pointer_over_menu = true;   // nothing underneath reacts while a modal is open
     // With a dropdown open, a press outside closes the dropdown (its list may hang below
     // the dialog), not the dialog.
-    if (ui->mouse_pressed && !Clay_PointerOver(dialog) && !ui->dropdown_open) ui_close_dialog(ui);
+    if (ui->mouse_pressed && !Clay_PointerOver(dialog) && !ui->dropdown_open && !ui->modal_dragging) ui_close_dialog(ui);
 }
 
 void ui_close_dialog(Ui *ui) {

@@ -240,7 +240,31 @@ static void test_sync_stop_does_not_block(void) {
     os_sleep_ms(2500);   // the abandoned thread finishes and cleans up (ASan checks it)
 }
 
+// A misread stone that leaves a group without liberties (KataGo refuses such a position).
+static void test_drop_dead_groups(void) {
+    BoardReading r = { .size = 9 };
+    // Black corner stone at (0,0) surrounded by White at (1,0) and (0,1): no liberty -> dropped.
+    r.cells[0] = STONE_BLACK;
+    r.cells[1] = STONE_WHITE;
+    r.cells[9] = STONE_WHITE;
+    // A healthy Black pair in the middle stays.
+    r.cells[4 * 9 + 4] = STONE_BLACK;
+    r.cells[4 * 9 + 5] = STONE_BLACK;
+    CHECK_EQ(board_reading_drop_dead_groups(&r), 1);
+    CHECK_EQ(r.cells[0], STONE_EMPTY);
+    CHECK_EQ(r.cells[1], STONE_WHITE);
+    CHECK_EQ(r.cells[9], STONE_WHITE);
+    CHECK_EQ(r.cells[4 * 9 + 4], STONE_BLACK);
+
+    // A board read as all black (wrong area): everything goes, nothing is left to refuse.
+    BoardReading full = { .size = 9 };
+    memset(full.cells, STONE_BLACK, 81);
+    CHECK_EQ(board_reading_drop_dead_groups(&full), 81);
+    CHECK_EQ(board_reading_drop_dead_groups(&full), 0);
+}
+
 void register_board_reader_tests(void) {
+    test_register("board_reader/drop_dead_groups", test_drop_dead_groups);
     test_register("board_sync/stop_does_not_block", test_sync_stop_does_not_block);
     test_register("board_reader/screenshots", test_read_screenshots);
     test_register("board_reader/synthetic", test_read_synthetic);

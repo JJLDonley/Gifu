@@ -86,15 +86,21 @@ static void rebuild_background(Ui *ui, const Theme *t) {
     string_free(&cache);
 }
 
+// The name field for a copy of e->edit: "<name> (custom)" unless it already is one.
+static void reset_name(ThemeEditor *e) {
+    bool custom = sv_find(string_sv(&e->edit.name), SV("(custom)")) >= 0 || sv_find(string_sv(&e->edit.id), SV("custom")) >= 0;
+    String name = custom ? string_from(string_sv(&e->edit.name)) : string_format(SV_FMT " (custom)", SV_ARG(string_sv(&e->edit.name)));
+    text_edit_set(&e->name, string_sv(&name));
+    string_free(&name);
+}
+
 void theme_editor_open(Ui *ui) {
     ThemeEditor *e = &ui->theme_editor;
     if (!e->open) {
         e->base_index = ui->theme_index;
+        e->original_index = ui->theme_index;
         e->edit = theme_clone(ui->theme);
-        bool custom = sv_find(string_sv(&e->edit.name), SV("(custom)")) >= 0 || sv_find(string_sv(&e->edit.id), SV("custom")) >= 0;
-        String name = custom ? string_from(string_sv(&e->edit.name)) : string_format(SV_FMT " (custom)", SV_ARG(string_sv(&e->edit.name)));
-        text_edit_set(&e->name, string_sv(&name));
-        string_free(&name);
+        reset_name(e);
         e->selected = 0;
         e->group = GROUP_BOARD;
         e->drag = 0;
@@ -116,8 +122,42 @@ void theme_editor_cancel(Ui *ui) {
     e->background_stale = false;
     theme_free(&e->edit);
     if (background_edited) string_clear(&ui->background.built_for);
-    ui_apply_theme(ui, e->base_index);
+    ui_apply_theme(ui, e->original_index);
     changed(ui);
+}
+
+// "Start from": edit a copy of another theme instead (its textures, fonts and
+// background load as when it is chosen). Edits so far are dropped.
+static void start_from(Ui *ui, isize index) {
+    ThemeEditor *e = &ui->theme_editor;
+    if (index < 0 || index >= ui->themes.len) return;
+    e->background_stale = false;
+    string_clear(&ui->background.built_for);
+    ui_apply_theme(ui, index);
+    theme_free(&e->edit);
+    e->edit = theme_clone(ui->theme);
+    e->base_index = index;
+    reset_name(e);
+    ui->theme = &e->edit;   // live again: everything draws with the copy
+    load_selection(e);
+    changed(ui);
+}
+
+// The theme picker: every built-in and user theme by name.
+static void theme_picker(Ui *ui) {
+    ThemeEditor *e = &ui->theme_editor;
+    const ThemeColors *c = &ui->theme->colors;
+    isize count = ui->themes.len;
+    StringView *labels = arena_new_array(&ui->frame, StringView, count > 0 ? count : 1);
+    for (isize i = 0; i < count; ++i) labels[i] = string_sv(&ui->themes.items[i].name);
+    CLAY({ .layout = { .childGap = ui_u16(ui, 8), .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
+        CLAY({ .layout = { .sizing = { CLAY_SIZING_FIT(ui_px(ui, 70)), CLAY_SIZING_FIT(0) } } }) {
+            ui_label_fit(ui, tr(ui, "theme_editor.start_from", "Start from"), FONT_UI, 13, c->text_muted, false);
+        }
+        isize picked = ui_dropdown(ui, 2000, 170, 14, tr(ui, "theme_editor.start_from_tip", "Edit a copy of another theme (drops unsaved changes)"),
+                                   labels, NULL, count, e->base_index, SV("—"));
+        if (picked >= 0 && picked != e->base_index) start_from(ui, picked);
+    }
 }
 
 static void slug(StringView name, char *out, isize cap) {
@@ -429,7 +469,8 @@ static void body(Ui *ui, void *user) {
     // Name and overall options.
     CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 16),
                        .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
-        CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 300)), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 8),
+        theme_picker(ui);
+        CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 230)), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 8),
                            .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } } }) {
             ui_label(ui, tr(ui, "theme_editor.name", "Name"), FONT_UI, 13, c->text_muted);
             ui_text_input(ui, CLAY_ID("ThemeName"), &e->name, 14, 1, SV("My theme"));

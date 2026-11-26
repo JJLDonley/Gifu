@@ -192,9 +192,13 @@ typedef struct App {
 
     u32 language_version;       // bumped when UI strings change (UI reloads fonts)
 
-    // Game result (engine final_score), shown as a banner for its position.
+    // Game result (engine final_score), shown as a banner while the scored node is the current one. Tied to the
+    // node and the game (tree_generation), not to the engine's synced position: that goes stale when the engine is
+    // stopped, restarted or fails, which kept the banner up over the analysis.
     String result;
     u64 result_position;
+    const GameNode *result_node;
+    u32 result_generation;
     bool score_requested;       // final_score sent, waiting for the answer
     bool score_pending;         // user asked; send once the engine is ready and synced
     const GameNode *auto_scored_node;   // two passes already handled here
@@ -266,6 +270,10 @@ bool app_rank_progress(const App *app, i32 *done, i32 *total);
 // Re-reads engine profiles (e.g. after an install) and restarts the engine.
 void app_reload_engines(App *app);   // start/stop the comparison engine
 void app_set_analysis(App *app, bool enabled);
+// The game result card: shown while the scored node is the current one (same game); cleared by Analyze and by a
+// new or opened game.
+bool app_result_shown(const App *app);
+void app_clear_result(App *app);
 AnalysisRequest app_analysis_request(const App *app);
 void app_reload_language(App *app);
 // Called after a setting changed through the generic config API (settings dialog);

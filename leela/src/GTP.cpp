@@ -359,13 +359,14 @@ bool GTP::execute(GameState & game, std::string xinput) {
         }
         return true;
     } else if (command.find("lz-analyze") == 0) {
-        // lz-analyze [b|w] [interval] [N] [maxmoves N]: searches the position until the
-        // next command, printing candidate lines (Leela Zero's format) meanwhile.
+        // lz-analyze [b|w] [interval] [N] [maxmoves N] [playouts N]: searches the position until the
+        // next command (or, with playouts N, until N playouts), printing candidate lines (Leela Zero's
+        // format) meanwhile and, with playouts, once more at the end.
         std::istringstream cmdstream(command);
         std::string tmp;
         cmdstream >> tmp;
         int who = game.get_to_move();
-        int interval = 100, max_moves = 0;
+        int interval = 100, max_moves = 0, playouts = 0;
         bool ok = true;
         while (cmdstream >> tmp) {
             if (tmp == "b" || tmp == "black") {
@@ -376,6 +377,8 @@ bool GTP::execute(GameState & game, std::string xinput) {
                 ok &= static_cast<bool>(cmdstream >> interval);
             } else if (tmp == "maxmoves") {
                 ok &= static_cast<bool>(cmdstream >> max_moves);
+            } else if (tmp == "playouts") {
+                ok &= static_cast<bool>(cmdstream >> playouts);
             } else if (!tmp.empty() && std::all_of(tmp.begin(), tmp.end(), ::isdigit)) {
                 interval = std::stoi(tmp);
             } else {
@@ -393,7 +396,7 @@ bool GTP::execute(GameState & game, std::string xinput) {
         {
             std::unique_ptr<UCTSearch> search(new UCTSearch(game));
             search->set_quiet(true);
-            search->analyze(std::max(interval, 1), max_moves);
+            search->analyze(std::max(interval, 1), max_moves, playouts);
         }
         fprintf(stdout, "\n");
         fflush(stdout);

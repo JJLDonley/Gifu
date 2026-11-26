@@ -112,10 +112,29 @@
       (option defender "Defender")
       (option both "Both")))
   ;; Game -> Sync board from screen: follows a board shown by another program.
+  ;; Every cut-off that classifies or hides data (user feedback 2026-11-25: full customisation of data thresholds).
+  (section settings.thresholds :fallback Thresholds
+    (number display.human_min_pct :min 0 :max 50 :step 0.5 :format "%.1f %" :label settings.human_min_pct :fallback "Human moves: show moves a player of that rank plays at least")
+    (number display.human_min_relative_pct :min 0 :max 100 :step 1 :format "%.0f %" :label settings.human_min_relative_pct :fallback "Human moves: and at least this share of the most likely move")
+    (number display.candidate_min_pct :min 0 :max 50 :step 0.5 :format "%.1f %" :label settings.candidate_min_pct :fallback "Candidates after the 3rd: at least this share of the best move's visits")
+    (number display.ownership_min_pct :min 0 :max 100 :step 5 :format "%.0f %" :label settings.ownership_min_pct :fallback "Territory: mark points owned at least")
+    (number display.move_list_min_loss :min 0 :max 50 :step 0.5 :format "%.1f %" :label settings.move_list_min_loss :fallback "Move list: show win-rate losses from")
+    (number estimate.secure_pct :min 5 :max 100 :step 5 :format "%.0f %" :label settings.estimate_secure :fallback "Estimate: decided (dead stones) from ownership")
+    (number estimate.likely_pct :min 0 :max 100 :step 5 :format "%.0f %" :label settings.estimate_likely :fallback "Estimate: likely territory from ownership")
+    (text report.winrate_limits :placeholder "2,5,10,20" :label settings.winrate_limits :fallback "Win-rate loss levels (%; 3rd = blunder)")
+    (text report.score_limits :placeholder "0.5,2,5,10" :label settings.score_limits :fallback "Point loss levels (2nd = mistake colour, 3rd = bad)")
+    (number report.match_moves :min 1 :max 32 :step 1 :format "%.0f" :label settings.match_moves :fallback "Match: one of KataGo's top moves")
+    (number report.match_percent :min 0 :max 100 :step 1 :format "%.0f %" :label settings.match_percent :fallback "Match: with at least this share of the best move's visits")
+    (number report.unlikely_pct :min 0 :max 50 :step 0.5 :format "%.1f %" :label settings.unlikely_pct :fallback "Report: a move is unlikely for the rank below")
+    (number report.filter_winrate :min 0 :max 100 :step 1 :format "%.0f %" :label settings.filter_winrate :fallback "Mistakes list: win rate lost at least")
+    (number report.filter_points :min 0 :max 100 :step 0.5 :format "%.1f" :label settings.filter_points :fallback "Mistakes list: points lost at least")
+    (number report.phase_middle :min 1 :max 400 :step 5 :format "%.0f" :label settings.phase_middle :fallback "Middle game starts after move (19x19)")
+    (number report.phase_end :min 2 :max 500 :step 5 :format "%.0f" :label settings.phase_end :fallback "Endgame starts after move (19x19)"))
   (section settings.sync :fallback BSync
     (choice sync.capture :columns 3 :label settings.sync_capture :fallback "Screen capture"
       (option auto "Automatic")
-      (option gdi "Windows")
+      (option dxgi "Windows")
+      (option gdi "Windows (GDI)")
       (option x11 "X11")
       (option portal "Wayland portal")
       (option grim "grim (wlroots)")

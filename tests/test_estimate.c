@@ -1,6 +1,7 @@
 #include "test.h"
 
 #include "core/estimate.h"
+#include "core/game_report.h"
 #include "core/human_winrate.h"
 
 #include <math.h>
@@ -57,7 +58,27 @@ static void test_human_winrate(void) {
     CHECK(human_level_for_kyu(12) == -11 && human_level_for_kyu(1) == 0 && human_level_for_dan(1) == 1 && human_level_for_dan(9) == 9);
 }
 
+// Settings -> Thresholds: the phase boundaries and the estimate's ownership levels are settings.
+static void test_thresholds(void) {
+    game_phases_set(60, 160);
+    CHECK_EQ(game_phase_start(GAME_PHASE_MIDDLE, 361), 61);
+    CHECK_EQ(game_phase(161, 361), GAME_PHASE_ENDGAME);
+    game_phases_set(50, 150);   // defaults back
+    CHECK_EQ(game_phase(51, 361), GAME_PHASE_MIDDLE);
+    // One black-owned point at 0.6: likely territory with the default levels (0.8 / 0.4), decided at 0.5 / 0.3.
+    Board b;
+    board_init(&b, 9, 9);
+    f32 own[81] = { 0.6f };
+    TerritoryEstimate e = territory_estimate(&b, own, 0.0f, 0.6f, false);
+    CHECK(e.black_likely == 1 && e.black_secure < 0.7f);
+    estimate_levels_set(0.5f, 0.3f);
+    e = territory_estimate(&b, own, 0.0f, 0.6f, false);
+    CHECK(e.black_likely == 0 && e.decided > 0.0f);
+    estimate_levels_set(0.8f, 0.4f);
+}
+
 void register_estimate_tests(void) {
+    test_register("estimate/thresholds", test_thresholds);
     test_register("estimate/human_winrate", test_human_winrate);
     test_register("estimate/area", test_area);
     test_register("estimate/territory", test_territory);

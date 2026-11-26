@@ -410,6 +410,12 @@ static bool key_repeats(StringView id) {
 // Settings -> Keys is waiting for a key: the next chord (modifiers + a key) is
 // bound to the command, Escape cancels. Nothing else sees the keyboard meanwhile.
 static void capture_key(Ui *ui) {
+    for (i32 button = 2; button <= 6; ++button) {   // a mouse button (middle, thumb buttons) binds like a key
+        if (!IsMouseButtonPressed(button)) continue;
+        app_keymap_bind(ui->app, sv(ui->key_capture), (KeyChord){ KEY_MOUSE_BASE + button, current_mods() }, ui->key_capture_add);
+        ui->key_capture[0] = 0;
+        return;
+    }
     for (i32 key = GetKeyPressed(); key; key = GetKeyPressed()) {
         if (key == KEY_ESCAPE) {
             ui->key_capture[0] = 0;
@@ -445,6 +451,14 @@ static void handle_chord(Ui *ui, KeyChord chord, bool first) {
         return;
     }
     if (ui->dialog != UI_DIALOG_NONE) {   // a dialog has the keyboard: Escape closes it
+        // ... except the zoom keys (Ctrl+= / Ctrl+-): resizing the interface is useful exactly when a dialog is too
+        // big or too small for the window.
+        const KeyBinding *zb = escape ? NULL : keymap_lookup(&app->keymap, chord);
+        if (zb && sv_starts_with(string_sv(&zb->command), SV("view.zoom_"))) {
+            command_execute(&app->commands, string_sv(&zb->command));
+            if (first) log_info("key %s: " SV_FMT " (dialog open)", text, SV_ARG(string_sv(&zb->command)));
+            return;
+        }
         if (escape && first) ui_close_dialog(ui);
         if (first) log_info("key %s: %s", text, escape ? "closes the dialog" : "ignored (a dialog is open)");
         return;
@@ -567,6 +581,10 @@ static void handle_keys(Ui *ui) {
     i32 n = 0;
     vec_foreach(KeyBinding, b, &app->keymap.bindings) {
         if (b->chord.mods != mods || n == 16) continue;
+        if (key_chord_is_mouse(b->chord.key)) {   // a mouse button: the press only, no auto-repeat
+            if (IsMouseButtonPressed(b->chord.key - KEY_MOUSE_BASE)) chords[n] = b->chord, firsts[n++] = true;
+            continue;
+        }
         bool pressed = IsKeyPressed(b->chord.key);
         if (pressed || IsKeyPressedRepeat(b->chord.key)) chords[n] = b->chord, firsts[n++] = pressed;
     }

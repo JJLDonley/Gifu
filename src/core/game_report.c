@@ -46,11 +46,18 @@ String loss_limits_format(const f32 *limits, f32 scale) {
 bool loss_is_mistake(f32 winrate_loss) { return winrate_loss >= g_limits.winrate[1] && winrate_loss < g_limits.winrate[2]; }
 bool loss_is_blunder(f32 winrate_loss) { return winrate_loss >= g_limits.winrate[2]; }
 
+static i32 g_phase_middle = 50, g_phase_end = 150;
+
+void game_phases_set(i32 middle, i32 end) {
+    g_phase_middle = CLAMP(middle, 1, 999);
+    g_phase_end = CLAMP(end, g_phase_middle + 1, 1000);
+}
+
 i32 game_phase_start(i32 phase, i32 board_points) {
     f64 scale = (f64)(board_points > 0 ? board_points : 361) / 361.0;
     if (phase <= GAME_PHASE_OPENING) return 1;
-    if (phase == GAME_PHASE_MIDDLE) return 1 + (i32)lround(50 * scale);
-    return 1 + (i32)lround(150 * scale);
+    if (phase == GAME_PHASE_MIDDLE) return 1 + (i32)lround(g_phase_middle * scale);
+    return 1 + (i32)lround(g_phase_end * scale);
 }
 
 i32 game_phase(i32 move_number, i32 board_points) {

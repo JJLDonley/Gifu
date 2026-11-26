@@ -7,6 +7,12 @@
 #include "base/kv.h"
 #include "base/vec.h"
 
+// Mouse buttons bind like keys (user feedback 2026-11-25): code KEY_MOUSE_BASE + raylib mouse button, named
+// MouseMiddle, Mouse4 (back thumb button), Mouse5 (forward), Mouse6, Mouse7 — e.g. "Mouse4 = nav.back".
+// Left and right buttons stay with the board (play, menus) and cannot be bound.
+enum { KEY_MOUSE_BASE = 1000 };
+static inline bool key_chord_is_mouse(i32 key) { return key >= KEY_MOUSE_BASE + 2 && key <= KEY_MOUSE_BASE + 6; }
+
 enum {
     KEYMOD_CTRL = 1 << 0,
     KEYMOD_SHIFT = 1 << 1,

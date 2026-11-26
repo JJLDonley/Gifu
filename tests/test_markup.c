@@ -146,6 +146,18 @@ static void test_setup_stones(void) {
     game_tree_rebuild(t, n);
     CHECK_EQ(board_at(&n->board, (Point){ 0, 0 }), STONE_BLACK);
     CHECK(!game_node_find_prop(n, SV("AE")) && !game_node_find_prop(n, SV("AB")));
+    // A drag with the stone tool sets points to one state (setup_set_stone): painting twice changes nothing.
+    setup_set_stone(t, n, (Point){ 3, 3 }, STONE_BLACK);
+    setup_set_stone(t, n, (Point){ 3, 3 }, STONE_BLACK);
+    setup_set_stone(t, n, (Point){ 4, 3 }, STONE_BLACK);
+    game_tree_rebuild(t, n);
+    CHECK_EQ(board_at(&n->board, (Point){ 3, 3 }), STONE_BLACK);
+    CHECK_EQ(board_at(&n->board, (Point){ 4, 3 }), STONE_BLACK);
+    setup_set_stone(t, n, (Point){ 3, 3 }, STONE_EMPTY);
+    setup_set_stone(t, n, (Point){ 4, 3 }, STONE_EMPTY);
+    game_tree_rebuild(t, n);
+    CHECK_EQ(board_at(&n->board, (Point){ 3, 3 }), STONE_EMPTY);
+    CHECK_EQ(board_at(&n->board, (Point){ 4, 3 }), STONE_EMPTY);
     // Other colour over an existing stone replaces it.
     setup_toggle_stone(t, n, (Point){ 0, 0 }, STONE_WHITE);
     game_tree_rebuild(t, n);

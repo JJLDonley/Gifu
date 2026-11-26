@@ -63,6 +63,9 @@ void markup_next_label(const Markup *markup, bool numbers, char out[MARKUP_MAX_L
 // when that colour is already there (empty: AE when it came from an earlier node).
 // The caller rebuilds the tree from `node`.
 void setup_toggle_stone(GameTree *tree, GameNode *node, Point p, Stone color);
+// Setup on `node` so that p holds `want` (a colour, or STONE_EMPTY): what a drag with the stone tool paints over
+// every point it passes. The caller rebuilds the tree from `node`.
+void setup_set_stone(GameTree *tree, GameNode *node, Point p, Stone want);
 
 // Shaded points per colour (up to `cap` colours, most points first). With
 // `empty_only`, points with a stone on `board` are not counted.

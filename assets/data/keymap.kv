@@ -1,7 +1,8 @@
 # Key bindings: "Chord = command.id", one per line. Chords: Ctrl/Shift/Alt/Super +
 # a letter, digit or key name (Space Enter Escape Tab Left Right Up Down Home End
 # PageUp PageDown Delete Backspace F1..F12 Comma Period Minus Equal LeftBracket
-# RightBracket ...). Override or add bindings in <config_dir>/keymap.kv.
+# RightBracket ...), or a mouse button: MouseMiddle, Mouse4 (thumb: back), Mouse5 (thumb: forward), Mouse6, Mouse7.
+# Override or add bindings in <config_dir>/keymap.kv.
 
 Left         = nav.back
 Right        = nav.forward
@@ -9,6 +10,8 @@ Up           = nav.back
 Down         = nav.forward
 Shift+Left   = nav.back10
 Shift+Right  = nav.forward10
+Mouse4       = nav.back
+Mouse5       = nav.forward
 Home         = nav.first
 End          = nav.last
 LeftBracket  = nav.prev_variation

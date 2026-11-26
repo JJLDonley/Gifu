@@ -917,7 +917,7 @@ std::string UCTSearch::analysis_line(int max_moves) {
     return line;
 }
 
-void UCTSearch::analyze(int interval_cs, int max_moves) {
+void UCTSearch::analyze(int interval_cs, int max_moves, int max_playouts) {
     MCOwnerTable::get_MCO()->clear();
     Playout::mc_owner(m_rootstate, 64);
     m_root.create_children(m_nodes, m_rootstate, true, m_use_nets);
@@ -928,7 +928,9 @@ void UCTSearch::analyze(int interval_cs, int max_moves) {
 
     m_run = true;
     m_playouts = 0;
-    m_maxplayouts = INT_MAX;
+    // max_playouts > 0: stop by itself after that many playouts (a fixed-size search, for batch analysis), printing
+    // the final candidate lines; otherwise run until the next command.
+    m_maxplayouts = max_playouts > 0 ? max_playouts : INT_MAX;
     ThreadGroup tg(thread_pool);
     for (int i = 1; i < cfg_num_threads; i++) {
         tg.add_task(UCTWorker(m_rootstate, this, &m_root));
@@ -947,13 +949,20 @@ void UCTSearch::analyze(int interval_cs, int max_moves) {
                 fflush(stdout);
             }
         }
-    } while (!Utils::input_pending());
+    } while (!Utils::input_pending() && !(max_playouts > 0 && m_playouts >= max_playouts));
 
     m_run = false;
 #ifdef USE_OPENCL
     opencl.join_outstanding_cb();
 #endif
     tg.wait_all();
+    if (max_playouts > 0) {   // the final state of a fixed-size search
+        std::string line = analysis_line(max_moves);
+        if (!line.empty()) {
+            fprintf(stdout, "%s\n", line.c_str());
+            fflush(stdout);
+        }
+    }
 }
 
 void UCTSearch::set_playout_limit(int playouts) {

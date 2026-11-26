@@ -138,6 +138,16 @@ void move_edit_redo(GameTree *tree, const MoveEditRecord *r) {
     game_tree_goto(tree, r->current_after);
 }
 
+GameNode *move_edit_branch_node(const GameTree *tree, Point p) {
+    GameNode *placed = move_edit_stone_node(tree, p);
+    if (placed) return placed;
+    if (!board_contains(&tree->current->board, p)) return NULL;
+    for (GameNode *n = tree->current->first_child; n; n = n->first_child) {
+        if (n->has_move && n->move.point.x == p.x && n->move.point.y == p.y) return n;
+    }
+    return NULL;
+}
+
 GameNode *move_edit_stone_node(const GameTree *tree, Point p) {
     const Board *b = &tree->current->board;
     if (!board_contains(b, p) || board_at(b, p) == STONE_EMPTY) return NULL;

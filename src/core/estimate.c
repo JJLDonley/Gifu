@@ -2,6 +2,13 @@
 
 #include <math.h>
 
+static f32 g_secure = 0.8f, g_likely = 0.4f;
+
+void estimate_levels_set(f32 secure, f32 likely) {
+    g_secure = CLAMP(secure, 0.05f, 1.0f);
+    g_likely = CLAMP(likely, 0.0f, g_secure);
+}
+
 TerritoryEstimate territory_estimate(const Board *board, const f32 *own, f32 komi, f32 score_lead, bool territory_rules) {
     TerritoryEstimate e = { 0 };
     i32 n = board->width * board->height;
@@ -12,15 +19,15 @@ TerritoryEstimate territory_estimate(const Board *board, const f32 *own, f32 kom
         f32 v = own[i], a = fabsf(v);
         bool black = v >= 0;
         Stone stone = (Stone)board->cells[i];
-        if (a >= 0.8f) ++secure_points;
+        if (a >= g_secure) ++secure_points;
         if (territory_rules) {
             Stone mine = black ? STONE_BLACK : STONE_WHITE, theirs = black ? STONE_WHITE : STONE_BLACK;
-            if (a < 0.4f || stone == mine) {   // own stones are not territory
+            if (a < g_likely || stone == mine) {   // own stones are not territory
                 e.unclaimed += 1;
                 continue;
             }
             f32 *total = black ? &e.black : &e.white;
-            if (a >= 0.8f) {
+            if (a >= g_secure) {
                 f32 points = stone == theirs ? 2.0f : 1.0f;   // a dead stone: the point and the prisoner
                 *total += points;
                 *(black ? &e.black_secure : &e.white_secure) += points;
@@ -30,8 +37,8 @@ TerritoryEstimate territory_estimate(const Board *board, const f32 *own, f32 kom
         } else {
             if (black) e.black += a;
             else e.white += a;
-            if (a >= 0.8f) *(black ? &e.black_secure : &e.white_secure) += 1;
-            else if (a >= 0.4f) *(black ? &e.black_likely : &e.white_likely) += 1;
+            if (a >= g_secure) *(black ? &e.black_secure : &e.white_secure) += 1;
+            else if (a >= g_likely) *(black ? &e.black_likely : &e.white_likely) += 1;
             else e.unclaimed += 1;
         }
     }

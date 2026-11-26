@@ -239,7 +239,7 @@ static void move_counter(Ui *ui, const Sexpr *node, LayoutCtx *ctx) {
 // Floating card over the top of the board when the current position has a score.
 static void result_banner(Ui *ui) {
     App *app = ui->app;
-    bool show = app->result.len && app->result_position == app->main.synced_position_id;
+    bool show = app_result_shown(app);
     f32 t = anim_towards(&ui->anim, 0x8E5017u, show ? 1.0f : 0.0f, 12.0f, 0.0f);
     if (t < 0.01f) return;
     const ThemeColors *c = &ui->theme->colors;

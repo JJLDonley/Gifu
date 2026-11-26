@@ -304,16 +304,18 @@ static bool remove_point_value(GameTree *tree, GameNode *node, StringView ident,
 }
 
 void setup_toggle_stone(GameTree *tree, GameNode *node, Point p, Stone color) {
+    setup_set_stone(tree, node, p, (Stone)board_at(&node->board, p) == color ? STONE_EMPTY : color);
+}
+
+void setup_set_stone(GameTree *tree, GameNode *node, Point p, Stone want) {
     char c[3];
     point_to_sgf(p, c);
     StringView coord = sv(c);
     // What the point holds before this node's setup: the parent's position.
     Stone before = node->parent ? (Stone)board_at(&node->parent->board, p) : STONE_EMPTY;
-    Stone now = (Stone)board_at(&node->board, p);
     remove_point_value(tree, node, SV("AB"), coord);
     remove_point_value(tree, node, SV("AW"), coord);
     remove_point_value(tree, node, SV("AE"), coord);
-    Stone want = now == color ? STONE_EMPTY : color;
     if (want == before) return;   // the parent already has it that way
     StringView ident = want == STONE_BLACK ? SV("AB") : want == STONE_WHITE ? SV("AW") : SV("AE");
     game_node_add_prop_value(tree, node, ident, coord);

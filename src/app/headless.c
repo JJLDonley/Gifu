@@ -252,11 +252,8 @@ static Engine *start_ready_engine(const EngineProfile *profile, StringView human
     return NULL;
 }
 
-// Prints a game's estimate and, with --out, saves its per-move CGR[]. Returns false on a write error.
-static bool rank_report(const App *app, StringView path, GameTree *tree, const RankProgress *p, f64 seconds) {
-    printf(SV_FMT " (%.1f s):\n", SV_ARG(path_basename(path)), seconds);
-    print_rank_line(tree, p);
-    if (!app->options.output_dir.len) return true;   // with --out: save the per-move estimates as CGR[]
+// Saves a game with its per-move CGR[] into --out. Returns false on a write error.
+static bool rank_save(const App *app, StringView path, GameTree *tree, const RankProgress *p) {
     rank_progress_store(p, tree, tree->current);
     String out = path_join(app->options.output_dir, path_basename(path));
     os_make_dirs(app->options.output_dir);
@@ -278,103 +275,145 @@ static GameTree *load_main_line(StringView path) {
     return tree;
 }
 
-// Every game at once on the JSON analyzer: 1-visit human-policy queries, batched on the GPU.
-static int rank_batched(App *app, const EngineProfile *profile) {
-    const AppOptions *o = &app->options;
-    String err = { 0 };
-    KataGoTuning tuning = app_katago_tuning(app);
-    BatchAnalyzer *analyzer = batch_analyzer_create(profile, &tuning, &err);
-    if (!analyzer) {
-        fprintf(stderr, "cannot start analysis engine: %s\n", string_cstr(&err));
-        string_free(&err);
-        return 2;
-    }
-    printf("Estimating ranks with %s (analysis engine)\n", string_cstr(&profile->name));
-    GameTree **trees = calloc((usize)o->analyze_count, sizeof(GameTree *));
-    RankBatch **batches = calloc((usize)o->analyze_count, sizeof(RankBatch *));
+// Called once per estimated game. Returns false on failure (counted).
+typedef bool (*RankDoneFn)(App *app, void *ctx, StringView path, GameTree *tree, const RankProgress *p, f64 seconds);
+
+// One kind of per-game job on the JSON analyzer (rank estimates). `job_ctx` is passed to create.
+typedef struct BatchJobOps {
+    void *(*create)(void *job_ctx, const PositionSpec *game, StringView id);
+    bool (*submit)(void *job, BatchAnalyzer *analyzer);
+    bool (*apply)(void *job, const TurnResult *result);
+    bool (*finished)(const void *job, StringView *error);   // error set (non-empty) when it failed
+    // The game is done: report it. Returns false on failure (counted).
+    bool (*done)(App *app, void *ctx, StringView path, GameTree *tree, void *job, f64 seconds);
+    void (*destroy)(void *job);
+    void *job_ctx;
+} BatchJobOps;
+
+// Games go to the analyzer a few at a time: every queued game holds its positions and
+// pending queries in RAM (ours and KataGo's), and the GPU gains nothing from more than
+// a handful of games in flight.
+enum { RANK_GAMES_IN_FLIGHT = 8 };
+
+// Every game on the JSON analyzer, batched on the GPU. A sliding window: a slot is refilled
+// as soon as its game finishes, so the GPU is not left idle while the slowest game of a
+// fixed group catches up (2.6x faster than fixed groups: reports/Rank benchmark log.md).
+static i32 run_batched(App *app, BatchAnalyzer *analyzer, const StringView *paths, i32 count, const BatchJobOps *ops,
+                       void *ctx) {
+    typedef struct Slot {
+        i32 index;   // into paths, -1 = free
+        GameTree *tree;
+        void *job;
+        f64 started;
+    } Slot;
+    Slot slots[RANK_GAMES_IN_FLIGHT];
+    for (i32 i = 0; i < RANK_GAMES_IN_FLIGHT; ++i) slots[i] = (Slot){ .index = -1 };
+    i32 failures = 0, next = 0, finished = 0;
     PositionSpec *spec = malloc(sizeof(PositionSpec));
-    if (!trees || !batches || !spec) abort();
-    i32 failures = 0;
-    f64 started = os_time_seconds();
-    for (i32 i = 0; i < o->analyze_count; ++i) {
-        trees[i] = load_main_line(o->analyze_files[i]);
-        if (!trees[i]) {
-            failures++;
-            continue;
-        }
-        position_spec_from_node(trees[i], trees[i]->current, string_sv(&app->config.rules), spec);
-        char id[32];
-        snprintf(id, sizeof(id), "rank%d", i);
-        batches[i] = rank_batch_create(spec, sv(id));
-        rank_batch_submit(batches[i], analyzer);
-    }
-    free(spec);
-    f64 last_print = 0;
+    if (!spec) abort();
+    f64 last_print = os_time_seconds();
     for (;;) {
-        bool all_done = true;
-        i32 done = 0, total = 0;
-        for (i32 i = 0; i < o->analyze_count; ++i) {
-            if (!batches[i]) continue;
-            const RankProgress *p = rank_batch_progress(batches[i]);
-            all_done &= p->finished;
-            done += p->done, total += p->total;
+        for (i32 s = 0; s < RANK_GAMES_IN_FLIGHT && next < count; ++s) {
+            if (slots[s].index >= 0) continue;
+            i32 i = next++;
+            GameTree *tree = load_main_line(paths[i]);
+            if (!tree) {
+                failures++, finished++;
+                continue;
+            }
+            position_spec_from_node(tree, tree->current, string_sv(&app->config.rules), spec);
+            char id[32];
+            snprintf(id, sizeof(id), "g%d", i);
+            slots[s] = (Slot){ .index = i, .tree = tree, .job = ops->create(ops->job_ctx, spec, sv(id)),
+                               .started = os_time_seconds() };
+            ops->submit(slots[s].job, analyzer);
         }
-        if (all_done || !batch_analyzer_alive(analyzer)) break;
+        bool busy = false;
+        for (i32 s = 0; s < RANK_GAMES_IN_FLIGHT; ++s) busy |= slots[s].index >= 0;
+        if (!busy || !batch_analyzer_alive(analyzer)) break;
         TurnResult r;
         bool any = false;
         while (batch_analyzer_poll(analyzer, &r)) {
             any = true;
-            for (i32 i = 0; i < o->analyze_count; ++i) {
-                if (batches[i] && rank_batch_apply(batches[i], &r)) break;
+            for (i32 s = 0; s < RANK_GAMES_IN_FLIGHT; ++s) {
+                if (slots[s].index >= 0 && ops->apply(slots[s].job, &r)) break;
             }
             if (!r.ok && r.job_id.len == 0) fprintf(stderr, "analysis engine: %s\n", string_cstr(&r.error));
             turn_result_free(&r);
         }
-        if (os_time_seconds() - last_print > 2.0) {
-            printf("  %d / %d moves\n", done, total);
+        for (i32 s = 0; s < RANK_GAMES_IN_FLIGHT; ++s) {
+            Slot *sl = &slots[s];
+            StringView error = SV_NULL;
+            if (sl->index < 0 || !ops->finished(sl->job, &error)) continue;
+            if (error.len) {
+                fprintf(stderr, SV_FMT ": failed: " SV_FMT "\n", SV_ARG(paths[sl->index]), SV_ARG(error));
+                failures++;
+            } else if (!ops->done(app, ctx, paths[sl->index], sl->tree, sl->job, os_time_seconds() - sl->started)) {
+                failures++;
+            }
+            ops->destroy(sl->job);
+            game_tree_free(sl->tree);
+            *sl = (Slot){ .index = -1 };
+            finished++;
+        }
+        if (os_time_seconds() - last_print > 10.0) {
+            printf("  %d / %d games done\n", finished, count);
             fflush(stdout);
             last_print = os_time_seconds();
         }
         if (!any) os_sleep_ms(10);
     }
-    batch_analyzer_destroy(analyzer);
-    for (i32 i = 0; i < o->analyze_count; ++i) {
-        if (!batches[i]) continue;
-        const RankProgress *p = rank_batch_progress(batches[i]);
-        if (!p->finished || p->failed) {
-            fprintf(stderr, SV_FMT ": rank estimate %s%s\n", SV_ARG(o->analyze_files[i]), p->failed ? "failed: " : "incomplete",
-                    string_cstr(&p->error));
-            failures++;
-        } else if (!rank_report(app, o->analyze_files[i], trees[i], p, os_time_seconds() - started)) {
-            failures++;
-        }
-        rank_batch_destroy(batches[i]);
-        game_tree_free(trees[i]);
+    for (i32 s = 0; s < RANK_GAMES_IN_FLIGHT; ++s) {   // the engine died: what is in flight is incomplete
+        if (slots[s].index < 0) continue;
+        fprintf(stderr, SV_FMT ": incomplete\n", SV_ARG(paths[slots[s].index]));
+        failures++;
+        ops->destroy(slots[s].job);
+        game_tree_free(slots[s].tree);
     }
-    free(batches);
-    free(trees);
-    return failures ? 1 : 0;
+    failures += count - next;   // never started
+    free(spec);
+    if (!batch_analyzer_alive(analyzer)) fprintf(stderr, "analysis engine exited\n");
+    return failures;
 }
 
-int headless_rank(App *app) {
-    const AppOptions *o = &app->options;
-    StringView wanted = o->engine.len ? o->engine : string_sv(&app->config.engine);
-    const EngineProfile *profile = engine_profiles_find_human(&app->engine_profiles, wanted);
-    if (!profile) {
-        fprintf(stderr, "no engine profile with a human network (gifu --install human)\n");
-        return 2;
-    }
-    if (engine_profile_can_batch(profile)) return rank_batched(app, profile);
-    // No analysis config: replay each game over GTP.
-    KataGoTuning tuning = app_katago_tuning(app);
-    Engine *engine = start_ready_engine(profile, app_human_profile(app), &tuning);
-    if (!engine) return 2;
-    printf("Estimating ranks with %s\n", string_cstr(&profile->name));
+// ---- Rank estimates (RankBatch) as a batched job ----
+static void *rank_job_create(void *job_ctx, const PositionSpec *game, StringView id) {
+    (void)job_ctx;
+    return rank_batch_create(game, id);
+}
+static bool rank_job_submit(void *job, BatchAnalyzer *a) { return rank_batch_submit(job, a); }
+static bool rank_job_apply(void *job, const TurnResult *r) { return rank_batch_apply(job, r); }
+static bool rank_job_finished(const void *job, StringView *error) {
+    const RankProgress *p = rank_batch_progress(job);
+    if (p->failed) *error = p->error.len ? string_sv(&p->error) : SV("rank estimate failed");
+    return p->finished;
+}
+static void rank_job_destroy(void *job) { rank_batch_destroy(job); }
+// RankDoneFn as the ops' done (the callback is the ctx's first field).
+typedef struct RankRunCtx {
+    RankDoneFn done;
+    void *ctx;
+} RankRunCtx;
+static bool rank_job_done(App *app, void *ctx, StringView path, GameTree *tree, void *job, f64 seconds) {
+    RankRunCtx *rc = ctx;
+    return rc->done(app, rc->ctx, path, tree, rank_batch_progress(job), seconds);
+}
+
+static i32 rank_games_batched(App *app, BatchAnalyzer *analyzer, const StringView *paths, i32 count, RankDoneFn done,
+                              void *ctx) {
+    static const BatchJobOps OPS = { rank_job_create, rank_job_submit, rank_job_apply, rank_job_finished,
+                                     rank_job_done, rank_job_destroy, NULL };
+    RankRunCtx rc = { done, ctx };
+    return run_batched(app, analyzer, paths, count, &OPS, &rc);
+}
+
+// No analysis config: replay each game over GTP.
+static i32 rank_games_gtp(App *app, Engine *engine, const StringView *paths, i32 count, RankDoneFn done, void *ctx) {
     i32 failures = 0;
     PositionSpec *spec = malloc(sizeof(PositionSpec));
     if (!spec) abort();
-    for (i32 i = 0; i < o->analyze_count; ++i) {
-        GameTree *tree = load_main_line(o->analyze_files[i]);
+    for (i32 i = 0; i < count; ++i) {
+        GameTree *tree = load_main_line(paths[i]);
         if (!tree) {
             failures++;
             continue;
@@ -385,25 +424,80 @@ int headless_rank(App *app) {
         const RankProgress *p = rank_estimator_progress(job);
         while (!p->finished) {
             rank_estimator_update(job);
-            if (os_time_seconds() - last_print > 2.0) {
-                printf("  %d / %d moves\n", p->done, p->total);
+            if (os_time_seconds() - last_print > 5.0) {
+                printf("  game %d of %d: %d / %d moves\n", i + 1, count, p->done, p->total);
                 fflush(stdout);
                 last_print = os_time_seconds();
             }
             os_sleep_ms(5);
         }
         if (p->failed) {
-            fprintf(stderr, SV_FMT ": %s\n", SV_ARG(o->analyze_files[i]), string_cstr(&p->error));
+            fprintf(stderr, SV_FMT ": %s\n", SV_ARG(paths[i]), string_cstr(&p->error));
             failures++;
-        } else if (!rank_report(app, o->analyze_files[i], tree, p, os_time_seconds() - started)) {
+        } else if (!done(app, ctx, paths[i], tree, p, os_time_seconds() - started)) {
             failures++;
         }
         rank_estimator_destroy(job);
         game_tree_free(tree);
     }
     free(spec);
+    return failures;
+}
+
+// Runs the estimator over `paths` on the configured human-network engine (one process).
+// Returns the failure count, or -1 when no engine could be started.
+static i32 rank_games(App *app, const StringView *paths, i32 count, RankDoneFn done, void *ctx) {
+    const AppOptions *o = &app->options;
+    StringView wanted = o->engine.len ? o->engine : string_sv(&app->config.engine);
+    const EngineProfile *profile = engine_profiles_find_human(&app->engine_profiles, wanted);
+    if (!profile) {
+        fprintf(stderr, "no engine profile with a human network (gifu --install human)\n");
+        return -1;
+    }
+    // A play-only profile (e.g. "KataGo · Human") has no analysis config: prefer one that batches,
+    // on the same device first, since replaying over GTP is far slower.
+    for (i32 pass = 0; pass < 2 && !engine_profile_can_batch(profile); ++pass) {
+        vec_foreach(EngineProfile, it, &app->engine_profiles) {
+            if (!it->human_model.len || !engine_profile_available(it) || !engine_profile_can_batch(it)) continue;
+            if (pass == 0 && it->cpu != profile->cpu) continue;
+            profile = it;
+            break;
+        }
+    }
+    KataGoTuning tuning = app_katago_tuning(app);
+    if (engine_profile_can_batch(profile)) {
+        String err = { 0 };
+        BatchAnalyzer *analyzer = batch_analyzer_create(profile, &tuning, &err);
+        if (!analyzer) {
+            fprintf(stderr, "cannot start analysis engine: %s\n", string_cstr(&err));
+            string_free(&err);
+            return -1;
+        }
+        printf("Estimating ranks with %s (analysis engine)\n", string_cstr(&profile->name));
+        i32 failures = rank_games_batched(app, analyzer, paths, count, done, ctx);
+        batch_analyzer_destroy(analyzer);
+        return failures;
+    }
+    Engine *engine = start_ready_engine(profile, app_human_profile(app), &tuning);
+    if (!engine) return -1;
+    printf("Estimating ranks with %s\n", string_cstr(&profile->name));
+    i32 failures = rank_games_gtp(app, engine, paths, count, done, ctx);
     engine_destroy(engine);
-    return failures ? 1 : 0;
+    return failures;
+}
+
+// Prints a game's estimate and, with --out, saves its per-move CGR[].
+static bool rank_report(App *app, void *ctx, StringView path, GameTree *tree, const RankProgress *p, f64 seconds) {
+    (void)ctx;
+    printf(SV_FMT " (%.1f s):\n", SV_ARG(path_basename(path)), seconds);
+    print_rank_line(tree, p);
+    return !app->options.output_dir.len || rank_save(app, path, tree, p);
+}
+
+int headless_rank(App *app) {
+    const AppOptions *o = &app->options;
+    i32 failures = rank_games(app, o->analyze_files, o->analyze_count, rank_report, NULL);
+    return failures < 0 ? 2 : failures ? 1 : 0;
 }
 
 static bool parse_area(StringView text, ScreenRect *out) {

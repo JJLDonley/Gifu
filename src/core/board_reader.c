@@ -224,3 +224,29 @@ void board_read_stones(const RgbaImage *im, const BoardGrid *g, BoardReading *ou
     }
     free(cl), free(cc);
 }
+
+i32 board_reading_drop_dead_groups(BoardReading *r) {
+    if (r->size <= 0) return 0;
+    Board board;
+    board_init(&board, r->size, r->size);
+    i32 n = r->size * r->size;
+    memcpy(board.cells, r->cells, (usize)n);
+    // Decide on the reading as read, then remove: removing one group must not save another.
+    bool seen[BOARD_MAX_POINTS] = { 0 };
+    bool dead[BOARD_MAX_POINTS] = { 0 };
+    i32 group[BOARD_MAX_POINTS];
+    for (i32 i = 0; i < n; ++i) {
+        if (r->cells[i] == STONE_EMPTY || seen[i]) continue;
+        Point p = { (i8)(i % r->size), (i8)(i / r->size) };
+        i32 count = board_group(&board, p, group, BOARD_MAX_POINTS);
+        bool no_liberty = board_liberties(&board, p) == 0;
+        for (i32 k = 0; k < count; ++k) seen[group[k]] = true, dead[group[k]] = no_liberty;
+    }
+    i32 removed = 0;
+    for (i32 i = 0; i < n; ++i) {
+        if (!dead[i]) continue;
+        r->cells[i] = STONE_EMPTY;
+        ++removed;
+    }
+    return removed;
+}

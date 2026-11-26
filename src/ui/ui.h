@@ -53,7 +53,8 @@ typedef enum UiDialog {
 typedef struct ThemeEditor {
     bool open;
     Theme edit;
-    isize base_index;       // theme it started from (Cancel / Reset)
+    isize base_index;       // theme the edit started from (Reset, "Start from")
+    isize original_index;   // theme active when the editor opened (Cancel goes back to it)
     i32 group, selected;    // colour group tab, selected colour
     i32 drag;               // slider being dragged (channel + 1), 0 = none
     f32 hsv[4];             // hue 0..360, saturation, value, alpha (selected colour)
@@ -95,6 +96,8 @@ typedef enum MarkTool {
 typedef struct MarkupDrag {
     bool active, erase, rect;
     Point start, last;
+    GameNode *stone_node;   // stone tools: the setup node a drag paints on, and what it puts on each point
+    Stone stone_want;
     f32 pen[256][2];      // board coordinates
     i32 pen_count;
     f64 last_click;       // double click (shade: fill the empty region)
@@ -133,6 +136,11 @@ typedef struct Ui {
     ThemeEditor theme_editor;
     LayoutEditor layout_editor;
     i32 form_tab;          // selected section of a tabbed form (Settings)
+    f32 modal_width;       // the open dialog's width this frame (set before its body is laid out)
+    Vector2 modal_offset;  // the dialog dragged by its title bar, from the centre of the window
+    Vector2 modal_grab;    // mouse minus offset when the drag started
+    bool modal_dragging;
+    i32 modal_for;         // the dialog the offset belongs to (a newly opened dialog starts centred)
     char key_capture[64];  // Settings -> Keys: the command waiting for its new key ("" = none)
     u8 press_state[128];   // --press: 0 waiting, 1 pressed, 2 logged after, 3 logged later
     bool key_capture_add;  // the captured key is added to the command's keys (else replaces them)
@@ -315,6 +323,11 @@ bool ui_command_names_setting(const Ui *ui, StringView command_id);
 // A setting's choice (as forms.lisp defines it) as a small dropdown, e.g. beside a
 // toolbar button (icons.kv "setting.<command>"); `tooltip` shows on hover.
 void ui_setting_dropdown(Ui *ui, StringView key, StringView tooltip, u32 index);
+// A dropdown list (the settings' look): the button shows labels[chosen] (`none_label`
+// when chosen < 0). `available` NULL = all. `index` makes its element ids unique.
+// Returns the index picked this frame (click, or Up / Down while open), else -1.
+isize ui_dropdown(Ui *ui, u32 index, f32 width, f32 text_size, StringView tooltip,
+                  const StringView *labels, const bool *available, isize count, isize chosen, StringView none_label);
 void ui_command_button(Ui *ui, StringView command_id, StringView icon, ButtonStyle style, u32 index);
 void ui_command_button_ex(Ui *ui, StringView command_id, StringView icon, bool with_label, ButtonStyle style, u32 index);
 Clay_ElementDeclaration ui_card(Ui *ui, Clay_ElementId id);

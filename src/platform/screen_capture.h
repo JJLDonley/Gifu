@@ -1,13 +1,16 @@
 // screen_capture.h - grabs the screen (or a part of it) as an RGBA image.
 //
 // Backends:
+//   dxgi     Windows 8+: DXGI desktop duplication, what the compositor shows, video
+//            overlays included (browser video comes back black through GDI); falls
+//            back to gdi when a monitor cannot be duplicated
 //   gdi      Windows (BitBlt of the virtual screen, every monitor)
 //   x11      X11 sessions (XGetImage of the root window)
 //   portal   Wayland: xdg-desktop-portal's Screenshot, through `gdbus`
 //            (GNOME / KDE / wlroots portals; the desktop may ask once)
 //   grim     Wayland, wlroots compositors (sway, Hyprland ...)
 //   command  any tool that writes a PNG to stdout, or to "%f" (sync.capture_command)
-// "auto" picks gdi on Windows; on Linux portal then grim in a Wayland session,
+// "auto" picks dxgi on Windows; on Linux portal then grim in a Wayland session,
 // else x11. Rectangles are desktop coordinates (Windows: the virtual screen, which
 // can be negative left of / above the primary monitor; X11: the root window).
 // Tool and portal backends grab the whole screen and cut the rectangle out.

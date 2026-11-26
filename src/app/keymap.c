@@ -19,6 +19,8 @@ static const struct {
     { "End", 269 },      { "F1", 290 },        { "F2", 291 },        { "F3", 292 },       { "F4", 293 },
     { "F5", 294 },       { "F6", 295 },        { "F7", 296 },        { "F8", 297 },       { "F9", 298 },
     { "F10", 299 },      { "F11", 300 },       { "F12", 301 },
+    { "MouseMiddle", KEY_MOUSE_BASE + 2 }, { "Mouse4", KEY_MOUSE_BASE + 3 }, { "Mouse5", KEY_MOUSE_BASE + 4 },
+    { "Mouse6", KEY_MOUSE_BASE + 5 }, { "Mouse7", KEY_MOUSE_BASE + 6 },
 };
 
 bool key_chord_parse(StringView text, KeyChord *out) {

@@ -111,11 +111,14 @@ static i32 sync_loop(BoardSync *s) {
             BoardReading reading;
             board_read_stones(&image, &grid, &reading);
             rgba_image_free(&image);
+            i32 dropped = board_reading_drop_dead_groups(&reading);
             // Stable: the same twice in a row, and new.
             bool stable = have_candidate && memcmp(&candidate, &reading, sizeof(reading)) == 0;
             candidate = reading, have_candidate = true;
             if (stable && (!have_last || memcmp(&last, &reading, sizeof(reading)) != 0)) {
                 last = reading, have_last = true;
+                if (dropped > 0)
+                    log_warn("board sync: ignored %d stone(s) without liberties (misread: check the board area)", dropped);
                 mutex_lock(&s->lock);
                 s->published = reading;
                 s->fresh = true;

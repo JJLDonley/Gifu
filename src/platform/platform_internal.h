@@ -18,13 +18,15 @@ ProcessSpec platform_apply_launcher(const ProcessSpec *spec, StringView *storage
 // ---- Screen capture -----------------------------------------------------------------------------
 
 typedef enum CaptureKind {
-    CAPTURE_GDI, CAPTURE_X11, CAPTURE_PORTAL, CAPTURE_GRIM, CAPTURE_SCREENCAPTURE, CAPTURE_COMMAND, CAPTURE_KWIN, CAPTURE_KINDS
+    CAPTURE_GDI, CAPTURE_X11, CAPTURE_PORTAL, CAPTURE_GRIM, CAPTURE_SCREENCAPTURE, CAPTURE_COMMAND, CAPTURE_KWIN, CAPTURE_DXGI, CAPTURE_KINDS
 } CaptureKind;
-extern const char *const CAPTURE_NAMES[CAPTURE_KINDS];   // "gdi", "x11", "portal", "grim", "screencapture", "command", "kwin"
+extern const char *const CAPTURE_NAMES[CAPTURE_KINDS];   // "gdi", "x11", "portal", "grim", "screencapture", "command", "kwin", "dxgi"
 
 struct ScreenCapture {
     CaptureKind kind;
     String command;          // CAPTURE_COMMAND: the user's tool ("%f" = output file)
+    void *dxgi;              // CAPTURE_DXGI: the desktop duplications, one per monitor (DxgiCapture *)
+    u32 dxgi_retry;          // CAPTURE_DXGI: grabs since opening it failed (it is retried every few)
     void *display;           // CAPTURE_X11: the capture thread's own connection (Display *)
     bool rootless;           // CAPTURE_X11: the root window cannot be read
     void *dbus;              // CAPTURE_KWIN / CAPTURE_PORTAL: the capture thread's D-Bus link (DbusLink *)

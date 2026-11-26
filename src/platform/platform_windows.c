@@ -1,5 +1,5 @@
 // Windows implementation of the platform layer (platform.h): Win32, UTF-16 paths,
-// job objects for engines, comdlg32 dialogs, GDI screen capture.
+// job objects for engines, comdlg32 dialogs, DXGI / GDI screen capture.
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
@@ -16,6 +16,9 @@
 #include <shellapi.h>
 #include <shlobj.h>
 #include <commdlg.h>
+#define COBJMACROS
+#include <d3d11.h>
+#include <dxgi1_2.h>
 
 // ---- Files, time, paths ---------------------------------------------------------------------------
 
@@ -596,12 +599,197 @@ static bool capture_grab_gdi(const ScreenRect *rect, RgbaImage *out, String *err
     return ok;
 }
 
+// ---- Screen capture (DXGI desktop duplication) -----------------------------------------------------
+// What the compositor shows, overlay planes included: browsers play video on a hardware
+// overlay that GDI's BitBlt reads as black. Each monitor has its own duplication, created
+// on the GPU that drives it. A monitor whose duplication fails (Windows 7, rotated, a
+// remote session...) is grabbed with GDI instead. DRM-protected video stays black either way.
+
+#define DXGI_MAX_OUTPUTS 16
+
+typedef struct DxgiOutput {
+    ID3D11Device *device;
+    ID3D11DeviceContext *context;
+    IDXGIOutputDuplication *dup;   // NULL: this monitor goes through GDI
+    ID3D11Texture2D *staging;      // the latest frame, CPU-readable
+    RECT bounds;                   // desktop coordinates
+    bool have_frame;
+} DxgiOutput;
+
+typedef struct DxgiCapture {
+    DxgiOutput outputs[DXGI_MAX_OUTPUTS];
+    i32 count;
+} DxgiCapture;
+
+static void dxgi_release_output(DxgiOutput *o) {
+    if (o->staging) ID3D11Texture2D_Release(o->staging);
+    if (o->dup) IDXGIOutputDuplication_Release(o->dup);
+    if (o->context) ID3D11DeviceContext_Release(o->context);
+    if (o->device) ID3D11Device_Release(o->device);
+    *o = (DxgiOutput){ 0 };
+}
+
+static void dxgi_close(DxgiCapture *d) {
+    if (!d) return;
+    for (i32 i = 0; i < d->count; ++i) dxgi_release_output(&d->outputs[i]);
+    free(d);
+}
+
+static bool dxgi_duplicate(DxgiOutput *o, IDXGIOutput *output, ID3D11Device *device, ID3D11DeviceContext *context) {
+    IDXGIOutput1 *output1 = NULL;
+    HRESULT hr = IDXGIOutput_QueryInterface(output, &IID_IDXGIOutput1, (void **)&output1);
+    if (SUCCEEDED(hr)) hr = IDXGIOutput1_DuplicateOutput(output1, (IUnknown *)device, &o->dup);
+    if (output1) IDXGIOutput1_Release(output1);
+    if (FAILED(hr)) {
+        log_info("screen capture: dxgi cannot duplicate the monitor at %ld,%ld (0x%08lx), it uses gdi", o->bounds.left, o->bounds.top,
+                 (unsigned long)hr);
+        o->dup = NULL;
+        return false;
+    }
+    DXGI_OUTDUPL_DESC desc;
+    IDXGIOutputDuplication_GetDesc(o->dup, &desc);
+    if (desc.Rotation != DXGI_MODE_ROTATION_IDENTITY && desc.Rotation != DXGI_MODE_ROTATION_UNSPECIFIED) {
+        log_info("screen capture: the monitor at %ld,%ld is rotated, it uses gdi", o->bounds.left, o->bounds.top);
+        IDXGIOutputDuplication_Release(o->dup);
+        o->dup = NULL;
+        return false;
+    }
+    o->device = device, o->context = context;
+    ID3D11Device_AddRef(device), ID3D11DeviceContext_AddRef(context);
+    return true;
+}
+
+static DxgiCapture *dxgi_open(void) {
+    IDXGIFactory1 *factory = NULL;
+    if (FAILED(CreateDXGIFactory1(&IID_IDXGIFactory1, (void **)&factory))) return NULL;
+    DxgiCapture *d = calloc(1, sizeof(DxgiCapture));
+    if (!d) abort();
+    bool any = false;
+    IDXGIAdapter1 *adapter = NULL;
+    for (UINT a = 0; d->count < DXGI_MAX_OUTPUTS && IDXGIFactory1_EnumAdapters1(factory, a, &adapter) != DXGI_ERROR_NOT_FOUND; ++a) {
+        ID3D11Device *device = NULL;
+        ID3D11DeviceContext *context = NULL;
+        IDXGIOutput *output = NULL;
+        for (UINT i = 0; d->count < DXGI_MAX_OUTPUTS && IDXGIAdapter1_EnumOutputs(adapter, i, &output) != DXGI_ERROR_NOT_FOUND; ++i) {
+            DXGI_OUTPUT_DESC desc;
+            if (SUCCEEDED(IDXGIOutput_GetDesc(output, &desc)) && desc.AttachedToDesktop) {
+                if (!device) {   // one device per GPU that drives a monitor
+                    HRESULT hr = D3D11CreateDevice((IDXGIAdapter *)adapter, D3D_DRIVER_TYPE_UNKNOWN, NULL, 0, NULL, 0, D3D11_SDK_VERSION,
+                                                   &device, NULL, &context);
+                    if (FAILED(hr)) device = NULL, context = NULL;
+                }
+                DxgiOutput *o = &d->outputs[d->count++];
+                o->bounds = desc.DesktopCoordinates;
+                if (device && dxgi_duplicate(o, output, device, context)) any = true;
+            }
+            IDXGIOutput_Release(output);
+        }
+        if (context) ID3D11DeviceContext_Release(context);
+        if (device) ID3D11Device_Release(device);
+        IDXGIAdapter1_Release(adapter);
+    }
+    IDXGIFactory1_Release(factory);
+    if (!any) {
+        dxgi_close(d);
+        return NULL;
+    }
+    return d;
+}
+
+typedef enum DxgiResult { DXGI_GRABBED, DXGI_USE_GDI, DXGI_LOST } DxgiResult;
+
+// Takes the newest frame into o->staging (keeps the last one when nothing changed).
+// DXGI_USE_GDI: no picture yet (a new duplication's first frames can be empty until the
+// monitor presents one); DXGI_LOST: mode change, secure desktop, fullscreen switch...
+static DxgiResult dxgi_update(DxgiOutput *o) {
+    for (i32 attempt = 0; attempt < 4; ++attempt) {
+        DXGI_OUTDUPL_FRAME_INFO info;
+        IDXGIResource *resource = NULL;
+        HRESULT hr = IDXGIOutputDuplication_AcquireNextFrame(o->dup, o->have_frame ? 0 : 50, &info, &resource);
+        if (hr == DXGI_ERROR_WAIT_TIMEOUT) return o->have_frame ? DXGI_GRABBED : DXGI_USE_GDI;   // nothing new
+        if (FAILED(hr)) return DXGI_LOST;
+        bool picture = info.LastPresentTime.QuadPart != 0;   // 0: only the pointer moved, or nothing drawn yet
+        ID3D11Texture2D *texture = NULL;
+        bool ok = SUCCEEDED(IDXGIResource_QueryInterface(resource, &IID_ID3D11Texture2D, (void **)&texture));
+        if (ok && picture && !o->staging) {
+            D3D11_TEXTURE2D_DESC desc;
+            ID3D11Texture2D_GetDesc(texture, &desc);
+            ok = desc.Format == DXGI_FORMAT_B8G8R8A8_UNORM;
+            desc.Usage = D3D11_USAGE_STAGING, desc.BindFlags = 0, desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ, desc.MiscFlags = 0;
+            desc.MipLevels = 1, desc.ArraySize = 1, desc.SampleDesc.Count = 1, desc.SampleDesc.Quality = 0;
+            ok = ok && SUCCEEDED(ID3D11Device_CreateTexture2D(o->device, &desc, NULL, &o->staging));
+        }
+        if (ok && picture) {
+            ID3D11DeviceContext_CopyResource(o->context, (ID3D11Resource *)o->staging, (ID3D11Resource *)texture);
+            o->have_frame = true;
+        }
+        if (texture) ID3D11Texture2D_Release(texture);
+        IDXGIResource_Release(resource);
+        IDXGIOutputDuplication_ReleaseFrame(o->dup);
+        if (!ok) return DXGI_LOST;
+        if (o->have_frame) return DXGI_GRABBED;
+    }
+    return DXGI_USE_GDI;
+}
+
+// DXGI_USE_GDI: a monitor under the rectangle has no duplication (or the area is off screen);
+// DXGI_LOST: a duplication must be created again.
+static DxgiResult dxgi_grab(DxgiCapture *d, const ScreenRect *rect, RgbaImage *out) {
+    i32 vx = GetSystemMetrics(SM_XVIRTUALSCREEN), vy = GetSystemMetrics(SM_YVIRTUALSCREEN);
+    i32 vw = GetSystemMetrics(SM_CXVIRTUALSCREEN), vh = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+    ScreenRect r = rect ? *rect : (ScreenRect){ vx, vy, vw, vh };
+    i32 x0 = MAX(r.x, vx), y0 = MAX(r.y, vy), x1 = MIN(r.x + r.width, vx + vw), y1 = MIN(r.y + r.height, vy + vh);
+    if (x1 <= x0 || y1 <= y0) return DXGI_USE_GDI;   // GDI reports it
+    for (i32 i = 0; i < d->count; ++i) {
+        DxgiOutput *o = &d->outputs[i];
+        bool hit = o->bounds.left < x1 && o->bounds.right > x0 && o->bounds.top < y1 && o->bounds.bottom > y0;
+        DxgiResult result = !hit ? DXGI_GRABBED : o->dup ? dxgi_update(o) : DXGI_USE_GDI;
+        if (result != DXGI_GRABBED) return result;
+    }
+    if (!rgba_image_alloc(out, x1 - x0, y1 - y0)) return DXGI_USE_GDI;
+    for (isize i = 0; i < (isize)out->width * out->height; ++i) {   // black where no monitor is
+        out->pixels[i * 4 + 0] = out->pixels[i * 4 + 1] = out->pixels[i * 4 + 2] = 0;
+        out->pixels[i * 4 + 3] = 255;
+    }
+    for (i32 i = 0; i < d->count; ++i) {
+        DxgiOutput *o = &d->outputs[i];
+        i32 ix0 = MAX(x0, (i32)o->bounds.left), iy0 = MAX(y0, (i32)o->bounds.top);
+        i32 ix1 = MIN(x1, (i32)o->bounds.right), iy1 = MIN(y1, (i32)o->bounds.bottom);
+        if (ix1 <= ix0 || iy1 <= iy0) continue;
+        D3D11_MAPPED_SUBRESOURCE map;
+        if (FAILED(ID3D11DeviceContext_Map(o->context, (ID3D11Resource *)o->staging, 0, D3D11_MAP_READ, 0, &map))) {
+            rgba_image_free(out);
+            return DXGI_LOST;
+        }
+        for (i32 y = iy0; y < iy1; ++y) {   // BGRA -> RGBA
+            const u8 *src = (const u8 *)map.pData + (isize)(y - o->bounds.top) * map.RowPitch + (isize)(ix0 - o->bounds.left) * 4;
+            u8 *dst = out->pixels + ((isize)(y - y0) * out->width + (ix0 - x0)) * 4;
+            for (i32 x = ix0; x < ix1; ++x, src += 4, dst += 4) dst[0] = src[2], dst[1] = src[1], dst[2] = src[0], dst[3] = 255;
+        }
+        ID3D11DeviceContext_Unmap(o->context, (ID3D11Resource *)o->staging, 0);
+    }
+    return DXGI_GRABBED;
+}
+
 // ---- Screen capture: this system's backends -------------------------------------------------------
 
-CaptureKind capture_default_kind(StringView command) { return command.len ? CAPTURE_COMMAND : CAPTURE_GDI; }
-bool capture_kind_available(CaptureKind kind) { return kind == CAPTURE_GDI; }
+CaptureKind capture_default_kind(StringView command) { return command.len ? CAPTURE_COMMAND : CAPTURE_DXGI; }
+bool capture_kind_available(CaptureKind kind) { return kind == CAPTURE_GDI || kind == CAPTURE_DXGI; }
 bool capture_grab_native(ScreenCapture *c, const ScreenRect *rect, RgbaImage *out, String *error) {
-    UNUSED(c);
+    if (c->kind == CAPTURE_DXGI) {
+        // Opened on first use and again after a lost duplication (display change, UAC prompt...).
+        if (!c->dxgi && c->dxgi_retry++ % 8 == 0) c->dxgi = dxgi_open();   // when it fails, retry now and then
+        DxgiResult result = c->dxgi ? dxgi_grab(c->dxgi, rect, out) : DXGI_USE_GDI;
+        if (result == DXGI_GRABBED) return true;
+        if (result == DXGI_LOST) {
+            dxgi_close(c->dxgi);
+            c->dxgi = NULL;
+            c->dxgi_retry = 0;   // reopen on the next grab
+        }
+    }
     return capture_grab_gdi(rect, out, error);
 }
-void capture_close_native(ScreenCapture *c) { UNUSED(c); }
+void capture_close_native(ScreenCapture *c) {
+    dxgi_close(c->dxgi);
+    c->dxgi = NULL;
+}

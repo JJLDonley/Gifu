@@ -50,6 +50,17 @@ typedef struct Config {
     String report_winrate_limits, report_score_limits;
     i32 report_match_moves;
     f32 report_match_percent;
+    // Thresholds (Settings -> Thresholds; user feedback 2026-11-25: every data cut-off editable).
+    f32 candidate_min_pct;       // board: candidates after the 3rd hidden under this % of the best's visits
+    f32 human_min_pct;           // human-moves overlay: moves under this probability (%) hidden ...
+    f32 human_min_relative_pct;  // ... or under this % of the most likely move
+    f32 ownership_min_pct;       // territory overlay: no mark under this ownership (%)
+    f32 estimate_secure_pct;     // estimate: ownership counted as decided / dead stones (%)
+    f32 estimate_likely_pct;     // estimate: likely territory (%)
+    f32 move_list_min_loss;      // move list: win-rate losses under this (%) not shown
+    f32 report_unlikely_pct;     // report: a move under this % for the reference rank is "unlikely"
+    i32 report_phase_middle;     // middle game from this move (19x19)
+    i32 report_phase_end;        // endgame from this move (19x19)
     i32 report_range, report_range_from, report_range_to;
     bool sgf_autosave;         // save the game (with its analysis) automatically
     i32 sgf_autosave_seconds;  // how often analysis changes are saved (edits: a few seconds after)
@@ -57,7 +68,7 @@ typedef struct Config {
     bool sgf_save_kt;         // also write analysis as KT[] (KaTrain)
     String tsumego_attacker;  // "auto", "black" or "white" (Tsumego frame)
     i32 tsumego_margin;       // empty lines between the problem and the frame's wall
-    String sync_capture;         // screen capture backend for board sync: auto, gdi, x11, portal, grim, command
+    String sync_capture;         // screen capture backend for board sync: auto, dxgi, gdi, x11, portal, grim, command
     String sync_capture_command; // "command" backend: writes a PNG to stdout, or to %f
     i32 sync_interval_ms;        // board sync: time between captures
     String sync_area;            // board sync: last picked area, "x,y,w,h" in desktop coordinates

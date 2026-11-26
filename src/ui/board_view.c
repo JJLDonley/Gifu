@@ -218,7 +218,7 @@ static void draw_ownership(Ui *ui, const BoardGeometry *g, const AnalysisSnapsho
             f32 own = a->ownership[i];
             if (a->to_play == STONE_WHITE) own = -own;   // -> Black's perspective
             f32 mag = fminf(1.0f, fabsf(own));
-            if (mag < 0.15f) continue;
+            if (mag * 100.0f < ui->app->config.ownership_min_pct) continue;
             Stone stone = (Stone)board->cells[i];
             Stone owner = own > 0 ? STONE_BLACK : STONE_WHITE;
             if (stone != STONE_EMPTY && stone == owner) continue;   // alive stone: no marker
@@ -247,7 +247,8 @@ static void draw_candidates(Ui *ui, const BoardGeometry *g, const AnalysisSnapsh
     for (i32 i = MIN(a->candidate_count, limit) - 1; i >= 0; --i) {
         const Candidate *cand = &a->candidates[i];
         if (point_is_pass(cand->move) || board_at(board, cand->move) != STONE_EMPTY) continue;
-        if (max_visits > 0 && cand->visits * 50 < max_visits && i > 2) continue;   // hide noise
+        // hide noise: after the 3rd, under display.candidate_min_pct of the best's visits
+        if (max_visits > 0 && (f32)cand->visits * 100.0f < (f32)max_visits * ui->app->config.candidate_min_pct && i > 2) continue;
         Vector2 p = point_center(g, cand->move);
         f32 r = g->cell * 0.47f;
         Color col = candidate_color(c, cand, max_visits, i == 0);
@@ -372,7 +373,9 @@ static void draw_human_policy(Ui *ui, const BoardGeometry *g, const HumanPolicy 
         for (i32 x = 0; x < g->width; ++x) {
             i32 i = y * g->width + x;
             f32 p = h->policy[i];
-            if (p < 0.02f || p < best * 0.08f || board->cells[i] != STONE_EMPTY) continue;
+            // display.human_min_pct / human_min_relative_pct (the "% chance a player of this rank plays it" cut-offs)
+            const Config *cf = &ui->app->config;
+            if (p * 100.0f < cf->human_min_pct || p * 100.0f < best * cf->human_min_relative_pct || board->cells[i] != STONE_EMPTY) continue;
             f32 rel = sqrtf(p / best);
             Vector2 center = point_center(g, (Point){ (i8)x, (i8)y });
             f32 r = g->cell * 0.5f;
@@ -758,13 +761,14 @@ static bool stone_edit_input(Ui *ui, const Board *board, Point p) {
         if (same && ui->drag_moved && board_at(board, p) == STONE_EMPTY) app_move_edit(app, &(MoveEdit){ MOVE_EDIT_RELOCATE, node, { STONE_EMPTY, p } });
         return true;
     }
-    // Ctrl+Shift+click a stone: jump to the move that played it (Cmd+Shift on macOS too).
-    bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL) || IsKeyDown(KEY_LEFT_SUPER) || IsKeyDown(KEY_RIGHT_SUPER);
+    // Shift+click (Ctrl+Shift too): jump to the move of the current branch at that point — back to the move that
+    // placed a stone there, or ahead to where the branch plays an empty point. Never plays a move.
     bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
-    if (ui->mouse_pressed && ctrl && shift) {
-        GameNode *node = move_edit_stone_node(app->tree, p);
+    if (ui->mouse_pressed && shift) {
+        GameNode *node = move_edit_branch_node(app->tree, p);
         if (node) app_goto(app, node);
-        return true;   // never a move
+        else app_set_status(app, "No move at that point in this branch");
+        return true;
     }
     if (ui->mouse_pressed && app->config.drag_stones && board_at(board, p) != STONE_EMPTY) {
         GameNode *node = move_edit_stone_node(app->tree, p);

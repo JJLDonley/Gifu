@@ -366,7 +366,8 @@ static void draw_loss_graph(void *user, Rectangle r) {
         // Points lost per move: Black's bars up from the middle, White's down. 15+ points is full height.
         f32 mid = r.y + r.height * 0.5f, half = r.height * 0.5f - 2.0f;
         DrawLineEx((Vector2){ r.x, mid }, (Vector2){ r.x + r.width, mid }, 1.0f, color_with_alpha(c->text_muted, 0.4f));
-        for (f32 pts = 5.0f; pts <= 10.0f; pts += 5.0f) {   // 5 and 10 point guides
+        // guides at the big-loss levels (report.score_limits: 5 and 10 points by default)
+        for (f32 pts = loss_limits()->score[2]; pts <= loss_limits()->score[3] + 0.01f; pts += fmaxf(loss_limits()->score[3] - loss_limits()->score[2], 0.5f)) {
             f32 off = half * pts / 15.0f;
             DrawLineEx((Vector2){ r.x, mid - off }, (Vector2){ r.x + r.width, mid - off }, 1.0f, color_with_alpha(c->text_muted, 0.15f));
             DrawLineEx((Vector2){ r.x, mid + off }, (Vector2){ r.x + r.width, mid + off }, 1.0f, color_with_alpha(c->text_muted, 0.15f));
@@ -377,7 +378,8 @@ static void draw_loss_graph(void *user, Rectangle r) {
             if (!game_node_score_loss(d->line[i], &loss) || loss <= 0.05f) continue;
             f32 h = half * fminf(loss, 15.0f) / 15.0f;
             f32 x = r.x + step * (f32)i - bar * 0.5f;
-            Color col = loss >= 5.0f ? c->candidate_bad : loss >= 2.0f ? mid_loss_color(c) : c->text_muted;
+            // colours follow report.score_limits (bad from its 3rd level, 5 points; mid from its 2nd, 2 points)
+            Color col = loss >= loss_limits()->score[2] ? c->candidate_bad : loss >= loss_limits()->score[1] ? mid_loss_color(c) : c->text_muted;
             bool black = d->line[i]->move.color == STONE_BLACK;
             DrawRectangleRec((Rectangle){ x, black ? mid - h : mid, bar, h }, color_with_alpha(col, 0.85f));
         }
@@ -674,7 +676,7 @@ static void mistakes(DeepReport *d) {
                 cell(ui, SV(""), FONT_UI, c->text, 0, false);
                 // Losses with a minus; a move that gained (by the other measure) gets a plus.
                 cell(ui, arena_format(&ui->frame, "%+.1f%%", -wr * 100.0f), FONT_MONO, wr > 0.10f ? c->candidate_bad : c->text, 140, true);
-                cell(ui, has_points ? arena_format(&ui->frame, "%+.1f", -points) : SV("—"), FONT_MONO, points > 5.0f ? c->candidate_bad : c->text, 130, true);
+                cell(ui, has_points ? arena_format(&ui->frame, "%+.1f", -points) : SV("—"), FONT_MONO, points >= loss_limits()->score[2] ? c->candidate_bad : c->text, 130, true);
             }
             if (over && ui->mouse_pressed) app_goto(ui->app, node);
         }
@@ -710,7 +712,7 @@ static void draw_rank_graph(void *user, Rectangle r) {
         f32 p = d->probs[i][g->ref];
         f32 h = fmaxf(1.0f, half * sqrtf(CLAMP(p, 0.0f, 1.0f)));
         bool black = d->line[i]->move.color == STONE_BLACK;
-        Color col = p < 0.02f ? c->candidate_bad : c->human_policy;
+        Color col = p * 100.0f < ui->app->config.report_unlikely_pct ? c->candidate_bad : c->human_policy;
         DrawRectangleRec((Rectangle){ r.x + step * (f32)i - bar * 0.5f, black ? mid - h : mid, bar, h }, color_with_alpha(col, 0.85f));
     }
     for (isize i = 0; i < d->count; ++i) {
@@ -739,7 +741,7 @@ static void rank_card(DeepReport *d, Stone color, i32 ref) {
         sum_est += pe;
         moves++;
         if (pr > pe) closer++;
-        if (pr < 0.02f) unlikely++;
+        if (pr * 100.0f < ui->app->config.report_unlikely_pct) unlikely++;
         for (i32 k = 0; k < 3; ++k) {   // the three moves the reference rank would least play
             if (worst[k] < 0 || pr < d->probs[worst[k]][ref]) {
                 for (i32 m = 2; m > k; --m) worst[m] = worst[m - 1];
@@ -882,7 +884,12 @@ static void moves_page(DeepReport *d) {
         if (ui_button(ui, CLAY_ID("MovesBlack"), player_name(ui, STONE_BLACK), BUTTON_NORMAL, (*filter & 3) == 1, true)) *filter = (*filter & ~3) | 1;
         if (ui_button(ui, CLAY_ID("MovesWhite"), player_name(ui, STONE_WHITE), BUTTON_NORMAL, (*filter & 3) == 2, true)) *filter = (*filter & ~3) | 2;
         CLAY({ .layout = { .sizing = { CLAY_SIZING_FIXED(ui_px(ui, 16)), CLAY_SIZING_FIT(0) } } }) {}
-        if (ui_button(ui, CLAY_ID("MovesLosses"), tr(ui, "report.filter_losses", "Only losses of 2+ points"), BUTTON_NORMAL, (*filter & 4) != 0, true)) *filter ^= 4;
+        // the level is report.score_limits' 2nd (2 points by default): "{n}" in the translation is replaced by it
+        StringView fmt = tr(ui, "report.filter_losses", "Only losses of {n}+ points");
+        isize at = sv_find(fmt, SV("{n}"));
+        StringView label = at < 0 ? fmt : arena_format(&ui->frame, SV_FMT "%g" SV_FMT, SV_ARG(sv_take(fmt, at)), (f64)loss_limits()->score[1],
+                                                       SV_ARG(sv_drop(fmt, at + 3)));
+        if (ui_button(ui, CLAY_ID("MovesLosses"), label, BUTTON_NORMAL, (*filter & 4) != 0, true)) *filter ^= 4;
     }
     g_cell_size = 14.0f;
     CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childGap = ui_u16(ui, 10),
@@ -908,7 +915,7 @@ static void moves_page(DeepReport *d) {
             bool has_points = game_node_score_loss(node, &points);
             if ((*filter & 1) && node->move.color != STONE_BLACK) continue;
             if ((*filter & 2) && node->move.color != STONE_WHITE) continue;
-            if ((*filter & 4) && (!has_points || points < 2.0f)) continue;
+            if ((*filter & 4) && (!has_points || points < loss_limits()->score[1])) continue;
             shown++;
             char played[8], best[8] = "—";
             point_to_gtp(node->move.point, node->board.width, node->board.height, played);
@@ -917,7 +924,7 @@ static void moves_page(DeepReport *d) {
             if (before->top_count > 0) point_to_gtp(before->top[0], node->board.width, node->board.height, best);
             Clay_ElementId id = CLAY_IDI("MovesRow", (u32)i);
             bool over = Clay_PointerOver(id), current = node == ui->app->tree->current;
-            Color loss_color = points >= 5.0f ? c->candidate_bad : points >= 2.0f ? mid_loss_color(c) : c->text;
+            Color loss_color = points >= loss_limits()->score[2] ? c->candidate_bad : points >= loss_limits()->score[1] ? mid_loss_color(c) : c->text;
             CLAY({ .id = id,
                    .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(ui_px(ui, 30)) }, .childGap = ui_u16(ui, 10),
                                .padding = { ui_u16(ui, 6), ui_u16(ui, 6), 0, 0 }, .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } },
@@ -928,7 +935,7 @@ static void moves_page(DeepReport *d) {
                 cell(ui, arena_format(&ui->frame, "%s", played), FONT_MONO, matched ? c->candidate_good : c->text, 70, false);
                 cell(ui, arena_format(&ui->frame, "%s", best), FONT_MONO, c->text_muted, 70, false);
                 cell(ui, arena_format(&ui->frame, "%.1f%%", node->eval.black_winrate * 100.0f), FONT_MONO, c->text, 0, true);
-                cell(ui, arena_format(&ui->frame, "%+.1f%%", -wr_loss * 100.0f), FONT_MONO, wr_loss > 0.10f ? c->candidate_bad : c->text, 110, true);
+                cell(ui, arena_format(&ui->frame, "%+.1f%%", -wr_loss * 100.0f), FONT_MONO, wr_loss >= loss_limits()->winrate[2] ? c->candidate_bad : c->text, 110, true);
                 cell(ui, has_points ? arena_format(&ui->frame, "%+.1f", -points) : SV("—"), FONT_MONO, loss_color, 100, true);
                 f32 acc = 0;
                 cell(ui, node_accuracy(node, &acc) ? arena_format(&ui->frame, "%.0f", acc) : SV("—"), FONT_MONO, c->text, 80, true);

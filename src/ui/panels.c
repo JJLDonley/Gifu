@@ -213,7 +213,7 @@ static void panel_move_list(Ui *ui) {
                         if (n->eval.valid && !hide_eval) CLAY_TEXT(ui_fmt(ui, "%.1f%%", n->eval.black_winrate * 100.0f), ui_text_style(ui, FONT_MONO, 12, c->text_muted));
                     }
                     CLAY({ .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) }, .childAlignment = { .x = CLAY_ALIGN_X_RIGHT } } }) {
-                        if (has_loss && fabsf(loss) >= 0.005f) {
+                        if (has_loss && fabsf(loss) * 100.0f >= ui->app->config.move_list_min_loss) {
                             CLAY_TEXT(ui_fmt(ui, "%+.1f", -loss * 100.0f), ui_text_style(ui, FONT_MONO, 12, tint.a ? tint : c->text_muted));
                         }
                     }

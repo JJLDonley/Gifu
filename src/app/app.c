@@ -5,6 +5,8 @@
 #include "platform/file_dialog.h"
 #include "core/sgf_analysis.h"
 #include "core/tsumego_frame.h"
+#include "core/estimate.h"
+#include "core/game_report.h"
 #include "platform/line_channel.h"
 #include "base/log.h"
 
@@ -913,11 +915,33 @@ static void opponent_start(App *app) {
     app_set_status(app, "Opponent: %s", string_cstr(&p->name));
 }
 
+bool app_result_shown(const App *app) {
+    return app->result.len > 0 && app->result_node == app->tree->current && app->result_generation == app->tree_generation;
+}
+
+void app_clear_result(App *app) {
+    string_free(&app->result);
+    app->result_position = 0;
+    app->result_node = NULL;
+    app->score_requested = false;
+    app->score_pending = false;
+}
+
+// The node a score belongs to: the one the scoring engine was synced to when it asked (scores are requested for the
+// synced position), else the current node.
+static const GameNode *scored_node(const App *app, u64 position_id) {
+    if (app->main.synced_node && app->main.synced_position_id == position_id) return app->main.synced_node;
+    if (app->opponent.synced_node && app->opponent.synced_position_id == position_id) return app->opponent.synced_node;
+    return app->tree->current;
+}
+
 static void on_score(App *app, const EngineEvent *ev) {
     app->score_requested = false;
     string_free(&app->result);
     app->result = string_from(ev->text);
     app->result_position = ev->position_id;
+    app->result_node = scored_node(app, ev->position_id);
+    app->result_generation = app->tree_generation;
     app_set_status(app, "Result: " SV_FMT, SV_ARG(ev->text));
 }
 
@@ -1154,6 +1178,7 @@ static void ai_turn_update(App *app) {
         app->auto_scored_node = cur;
         app->ai_plays[STONE_BLACK] = app->ai_plays[STONE_WHITE] = false;
         app->match_mode = false;
+        app->play_layout = false;   // the game is over: back to the analysis layout, as after a resignation
         app->score_requested = true;
         engine_request_score(app->main.engine, app->main.synced_position_id);
     }
@@ -1256,10 +1281,13 @@ void app_apply_loss_limits(App *app) {
     loss_limits_parse(string_sv(&app->config.report_winrate_limits), string_sv(&app->config.report_score_limits), &l);
     loss_limits_set(&l);
     match_rule_set((MatchRule){ app->config.report_match_moves, app->config.report_match_percent });
+    estimate_levels_set(app->config.estimate_secure_pct / 100.0f, app->config.estimate_likely_pct / 100.0f);
+    game_phases_set(app->config.report_phase_middle, app->config.report_phase_end);
 }
 
 void app_config_changed(App *app, StringView key) {
-    if (sv_eq(key, SV("report.winrate_limits")) || sv_eq(key, SV("report.score_limits")) || sv_starts_with(key, SV("report.match_"))) {
+    if (sv_eq(key, SV("report.winrate_limits")) || sv_eq(key, SV("report.score_limits")) || sv_starts_with(key, SV("report.match_")) ||
+        sv_starts_with(key, SV("report.phase_")) || sv_starts_with(key, SV("estimate."))) {
         app_apply_loss_limits(app);
     } else if (sv_eq(key, SV("language"))) {
         app_reload_language(app);
@@ -1306,6 +1334,8 @@ static void replace_tree(App *app, GameTree *tree) {
     app_follow_eval_source(app);
     app->tree_generation++;
     app->human_policy_node = NULL;   // points into the freed tree (its memory may be reused)
+    app_clear_result(app);           // a result belongs to the old game
+    app->auto_scored_node = NULL;    // so does the two-passes marker
     string_free(&app->autosave_path);   // a new game gets its own auto-save file
     app->autosaved_revision = tree->revision;
     app->autosave_last = os_time_seconds();
@@ -1664,6 +1694,7 @@ static void cmd_delete(void *c) {
 // on and off.
 static void cmd_toggle_analysis(void *c) {
     App *app = APP(c);
+    app_clear_result(app);   // the user asked for analysis: the result card goes, and a score still on its way too
     if (app->play_layout) {
         app->play_layout = false;
         app->ai_plays[STONE_BLACK] = app->ai_plays[STONE_WHITE] = false;
@@ -1744,7 +1775,7 @@ static void cmd_write_result(void *c) {
     app_mark_edited(app);
     app_set_status(app, "Result saved to game");
 }
-static bool has_result(const void *c) { return CAPP(c)->result.len > 0 && CAPP(c)->result_position == CAPP(c)->main.synced_position_id; }
+static bool has_result(const void *c) { return app_result_shown(CAPP(c)); }
 
 static void cmd_game_analysis(void *c) {
     App *app = APP(c);

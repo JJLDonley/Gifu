@@ -37,6 +37,11 @@ typedef struct BoardReading {
 
 void board_read_stones(const RgbaImage *image, const BoardGrid *grid, BoardReading *out);
 
+// Removes groups without a liberty: no real position has one, so they are misreads (a hover or
+// ghost stone, a marker, a wrong board area) and an engine would refuse the whole position.
+// Returns the number of stones removed.
+i32 board_reading_drop_dead_groups(BoardReading *reading);
+
 // Share of line pixels along the grid's lines in this picture (compare with
 // grid->strength): near 0 when the board is covered, minimized or not drawn yet.
 f32 board_grid_strength(const RgbaImage *image, const BoardGrid *grid);

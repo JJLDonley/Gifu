@@ -151,11 +151,14 @@ static void press(Ui *ui, const BoardGeometry *g, Point p) {
                 node = game_tree_append_child(app->tree, node);
                 game_tree_goto(app->tree, node);
             }
-            setup_toggle_stone(app->tree, node, p, ui->markup_tool == MARK_TOOL_BLACK ? STONE_BLACK : STONE_WHITE);
+            // A drag paints what the first point got: stones of this colour, or (started on one) their removal.
+            Stone color = ui->markup_tool == MARK_TOOL_BLACK ? STONE_BLACK : STONE_WHITE;
+            d->stone_node = node;
+            d->stone_want = (Stone)board_at(&node->board, p) == color ? STONE_EMPTY : color;
+            setup_set_stone(app->tree, node, p, d->stone_want);
             game_tree_rebuild(app->tree, node);
             app_mark_edited(app);
-            d->active = false;
-            return;
+            return;   // stays active: the drag continues in markup_tools_input
         }
         case MARK_TOOL_LETTER:
         case MARK_TOOL_NUMBER: {
@@ -262,6 +265,17 @@ void markup_tools_input(Ui *ui, const BoardGeometry *g) {
             d->pen_count++;
         }
     } else if (!point_eq(p, d->last)) {
+        if ((ui->markup_tool == MARK_TOOL_BLACK || ui->markup_tool == MARK_TOOL_WHITE) && d->stone_node == ui->app->tree->current) {
+            GameNode *node = d->stone_node;
+            Stone color = ui->markup_tool == MARK_TOOL_BLACK ? STONE_BLACK : STONE_WHITE;
+            Stone now = (Stone)board_at(&node->board, p);
+            // Adding fills empty points only (a drag across stones does not flip them); removing takes only this colour.
+            if (d->stone_want == color ? now == STONE_EMPTY : now == color) {
+                setup_set_stone(ui->app->tree, node, p, d->stone_want);
+                game_tree_rebuild(ui->app->tree, node);
+                app_mark_edited(ui->app);
+            }
+        }
         bool paints = ui->markup_tool >= MARK_TOOL_TRIANGLE && ui->markup_tool <= MARK_TOOL_CROSS;
         paints |= ui->markup_tool == MARK_TOOL_ERASER || (ui->markup_tool == MARK_TOOL_SHADE && !d->rect);
         if (paints) paint_point(ui, p);

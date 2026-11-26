@@ -9,6 +9,9 @@ enum { REPORT_WORST = 10 };
 enum { GAME_PHASE_OPENING, GAME_PHASE_MIDDLE, GAME_PHASE_ENDGAME, GAME_PHASES };
 i32 game_phase(i32 move_number, i32 board_points);
 i32 game_phase_start(i32 phase, i32 board_points);   // first move number of the phase
+// Phase boundaries on 19x19 (scaled by board size): the middle game starts after `middle` moves, the endgame after
+// `end`. Settings report.phase_middle / report.phase_end; defaults 50 / 150.
+void game_phases_set(i32 middle, i32 end);
 
 // Hawk Eye (LizzieYzy) per-move figures, from the candidates' visits in the position
 // before the move: the played move's visits / the most-visited candidate's (1 for

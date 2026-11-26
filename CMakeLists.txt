@@ -163,7 +163,7 @@ endif()
 target_include_directories(gifu_core PUBLIC src ${CMAKE_BINARY_DIR}/generated)
 target_link_libraries(gifu_core PUBLIC third_party_misc)
 if(WIN32)
-    target_link_libraries(gifu_core PUBLIC shell32 ole32 uuid gdi32 user32)   # gdi32: screen capture
+    target_link_libraries(gifu_core PUBLIC shell32 ole32 uuid gdi32 user32 d3d11 dxgi dxguid)   # gdi32, d3d11, dxgi: screen capture
 elseif(APPLE)
     target_link_libraries(gifu_core PUBLIC m pthread iconv)   # screen capture and dialogs use system tools; iconv is its own library
     # posix_spawn_file_actions_addchdir_np: deprecated in macOS 26, but the replacement is missing before it.

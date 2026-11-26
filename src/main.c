@@ -7,6 +7,7 @@
 #include "base/version_info.h"
 #include "base/log.h"
 #include "platform/os.h"
+#include "platform/screen_capture.h"
 #include "ui/ui.h"
 #include "ui/area_select.h"
 
@@ -25,7 +26,7 @@ static void usage(void) {
             "       gifu --version\n"
             "       gifu --profile [--set profile.names=A,B --set profile.folder=DIR]   (build and print the profile)\n"
             "       gifu --read-board FILE.png|screen [--capture-area X,Y,W,H] [--size 19]   (board recognition)\n"
-            "       gifu --capture OUT.png [--capture-area X,Y,W,H] [--set sync.capture=auto|gdi|x11|portal|grim|command]\n"
+            "       gifu --capture OUT.png [--capture-area X,Y,W,H] [--set sync.capture=auto|dxgi|gdi|x11|portal|grim|command]\n"
             "       gifu --install engine,network,human|all [--backend opencl|eigenavx2|eigen|cuda12.8-cudnn9.8.0] [--install-dir DIR]\n");
 }
 
@@ -97,12 +98,16 @@ static bool parse_args(int argc, char **argv, AppOptions *opts) {
     return true;
 }
 
-// --select-area X,Y,W,H [--select-hint TEXT]: the on-screen board picker (run by the app as a helper).
+// --select-area X,Y,W,H [--select-hint TEXT] [--select-capture BACKEND [--select-command TOOL]]:
+// the on-screen board picker (run by the app as a helper). With a capture backend it
+// shows a snapshot of the screen; when that capture fails, the live screen.
 static int select_area_main(int argc, char **argv) {
     i64 v[4] = { 0 };
-    const char *hint = "Drag a box around the board  -  Esc cancels";
+    const char *hint = "Drag a box around the board  -  Esc cancels", *backend = NULL, *command = "";
     for (int i = 1; i + 1 < argc; ++i) {
         if (strcmp(argv[i], "--select-hint") == 0) hint = argv[i + 1];
+        if (strcmp(argv[i], "--select-capture") == 0) backend = argv[i + 1];
+        if (strcmp(argv[i], "--select-command") == 0) command = argv[i + 1];
         if (strcmp(argv[i], "--select-area") != 0) continue;
         StringView rest = sv(argv[i + 1]);
         for (int k = 0; k < 4; ++k) {
@@ -110,7 +115,20 @@ static int select_area_main(int argc, char **argv) {
         }
     }
     if (v[2] <= 0 || v[3] <= 0) return 2;
-    return area_select_run((i32)v[0], (i32)v[1], (i32)v[2], (i32)v[3], hint);
+    ScreenRect area = { (i32)v[0], (i32)v[1], (i32)v[2], (i32)v[3] };
+    RgbaImage snapshot = { 0 };
+    bool have_snapshot = false;
+    if (backend) {
+        String err = { 0 };
+        ScreenCapture *capture = screen_capture_open(sv(backend), sv(command), &err);
+        have_snapshot = capture && screen_capture_grab(capture, &area, &snapshot, &err);
+        if (capture) screen_capture_close(capture);
+        if (!have_snapshot) fprintf(stderr, "area picker: no snapshot (%s), picking on the live screen\n", string_cstr(&err));
+        string_free(&err);
+    }
+    int result = area_select_run(area.x, area.y, area.width, area.height, hint, have_snapshot ? &snapshot : NULL);
+    if (have_snapshot) rgba_image_free(&snapshot);
+    return result;
 }
 
 int main(int argc, char **argv) {

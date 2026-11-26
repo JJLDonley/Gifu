@@ -60,8 +60,12 @@ void app_sync_select(App *app) {
     char area[64];
     snprintf(area, sizeof(area), "%d,%d,%d,%d", d.x, d.y, d.width, d.height);
     StringView hint = app_tr(app, "sync.pick_hint", "Drag a box around the board  -  Esc cancels");
-    StringView args[] = { SV("--select-area"), sv(area), SV("--select-hint"), hint };
-    ProcessSpec spec = { string_sv(&exe), args, countof(args), SV(""), NULL, 0 };
+    // It shows a snapshot (taken with the sync's own capture) rather than covering the live
+    // screen: browsers stop drawing a video under a window over the whole screen.
+    StringView backend = string_sv(&app->config.sync_capture), command = string_sv(&app->config.sync_capture_command);
+    StringView args[] = { SV("--select-area"), sv(area), SV("--select-hint"), hint, SV("--select-capture"), backend.len ? backend : SV("auto"),
+                          SV("--select-command"), command };
+    ProcessSpec spec = { string_sv(&exe), args, command.len ? countof(args) : countof(args) - 2, SV(""), NULL, 0 };
     String err = { 0 };
     app->area_picker = line_channel_start(&spec, &err);
     string_free(&exe);

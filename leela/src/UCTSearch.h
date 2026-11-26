@@ -36,7 +36,7 @@ public:
     void ponder();
     // Searches until a command arrives, printing an "info move ..." line (Leela
     // Zero's lz-analyze format) to standard output every interval_cs centiseconds.
-    void analyze(int interval_cs, int max_moves);
+    void analyze(int interval_cs, int max_moves, int max_playouts = 0);
     bool is_running();
     bool playout_limit_reached();
     void increment_playouts();
